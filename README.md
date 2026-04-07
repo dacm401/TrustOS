@@ -1,50 +1,60 @@
-# SmartRouter Pro - 透明AI路由专家
+# SmartRouter Pro
 
-> **透明的、会成长的 AI 智能运行时**
-> 你能看到它在思考，你能看到它在成长。
+SmartRouter Pro is the working repository for building a Lean Agent Runtime (LAR) style AI system.
 
-## 核心特性
+This project is evolving from a demo into a usable AI runtime with:
+- task-centric orchestration
+- task summaries
+- structured traces
+- prompt assembly
+- memory and evidence systems
+- budget-aware execution
 
-| 特性 | 说明 |
-|------|------|
-| 智能路由 | 自动判断任务复杂度，选择最优模型 |
-| 完全透明 | 每次决策的模型选择、理由、Token消耗全部可见 |
-| 上下文压缩 | 四级压缩策略，节省20-70% Token |
-| 质量门控 | 快模型回答不达标时自动升级到慢模型 |
-| 学习进化 | 从每次反馈中学习，越用越懂你 |
-| 实时仪表盘 | Token流向图、决策时间线、成长曲线 |
+## Current Status
 
-## 快速启动
+Current phase: **Backend foundation upgrade**
 
-```bash
-# 使用Docker一键启动
-docker-compose up -d
+The repository is being upgraded from a demo into a development-ready system with:
+- structured docs
+- sprint planning
+- feature cards
+- API stabilization
+- prompt/runtime refactoring
 
-# 或前端独立运行
-cd frontend && npm install && npm run dev
-```
+## Project Goals
 
-## 技术栈
+- keep the interaction as lightweight as chat by default
+- upgrade to agent-like behavior only when needed
+- make task state explicit and recoverable
+- make prompt assembly modular
+- support long-running and resumable tasks
+- optimize for controllability and engineering quality
 
-- **后端**: TypeScript + Hono + PostgreSQL + Redis
-- **前端**: Next.js 14 + Tailwind CSS + Recharts
-- **部署**: Docker Compose
+## Docs
 
-## 项目结构
+- `docs/lean-agent-runtime-spec.md` - unified product and architecture spec
+- `docs/dev-rules.md` - engineering and AI collaboration rules
+- `docs/current-sprint.md` - current sprint scope and acceptance criteria
+- `docs/task-cards/` - feature-level implementation tasks
+- `evaluation/cases/` - benchmark and replay cases
 
-```
-smartrouter-pro/
-├── backend/          # 核心运行时
-│   └── src/
-│       ├── router/   # 智能路由层
-│       ├── context/  # 上下文管理层
-│       ├── models/   # 模型接入层
-│       ├── evolution/# 学习进化层
-│       └── observatory/ # 透明观测层
-├── frontend/         # 仪表盘 + 对话界面
-└── docker-compose.yml
-```
+## Current Development Focus
 
-## 许可
+- Task APIs
+- Summary APIs
+- Trace APIs
+- PromptAssembler v1
+- TaskStateMachine v1
 
-MIT License
+## Working Method
+
+Development is guided by:
+1. project docs
+2. sprint scope
+3. feature cards
+4. AI-assisted implementation
+5. local validation and debugging
+
+## Notes
+
+This repository currently serves as the main working repo for architecture evolution, implementation, and testing.
