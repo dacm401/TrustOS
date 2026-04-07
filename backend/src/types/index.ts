@@ -107,6 +107,10 @@ export interface ChatRequest {
   message: string;
   history: ChatMessage[];
   preferences?: { mode: "quality" | "balanced" | "cost"; compression_level?: CompressionLevel };
+  /** 前端设置透传：可覆盖后端环境变量 */
+  api_key?: string;
+  fast_model?: string;
+  slow_model?: string;
 }
 
 export interface ChatResponse {

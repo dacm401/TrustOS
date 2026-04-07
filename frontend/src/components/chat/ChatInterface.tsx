@@ -28,13 +28,14 @@ export function ChatInterface() {
     try {
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
       const data = await sendMessage(text, history, USER_ID, sessionId);
+      const replyContent = data.message || "⚠️ 收到空响应，请检查后端日志。";
       if (data.decision?.execution?.did_fallback) {
         setShowFallbackAnim({ fromModel: data.decision.routing.selected_model, toModel: data.decision.execution.model_used, reason: data.decision.execution.fallback_reason || "质量不达标" });
-        setTimeout(() => { setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: data.message, decision: data.decision }]); setShowFallbackAnim(null); }, 3000);
+        setTimeout(() => { setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision }]); setShowFallbackAnim(null); }, 3000);
       } else {
-        setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: data.message, decision: data.decision }]);
+        setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision }]);
       }
-    } catch { setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: "⚠️ 请求失败，请检查API配置或点击右上角设置。" }]); } finally { setLoading(false); }
+    } catch (err: any) { setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: `⚠️ 请求失败：${err?.message || "请检查API配置或点击右上角设置。"}` }]); } finally { setLoading(false); }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } };
