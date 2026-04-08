@@ -28,6 +28,10 @@
 
 ## Runtime Flow Overview
 
+Full runtime flow documented in: **`docs/runtime-flow.md`**
+
+Brief summary:
+
 ```
 POST /api/chat
   → chat.ts: parse request, create task record
@@ -35,27 +39,14 @@ POST /api/chat
   → prompt-assembler.ts: assemble system prompt by mode
   → context-manager.ts (services/): compress history, inject system prompt
   → model-gateway.ts: call selected model
+  → quality-gate.ts: fast-path quality check + fallback if needed
   → decision-logger.ts: write decision trace (known SQL bug — non-blocking)
-  → chat.ts: write response trace, return { message, decision }
+  → learning-engine.ts: implicit feedback + memory learning (fire-and-forget)
+  → TaskRepo: write execution stats + 3 traces (fire-and-forget)
+  → chat.ts: return { message, decision }
 ```
 
-```
-GET /v1/tasks/all
-  → tasks.ts: route handler
-  → TaskRepo.getAll(user_id)
-
-GET /v1/tasks/:id
-  → tasks.ts: route handler
-  → TaskRepo.getById(task_id)
-
-GET /v1/tasks/:id/summary
-  → tasks.ts: route handler
-  → TaskRepo.getSummary(task_id)
-
-GET /v1/tasks/:id/traces
-  → tasks.ts: route handler
-  → TaskRepo.getTraces(task_id)
-```
+See **`docs/runtime-flow.md`** for the complete step-by-step walkthrough, file map, data touchpoints, and known quirks.
 
 ## Notes
 - update this file whenever major modules are moved
