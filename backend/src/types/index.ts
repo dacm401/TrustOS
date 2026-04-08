@@ -316,3 +316,73 @@ export interface MemoryCategoryPolicy {
   /** Max number of entries to inject from this category (default: 2) */
   maxCount?: number;
 }
+
+// ── Tool System (EL-001) ────────────────────────────────────────────────────
+
+export type ToolScope = "internal" | "external";
+
+export interface ToolParameter {
+  name: string;
+  type: "string" | "number" | "boolean" | "object" | "array";
+  description: string;
+  required: boolean;
+  enum?: string[];
+}
+
+/**
+ * Tool definition — the contract between the model and the execution layer.
+ * Used for both Function Calling schema injection and lightweight parse validation.
+ */
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: ToolParameter[];
+  scope: ToolScope;
+}
+
+/**
+ * A tool invocation issued by the model.
+ */
+export interface ToolCall {
+  id: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+}
+
+/**
+ * Result of executing a single tool call.
+ */
+export interface ToolResult {
+  call_id: string;
+  tool_name: string;
+  success: boolean;
+  result: unknown;
+  error?: string;
+  latency_ms: number;
+}
+
+// ── Execution Plan (EL-002 / EL-003) ──────────────────────────────────────
+
+export type StepType = "reasoning" | "tool_call" | "synthesis" | "unknown";
+export type StepStatus = "pending" | "running" | "completed" | "failed" | "blocked";
+
+export interface ExecutionStep {
+  id: string;
+  title: string;
+  type: StepType;
+  tool_name?: string;
+  tool_args?: Record<string, unknown>;
+  depends_on: string[];
+  status: StepStatus;
+  result?: unknown;
+  error?: string;
+}
+
+/**
+ * A full execution plan produced by the planner.
+ */
+export interface ExecutionPlan {
+  task_id: string;
+  steps: ExecutionStep[];
+  current_step_index: number;
+}
