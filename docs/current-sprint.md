@@ -1,91 +1,85 @@
 # Current Sprint
 
 ## Sprint Name
-Repository Cleanup and Runtime Foundation Hardening
+Memory v1: User-Editable Persistent Memory
 
 ## Sprint Goal
-Improve repository clarity, runtime boundaries, and engineering consistency before adding larger new capabilities.
+Introduce a minimal viable memory mechanism that is readable, writable, editable, injectable into prompts, and bounded in scope. Memory v1 should be plain but reliable — not an autonomous learning system.
 
 ---
 
 ## In Scope
 
-### Repository Structure
-- review current folder/module layout
-- define target backend structure
-- reduce confusing demo-era leftovers
-- group related runtime logic more clearly
+### Memory Data Model
+- define `memory_entries` table structure
+- define TypeScript types for memory objects
+- build `MemoryEntryRepo` with CRUD operations
 
-### Runtime Boundaries
-- clarify route / service / repository responsibilities
-- review task-related access paths
-- review prompt-related module placement
-- reduce scattered runtime logic where practical
+### Memory APIs
+- POST /v1/memory — create memory entry
+- GET /v1/memory — list memory entries for a user
+- PUT /v1/memory/:id — update a memory entry
+- DELETE /v1/memory/:id — delete a memory entry
 
-### Consistency
-- standardize time field format across APIs
-- review endpoint naming consistency
-- document actual runtime request flow
-- align docs with real implementation
+### Prompt Injection
+- wire memory entries into `prompt-assembler.ts` via `taskSummary` field (already typed)
+- control injection budget (max entries, max tokens)
+- direct vs research mode injection policy
 
-### Cleanup Targets
-- prompt-related code organization
-- task read/query path clarity
-- backlog triage for low-risk cleanup items
-- identify modules safe to defer
+### Review and Guardrails
+- regression test all existing APIs
+- document memory injection policy
+- add rate/budget guardrails to prevent runaway injection
 
 ---
 
 ## Out of Scope
 
-- Memory v1 feature implementation
-- Evidence/Retrieval v1 implementation
-- multi-agent runtime
+- autonomous long-term learning pipelines
+- automatic memory extraction from chat history
+- complex conflict resolution / merge strategies
+- multi-layer memory hierarchies
+- intelligent forgetting strategies
+- Evidence / Retrieval v1
 - execute loop
-- frontend UI expansion
-- production deployment hardening
-- major schema redesign unless required by cleanup
 
 ---
 
 ## Acceptance Criteria
 
-### Structure
-- a documented target folder/module structure exists
-- at least the most confusing areas are reorganized or clearly marked
+### Memory APIs
+- all 4 CRUD endpoints functional and return correct HTTP status codes
+- request validation in place
+- responses typed and predictable
 
-### Runtime Clarity
-- route / service / repository boundaries are easier to understand
-- prompt-related logic placement is clearer
-- task read paths are easier to trace
+### Prompt Injection
+- `assemblePrompt()` receives memory entries and injects `taskSummary` section when present
+- injection respects budget limits (configurable max entries and token cap)
+- no regression on existing `/api/chat` direct and research flows
 
-### Consistency
-- API time field format is standardized or explicitly documented
-- docs no longer conflict with actual endpoint paths
-- runtime flow doc exists and matches current behavior
-
-### Delivery Quality
-- cleanup work is incremental
+### Quality
 - existing APIs continue working
-- /api/chat continues working
-- no major regression introduced by cleanup
+- `/api/chat` continues working
+- no major regression introduced by memory work
+- review doc for each task card
 
 ---
 
 ## Risks
 
-- cleanup can sprawl if not scoped carefully
-- file moves may create import breakage
-- tempting to refactor too broadly once structure work starts
+- injecting too much memory context can degrade model response quality
+- unbounded memory writes could bloat DB if guardrails are missing
+- memory model may need to evolve as v1 use patterns emerge
 
 ---
 
 ## Success Definition
 
 At the end of this sprint:
-- the repository is easier to navigate
-- runtime boundaries are clearer
-- future Memory v1 work can be added with less ambiguity
+- users can create, read, update, and delete persistent memory entries
+- memory entries are visible to the AI within a chat session via prompt injection
+- memory injection is budget-controlled
+- existing chat and task APIs are unaffected
 
 ---
 
@@ -93,8 +87,8 @@ At the end of this sprint:
 
 | Task Card | Status |
 |---|---|
-| TC-005 Repo Structure Audit + First Cleanup | ✅ Done |
-| TC-006 Prompt / Runtime Module Cleanup | ✅ Done |
-| TC-007 API Consistency and Time Format | ✅ Done |
-| TC-008 Runtime Flow Documentation | ✅ Done |
+| MC-001 Memory Data Model + Repository | Pending |
+| MC-002 Memory APIs | Pending |
+| MC-003 Prompt Injection | Pending |
+| MC-004 Review + Guardrails | Pending |
 
