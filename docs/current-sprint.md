@@ -86,11 +86,11 @@ Make memory injection smarter by introducing lightweight relevance-based retriev
 
 ## Sprint Progress
 
-| Task Card | Status |
-|---|---|
-| MR-001 Memory Retrieval Policy | Pending |
-| MR-002 Category-Aware Injection | Pending |
-| MR-003 Relevance Ranking for Chat Context | Pending |
+| Task Card | Status | Notes |
+|---|---|---|
+| MR-001 Memory Retrieval Policy | ✅ Done | commit `4893585` |
+| MR-002 Category-Aware Injection | Pending | |
+| MR-003 Relevance Ranking for Chat Context | Pending | |
 | MR-004 Review + Guardrails | Pending |
 
 ---
