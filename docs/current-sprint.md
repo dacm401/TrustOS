@@ -1,24 +1,26 @@
 # Current Sprint
 
 **Sprint 05 — Execution Loop / Tool Actions**
-**Status:** 🟡 Planning (proposal draft)
+**Status:** ✅ **Completed and Closed** (2026-04-08)
 
 ---
 
-## Task Cards
+## Task Cards — All Done ✅
 
-| Task Card | Status | Notes |
+| Task Card | Commit | Status |
 |---|---|---|
-| EL-001 Tool Definition + Registry | ✅ Done | commit `8d1079d` |
-| EL-002 Task Planner | ✅ Done | commit `e491917` + `3894c3a` (pending push) |
-| EL-003 Execution Loop | ✅ Done | commit `086b937` (pending push) |
-| EL-004 Tool Guardrails + External API Safety | ✅ Done | commit pending |
+| EL-001 Tool Definition + Registry | `8d1079d` | ✅ Done |
+| EL-002 Task Planner | `e491917` | ✅ Done |
+| EL-003 Execution Loop | `086b937` | ✅ Done |
+| EL-004 Tool Guardrails + External API Safety | `07ad803` | ✅ Done |
+
+**All commits pushed to remote. Sprint 05 closed.**
 
 ---
 
 ## Proposal
 
-See `docs/sprint-05-proposal.md` for full scope, architecture, and design decisions.
+See `docs/sprint-05-proposal.md` for full scope.
 
 ---
 
@@ -49,4 +51,4 @@ Memory v2 upgrades the v1 memory injection system with:
 
 ## Next Sprint
 
-See `docs/sprint-05-proposal.md` — proposal is drafted, pending review.
+See `docs/sprint-06-proposal.md` — **Testing and Observability for Execution** (pending creation).
