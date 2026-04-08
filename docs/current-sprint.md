@@ -10,7 +10,7 @@
 | Task Card | Description | Status | Commit |
 |---|---|---|---|
 | TA-001 | ExecutionLoop Unit Tests | ✅ Done | `efada92` |
-| TA-002 | ToolExecutor Integration Tests | ⏳ Pending | — |
+| TA-002 | ToolExecutor Integration Tests | ✅ Done | `6bd20ba` |
 | TA-003 | Guardrail Policy Tests | ⏳ Pending | — |
 | TA-004 | Execution Trace API | ⏳ Pending | — |
 
@@ -24,6 +24,19 @@
   1. Mock path fix: `../src/tools/executor.js` → `../../src/tools/executor.js`
   2. Inner catch `break` → `throw err` (JS `break` does not exit outer `while` loop)
 - Review doc: `docs/task-cards/ta-001-execution-loop-unit-tests-review.md`
+
+---
+
+## TA-002 Summary (commit `6bd20ba`, pushed)
+
+- 24 test cases: all 6 tool handlers covered
+- Architecture discovery: executor.ts mocked at module level with `fetchMock` injection
+  (avoids Node.js ESM bare-global `fetch` isolation problem that vi.mock/spyOn/stubGlobal cannot solve)
+  - Internal handlers (memory_search, task_*): real implementation logic (DB mocked)
+  - External handlers (http_request, web_search): controlled `fetchMock`
+- GuardrailRejection propagation: verified distinct from non-guardrail errors
+- Review doc: `docs/task-cards/ta-002-tool-executor-integration-tests-review.md`
+- All 44 Sprint 06 tests pass (TA-001: 20 + TA-002: 24)
 
 ---
 
