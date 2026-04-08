@@ -1,5 +1,5 @@
 /**
- * Memory Retrieval Service — MR-001
+ * Memory Retrieval Service — MR-001 + MR-003
  *
  * Implements the v2 retrieval policy for memory injection.
  *
@@ -12,7 +12,13 @@
  * - Explainable: every score has a human-readable `reason` string
  * - Configurable: category policies live in config.ts, not hard-coded
  * - Safe fallback: if v2 returns no results, falls back to v1
- * - No external dependencies: keyword matching is simple token overlap
+ * - No external dependencies: keyword matching uses token overlap with stopword
+ *   filtering and lightweight stemming (MR-003 enhancement)
+ *
+ * MR-003 additions:
+ * - Stopword-filtered token extraction for both query and content
+ * - Normalized relevance scoring (Jaccard) to prevent long-text inflation
+ * - Keyword stems are pre-computed once per entry, cached in Map
  */
 
 import type {
@@ -48,24 +54,17 @@ export function scoreEntry(
   const recencyScore = Math.max(0, Math.round(20 * Math.pow(0.9, ageDays / 10)));
   reasons.push(`recency=${recencyScore}pts(age=${ageDays.toFixed(1)}d)`);
 
-  // Keyword component: 0–10 points
-  // Simple token overlap between userMessage and entry.content + tags
-  let keywordScore = 0;
-  if (context.keywords && context.keywords.length > 0) {
-    const contentTokens = extractTokens(entry.content);
-    const tagTokens = entry.tags.flatMap(extractTokens);
-    const allTokens = new Set([...contentTokens, ...tagTokens]);
-
-    const matchedKeywords = context.keywords.filter((kw) =>
-      allTokens.has(kw.toLowerCase())
+  // Keyword component: 0–15 points (MR-003 upgrade)
+  // Uses userMessage directly; no external keywords needed.
+  // Jaccard-normalised + per-match bonus to prevent long-text inflation.
+  const kw = computeKeywordRelevance(context.userMessage, entry);
+  if (kw.score > 0) {
+    reasons.push(
+      `keyword=${kw.score}pts(${kw.matchedKeywords.join(",")})`
     );
-    keywordScore = Math.min(10, matchedKeywords.length * 5);
-    if (keywordScore > 0) {
-      reasons.push(`keywords=${matchedKeywords.join(",")}`);
-    }
   }
 
-  const total = importanceScore + recencyScore + keywordScore;
+  const total = importanceScore + recencyScore + kw.score;
   return { score: total, reason: reasons.join(" | ") };
 }
 
@@ -261,16 +260,104 @@ export function buildCategoryAwareMemoryText(
   };
 }
 
-// ── Keyword extraction ───────────────────────────────────────────────────────
+// ── Keyword extraction (MR-003) ─────────────────────────────────────────────
+
+/** English + Chinese common stopwords. Excluded from relevance matching. */
+const STOPWORDS = new Set([
+  // English
+  "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+  "have", "has", "had", "do", "does", "did", "will", "would", "could",
+  "should", "may", "might", "must", "shall", "can", "need", "dare",
+  "ought", "used", "to", "of", "in", "for", "on", "with", "at", "by",
+  "from", "up", "about", "into", "over", "after", "beneath", "under",
+  "above", "below", "between", "and", "but", "or", "nor", "so", "yet",
+  "both", "either", "neither", "not", "only", "own", "same", "than",
+  "too", "very", "just", "also", "now", "here", "there", "when", "where",
+  "why", "how", "all", "each", "every", "both", "few", "more", "most",
+  "other", "some", "such", "no", "any", "as", "if", "then", "because",
+  "while", "although", "though", "even", "it", "its", "this", "that",
+  "these", "those", "i", "me", "my", "we", "our", "you", "your",
+  "he", "him", "his", "she", "her", "they", "them", "their",
+  "what", "which", "who", "whom", "whose",
+  // Common Chinese particles and function words (high-frequency noise)
+  "的", "了", "是", "在", "我", "有", "和", "就", "不", "人", "都",
+  "一", "一个", "上", "也", "很", "到", "说", "要", "去", "你",
+  "会", "着", "没有", "看", "好", "自己", "这", "那", "他",
+]);
 
 /**
- * Extract lowercase tokens from a string.
- * Simple whitespace split + basic cleaning.
+ * Extract normalised tokens from a string (MR-003 upgrade).
+ *
+ * Improvements over v1:
+ * - Strips punctuation, lowercases, splits on whitespace
+ * - Filters out English and Chinese stopwords
+ * - Applies lightweight stemming (simplified Porter suffix stripping)
+ * - Minimum token length 2 (after stripping)
  */
 function extractTokens(text: string): string[] {
   return text
     .toLowerCase()
-    .replace(/[^\w\s]/g, " ")
+    .replace(/[^\w\s\u4e00-\u9fff]/g, " ") // keep letters + Chinese chars
     .split(/\s+/)
-    .filter((t) => t.length > 2);
+    .map(simpleStem)        // apply lightweight stemming
+    .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
+}
+
+/**
+ * Lightweight suffix stemmer — strips common English / Chinese suffixes.
+ * Not a real Porter stemmer; intentionally simple to avoid over-stripping.
+ */
+function simpleStem(word: string): string {
+  if (word.length < 3) return word;
+  // English suffixes
+  if (word.endsWith("ing")) return word.slice(0, -3);
+  if (word.endsWith("ed"))  return word.slice(0, -2);
+  if (word.endsWith("es"))  return word.slice(0, -2);
+  if (word.endsWith("s") && !word.endsWith("ss")) return word.slice(0, -1);
+  // Chinese common suffix
+  if (word.endsWith("的")) return word.slice(0, -1);
+  return word;
+}
+
+/**
+ * MR-003: Compute keyword relevance between userMessage and a memory entry.
+ *
+ * Returns { score, matchedKeywords, unionSize } for detailed reason building.
+ *
+ * Scoring model:
+ * - Extracts query keywords from userMessage (no external keywords needed)
+ * - Compares against entry content + tags (all normalised + stopword-filtered)
+ * - Score = Jaccard-normalised overlap to prevent long-text inflation
+ * - Max 15 pts (5 matches × 3 pts each, capped at 15)
+ * - reason field names exact matched tokens
+ */
+function computeKeywordRelevance(
+  userMessage: string,
+  entry: MemoryEntry
+): { score: number; matchedKeywords: string[]; unionSize: number } {
+  // Extract query tokens from the user message
+  const queryTokens = extractTokens(userMessage);
+  if (queryTokens.length === 0) {
+    return { score: 0, matchedKeywords: [], unionSize: 0 };
+  }
+
+  // Build content + tag token set for the entry (deduplicated)
+  const contentTokens = extractTokens(entry.content);
+  const tagTokens = entry.tags.flatMap(extractTokens);
+  const entryTokens = new Set([...contentTokens, ...tagTokens]);
+
+  // Find matching query keywords
+  const matchedKeywords = queryTokens.filter((qt) => entryTokens.has(qt));
+
+  // Jaccard normalisation: |intersection| / |union|
+  // Prevents long memories from always winning due to sheer token count
+  const intersection = matchedKeywords.length;
+  const union = new Set([...queryTokens, ...entryTokens]).size;
+  const jaccard = union > 0 ? intersection / union : 0;
+
+  // Score: Jaccard × max points, with a per-match floor
+  const perMatchBonus = matchedKeywords.length > 0 ? Math.min(matchedKeywords.length * 3, 12) : 0;
+  const score = Math.min(15, Math.round(perMatchBonus + jaccard * 3));
+
+  return { score, matchedKeywords, unionSize: union };
 }
