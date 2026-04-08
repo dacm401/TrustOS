@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { query } from "./connection.js";
-import type { DecisionRecord, BehavioralMemory, IdentityMemory, GrowthProfile, Task, TaskListItem, TaskSummary, TaskTrace } from "../types/index.js";
+import type { DecisionRecord, BehavioralMemory, IdentityMemory, GrowthProfile, Task, TaskListItem, TaskSummary, TaskTrace, MemoryEntry, MemoryEntryInput, MemoryEntryUpdate } from "../types/index.js";
 import { GROWTH_LEVELS } from "../config.js";
 
 export const DecisionRepo = {
@@ -293,3 +293,119 @@ export const GrowthRepo = {
       [uuid(), userId, type, title, value || null]);
   },
 };
+
+// ── Memory entries (MC-001) ────────────────────────────────────────────────────
+
+export const MemoryEntryRepo = {
+  async create(data: MemoryEntryInput): Promise<MemoryEntry> {
+    const id = uuid();
+    const result = await query(
+      `INSERT INTO memory_entries (id, user_id, category, content, importance, tags, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        id,
+        data.user_id,
+        data.category,
+        data.content,
+        data.importance ?? 3,
+        data.tags ?? [],
+        data.source ?? "manual",
+      ]
+    );
+    return mapMemoryRow(result.rows[0]);
+  },
+
+  async getById(id: string, userId: string): Promise<MemoryEntry | null> {
+    const result = await query(
+      `SELECT * FROM memory_entries WHERE id=$1 AND user_id=$2`,
+      [id, userId]
+    );
+    if (result.rows.length === 0) return null;
+    return mapMemoryRow(result.rows[0]);
+  },
+
+  async list(
+    userId: string,
+    opts?: { category?: string; limit?: number }
+  ): Promise<MemoryEntry[]> {
+    let sql = `SELECT * FROM memory_entries WHERE user_id=$1`;
+    const params: any[] = [userId];
+    if (opts?.category) {
+      sql += ` AND category=$2`;
+      params.push(opts.category);
+    }
+    sql += ` ORDER BY updated_at DESC LIMIT $${params.length + 1}`;
+    params.push(opts?.limit ?? 100);
+    const result = await query(sql, params);
+    return result.rows.map(mapMemoryRow);
+  },
+
+  async update(
+    id: string,
+    userId: string,
+    data: MemoryEntryUpdate
+  ): Promise<MemoryEntry | null> {
+    const sets: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+    if (data.content !== undefined) {
+      sets.push(`content=$${idx++}`);
+      params.push(data.content);
+    }
+    if (data.importance !== undefined) {
+      sets.push(`importance=$${idx++}`);
+      params.push(data.importance);
+    }
+    if (data.tags !== undefined) {
+      sets.push(`tags=$${idx++}`);
+      params.push(data.tags);
+    }
+    if (data.category !== undefined) {
+      sets.push(`category=$${idx++}`);
+      params.push(data.category);
+    }
+    if (sets.length === 0) return this.getById(id, userId);
+    sets.push(`updated_at=NOW()`);
+    params.push(id, userId);
+    const result = await query(
+      `UPDATE memory_entries SET ${sets.join(", ")} WHERE id=$${idx++} AND user_id=$${idx} RETURNING *`,
+      params
+    );
+    if (result.rows.length === 0) return null;
+    return mapMemoryRow(result.rows[0]);
+  },
+
+  async delete(id: string, userId: string): Promise<boolean> {
+    const result = await query(
+      `DELETE FROM memory_entries WHERE id=$1 AND user_id=$2`,
+      [id, userId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  },
+
+  async getTopForUser(userId: string, limit: number): Promise<MemoryEntry[]> {
+    const result = await query(
+      `SELECT * FROM memory_entries
+       WHERE user_id=$1
+       ORDER BY importance DESC, updated_at DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+    return result.rows.map(mapMemoryRow);
+  },
+};
+
+function mapMemoryRow(r: any): MemoryEntry {
+  return {
+    id: r.id,
+    user_id: r.user_id,
+    category: r.category,
+    content: r.content,
+    importance: r.importance,
+    tags: r.tags ?? [],
+    source: r.source,
+    created_at: new Date(r.created_at).toISOString(),
+    updated_at: new Date(r.updated_at).toISOString(),
+  };
+}

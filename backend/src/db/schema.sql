@@ -144,3 +144,20 @@ CREATE TABLE IF NOT EXISTS task_traces (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tt_task ON task_traces(task_id, created_at);
+
+-- Memory entries (MC-001)
+CREATE TABLE IF NOT EXISTS memory_entries (
+  id          VARCHAR(36) PRIMARY KEY,
+  user_id     VARCHAR(36) NOT NULL,
+  category    VARCHAR(50) NOT NULL,        -- "preference" | "fact" | "context" | "instruction"
+  content     TEXT NOT NULL,
+  importance  INTEGER NOT NULL DEFAULT 3, -- 1–5, higher = more important
+  tags        TEXT[] DEFAULT '{}',
+  source      VARCHAR(50) NOT NULL DEFAULT 'manual',  -- "manual" | "extracted" | "feedback"
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_me_user ON memory_entries(user_id);
+CREATE INDEX IF NOT EXISTS idx_me_user_importance ON memory_entries(user_id, importance DESC, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_me_user_category ON memory_entries(user_id, category);

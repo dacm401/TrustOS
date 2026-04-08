@@ -244,3 +244,36 @@ export interface TaskTrace {
   detail: Record<string, any> | null;
   created_at: string;
 }
+
+// ── Memory entries (MC-001) ──────────────────────────────────────────────────
+
+export type MemoryCategory = "preference" | "fact" | "context" | "instruction";
+export type MemorySource = "manual" | "extracted" | "feedback";
+
+export interface MemoryEntry {
+  id: string;
+  user_id: string;
+  category: MemoryCategory;
+  content: string;
+  importance: number;   // 1–5
+  tags: string[];
+  source: MemorySource;
+  created_at: string;   // ISO 8601 string (outward API)
+  updated_at: string;
+}
+
+export interface MemoryEntryInput {
+  user_id: string;
+  category: MemoryCategory;
+  content: string;
+  importance?: number;   // defaults to 3
+  tags?: string[];
+  source?: MemorySource;
+}
+
+export interface MemoryEntryUpdate {
+  content?: string;
+  importance?: number;
+  tags?: string[];
+  category?: MemoryCategory;
+}

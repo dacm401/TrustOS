@@ -87,7 +87,7 @@ At the end of this sprint:
 
 | Task Card | Status |
 |---|---|
-| MC-001 Memory Data Model + Repository | Pending |
+| MC-001 Memory Data Model + Repository | ✅ Done |
 | MC-002 Memory APIs | Pending |
 | MC-003 Prompt Injection | Pending |
 | MC-004 Review + Guardrails | Pending |
