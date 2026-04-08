@@ -3,10 +3,14 @@ import { calculateBudget, needsCompression } from "./token-budget.js";
 import { compressHistory, autoSelectCompressionLevel } from "./compressor.js";
 import { countTokens } from "../models/token-counter.js";
 
-const SYSTEM_PROMPT = `你是SmartRouter Pro智能助手。你会根据问题的复杂度自动选择最合适的AI模型来回答。
-你的回答应该准确、有帮助、格式清晰。当前对话可能包含压缩的历史摘要，请自然地利用这些上下文信息。`;
+/** Fallback system prompt used when no external prompt is provided. */
+const DEFAULT_SYSTEM_PROMPT = `You are SmartRouter Pro, an intelligent AI assistant. Respond accurately and helpfully. Format responses clearly. The conversation may include compressed history summaries — use them naturally as context.`;
 
-export async function manageContext(request: ChatRequest, selectedModel: string): Promise<ContextResult> {
+export async function manageContext(
+  request: ChatRequest,
+  selectedModel: string,
+  systemPrompt?: string
+): Promise<ContextResult> {
   const budget = calculateBudget(selectedModel);
   const history = request.history || [];
   const originalTokens = history.reduce((sum, m) => sum + countTokens(m.content), 0);
@@ -19,7 +23,7 @@ export async function manageContext(request: ChatRequest, selectedModel: string)
   const compressionResult = await compressHistory(history, compressionLevel, budget.available_for_history);
 
   const finalMessages: ChatMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
     ...compressionResult.messages,
     { role: "user", content: request.message },
   ];

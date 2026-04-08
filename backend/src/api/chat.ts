@@ -12,6 +12,8 @@ import { estimateCost } from "../models/token-counter.js";
 import { config } from "../config.js";
 import { TaskRepo } from "../db/repositories.js";
 import type { ChatMessage } from "../types/index.js";
+import { assemblePrompt } from "../services/prompt-assembler.js";
+import type { PromptMode } from "../services/prompt-assembler.js";
 
 const chatRouter = new Hono();
 
@@ -68,9 +70,16 @@ chatRouter.post("/chat", async (c) => {
       goal: title,
     }).catch((e) => console.error("Failed to create task:", e));
 
+    // 组装 prompt（PromptAssembler v1）
+    const promptAssembly = assemblePrompt({
+      mode: mode as PromptMode,
+      userMessage: body.message,
+    });
+
     const contextResult = await manageContext(
       { ...body, user_id: userId, session_id: sessionId },
-      routing.selected_model
+      routing.selected_model,
+      promptAssembly.systemPrompt
     );
 
     let modelResponse = await callModel(routing.selected_model, contextResult.final_messages, reqApiKey);
