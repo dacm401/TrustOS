@@ -1,82 +1,88 @@
 # Current Sprint
 
 ## Sprint Name
-Backend Foundation Upgrade
+Repository Cleanup and Runtime Foundation Hardening
 
 ## Sprint Goal
-Upgrade the current demo into a development-ready backend foundation for Lean Agent Runtime style evolution.
+Improve repository clarity, runtime boundaries, and engineering consistency before adding larger new capabilities.
 
 ---
 
 ## In Scope
 
-### APIs
-- GET /v1/tasks
-- GET /v1/tasks/:task_id
-- GET /v1/tasks/:task_id/summary
-- GET /v1/tasks/:task_id/traces
+### Repository Structure
+- review current folder/module layout
+- define target backend structure
+- reduce confusing demo-era leftovers
+- group related runtime logic more clearly
 
-### Runtime
-- PromptAssembler v1
-- TaskStateMachine v1
+### Runtime Boundaries
+- clarify route / service / repository responsibilities
+- review task-related access paths
+- review prompt-related module placement
+- reduce scattered runtime logic where practical
 
-### Engineering
-- move prompt construction out of ChatService
-- define task read DTOs
-- stabilize response structure
-- keep direct/research flow working after refactor
+### Consistency
+- standardize time field format across APIs
+- review endpoint naming consistency
+- document actual runtime request flow
+- align docs with real implementation
+
+### Cleanup Targets
+- prompt-related code organization
+- task read/query path clarity
+- backlog triage for low-risk cleanup items
+- identify modules safe to defer
 
 ---
 
 ## Out of Scope
 
-- complex frontend UI
-- full memory write automation
-- evidence retrieval implementation
-- tool execution loop
-- multi-agent architecture
+- Memory v1 feature implementation
+- Evidence/Retrieval v1 implementation
+- multi-agent runtime
+- execute loop
+- frontend UI expansion
 - production deployment hardening
+- major schema redesign unless required by cleanup
 
 ---
 
 ## Acceptance Criteria
 
-### Task APIs
-- task list endpoint works
-- task detail endpoint works
-- basic filtering works where practical
-- response shape is stable and documented
+### Structure
+- a documented target folder/module structure exists
+- at least the most confusing areas are reorganized or clearly marked
 
-### Summary API
-- returns structured task summary
-- handles missing summary gracefully
+### Runtime Clarity
+- route / service / repository boundaries are easier to understand
+- prompt-related logic placement is clearer
+- task read paths are easier to trace
 
-### Trace API
-- returns trace list for a task
-- supports frontend trace panel use later
+### Consistency
+- API time field format is standardized or explicitly documented
+- docs no longer conflict with actual endpoint paths
+- runtime flow doc exists and matches current behavior
 
-### Prompt Assembler
-- no prompt building logic remains embedded inside ChatService
-- PromptAssembler can generate direct and research prompt structures
-
-### State Machine
-- task state transitions are no longer scattered
-- status updates become more explicit and controlled
+### Delivery Quality
+- cleanup work is incremental
+- existing APIs continue working
+- /api/chat continues working
+- no major regression introduced by cleanup
 
 ---
 
 ## Risks
 
-- current demo code may contain tightly coupled logic
-- refactor may break existing chat flow if done too broadly
-- task status updates may still be partially duplicated at first
+- cleanup can sprawl if not scoped carefully
+- file moves may create import breakage
+- tempting to refactor too broadly once structure work starts
 
 ---
 
 ## Success Definition
 
 At the end of this sprint:
-- the repo has a clearer architecture
-- backend APIs support task inspection
-- prompt assembly is modularized
-- runtime evolution can continue without turning into a spaghetti festival
+- the repository is easier to navigate
+- runtime boundaries are clearer
+- future Memory v1 work can be added with less ambiguity
