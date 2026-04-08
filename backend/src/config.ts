@@ -24,6 +24,22 @@ export const config = {
     maxEntriesToInject: 5,
     maxTokensPerEntry: 150,
     enabled: process.env.MEMORY_INJECTION_ENABLED !== "false",
+    // MR-001: retrieval policy
+    retrieval: {
+      // "v1": use importance+recency only (legacy behavior, feature-flag safe)
+      // "v2": use category-aware scoring pipeline
+      strategy: (process.env.MEMORY_RETRIEVAL_STRATEGY as "v1" | "v2") || "v1",
+      // Per-category injection policies (only used in v2)
+      categoryPolicy: {
+        // goal / constraint: always inject high-importance entries
+        instruction: { minImportance: 3, alwaysInject: true, maxCount: 2 },
+        // preference: inject if keyword relevance is sufficient
+        preference: { minImportance: 4, alwaysInject: false, maxCount: 2 },
+        // fact / context: only inject in high-relevance situations
+        fact: { minImportance: 4, alwaysInject: false, maxCount: 1 },
+        context: { minImportance: 4, alwaysInject: false, maxCount: 1 },
+      },
+    },
   },
 };
 

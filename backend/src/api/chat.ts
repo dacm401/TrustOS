@@ -15,6 +15,7 @@ import type { ChatMessage } from "../types/index.js";
 import { assemblePrompt } from "../services/prompt-assembler.js";
 import type { PromptMode } from "../services/prompt-assembler.js";
 import { MemoryEntryRepo } from "../db/repositories.js";
+import { runRetrievalPipeline } from "../services/memory-retrieval.js";
 
 const chatRouter = new Hono();
 
@@ -71,16 +72,49 @@ chatRouter.post("/chat", async (c) => {
       goal: title,
     }).catch((e) => console.error("Failed to create task:", e));
 
-    // 组装 prompt（PromptAssembler v1 + Memory Injection MC-003）
+    // 组装 prompt（Memory Injection MC-003 + MR-001 Retrieval Policy）
     const memories = config.memory.enabled
       ? await MemoryEntryRepo.getTopForUser(userId, config.memory.maxEntriesToInject)
       : [];
 
-    const taskSummary = memories.length > 0
+    // MR-001: v2 retrieval pipeline — only active when strategy === "v2"
+    let retrievalResults: Array<{ entry: any; score: number; reason: string }> = [];
+    if (config.memory.enabled && config.memory.retrieval.strategy === "v2") {
+      const context = { userMessage: body.message };
+      // Fetch a wider candidate pool (1.5× the injection limit) for scoring
+      const candidates = await MemoryEntryRepo.getTopForUser(
+        userId,
+        Math.ceil(config.memory.maxEntriesToInject * 1.5)
+      );
+      retrievalResults = runRetrievalPipeline({
+        entries: candidates,
+        context,
+        categoryPolicy: config.memory.retrieval.categoryPolicy,
+        maxTotalEntries: config.memory.maxEntriesToInject,
+      });
+
+      // Fallback to v1 if v2 returns nothing
+      if (retrievalResults.length === 0) {
+        retrievalResults = memories.map((m) => ({
+          entry: m,
+          score: m.importance,
+          reason: "v1-fallback(no-v2-results)",
+        }));
+      }
+    } else {
+      // Legacy v1 path: flat importance+recency ordering
+      retrievalResults = memories.map((m) => ({
+        entry: m,
+        score: m.importance,
+        reason: "v1",
+      }));
+    }
+
+    const taskSummary = retrievalResults.length > 0
       ? {
           goal: "User memories:",
-          summaryText: memories
-            .map((m) => `[${m.category}] ${m.content}`)
+          summaryText: retrievalResults
+            .map((r) => `[${r.entry.category}] ${r.entry.content}`)
             .join("\n"),
           nextStep: null,
         }
