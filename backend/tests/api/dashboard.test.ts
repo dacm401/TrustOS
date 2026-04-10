@@ -196,7 +196,7 @@ describe("GET /dashboard/:userId", () => {
     expect(typeof json.today.saved_cost).toBe("number");
     expect(typeof json.today.saving_rate).toBe("number");
     expect(typeof json.today.avg_latency_ms).toBe("number");
-    expect(typeof json.today.routing_accuracy).toBe("number");
+    expect(typeof json.today.satisfaction_proxy).toBe("number");
 
     // token_flow shape
     expect(json.token_flow).toBeDefined();
@@ -215,7 +215,7 @@ describe("GET /dashboard/:userId", () => {
     expect(typeof json.growth.level).toBe("number");
     expect(typeof json.growth.level_name).toBe("string");
     expect(typeof json.growth.level_progress).toBe("number");
-    expect(Array.isArray(json.growth.routing_accuracy_history)).toBe(true);
+    expect(Array.isArray(json.growth.satisfaction_history)).toBe(true);  // renamed from routing_accuracy_history (was always empty due to routing_correct=null)
     expect(typeof json.growth.total_saved_usd).toBe("number");
     expect(typeof json.growth.satisfaction_rate).toBe("number");
     expect(typeof json.growth.total_interactions).toBe("number");
@@ -473,11 +473,11 @@ describe("GET /dashboard/:userId", () => {
     expect(json.growth.milestones.length).toBe(10); // capped at 10
   });
 
-  it("200 — growth.routing_accuracy_history is array of {date, value}", async () => {
-    // seedDecision with routing_correct=true, feedback_score=1, created_at=today
+  it("200 — growth.satisfaction_history is array of {date, value} (computed from feedback_score)", async () => {
+    // routing_correct no longer drives history; satisfaction_history is computed from feedback_score
     await seedDecision({
       query_preview: "q",
-      routing_correct: true,
+      routing_correct: true,  // still stored but not used for history computation
       feedback_score: 1,
       cost_saved_vs_slow: 0.00005,
     });
@@ -485,14 +485,14 @@ describe("GET /dashboard/:userId", () => {
     const res = await makeReq(USER_A);
     const json: any = await parseJson(res);
 
-    expect(Array.isArray(json.growth.routing_accuracy_history)).toBe(true);
-    json.growth.routing_accuracy_history.forEach((h: any) => {
+    expect(Array.isArray(json.growth.satisfaction_history)).toBe(true);
+    json.growth.satisfaction_history.forEach((h: any) => {
       expect(typeof h.date).toBe("string");
       expect(typeof h.value).toBe("number");
     });
   });
 
-  it("200 — today.routing_accuracy matches growth.satisfaction_rate from today feedback", async () => {
+  it("200 — today.satisfaction_proxy matches growth.satisfaction_rate (both from today feedback)", async () => {
     // 3 with feedback, 2 positive → 66.67% satisfaction → rounded = 67
     await seedDecision({ query_preview: "q", feedback_score: 1, cost_saved_vs_slow: 0.00005 });
     await seedDecision({ query_preview: "q", feedback_score: 1, cost_saved_vs_slow: 0.00005 });
@@ -501,7 +501,7 @@ describe("GET /dashboard/:userId", () => {
     const res = await makeReq(USER_A);
     const json: any = await parseJson(res);
 
-    expect(json.today.routing_accuracy).toBe(67);
+    expect(json.today.satisfaction_proxy).toBe(67);  // renamed from routing_accuracy (was always satisfaction_rate)
     expect(json.growth.satisfaction_rate).toBe(67);
   });
 

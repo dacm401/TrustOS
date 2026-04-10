@@ -23,7 +23,7 @@ export async function calculateDashboard(userId: string): Promise<DashboardData>
       fallback_count: todayStats.fallback_count, total_tokens: todayStats.total_tokens,
       total_cost: Math.round(todayStats.total_cost * 10000) / 10000,
       saved_cost: Math.round(todayStats.saved_cost * 10000) / 10000, saving_rate: savingRate,
-      avg_latency_ms: todayStats.avg_latency, routing_accuracy: todayStats.satisfaction_rate || 0,
+      avg_latency_ms: todayStats.avg_latency, satisfaction_proxy: todayStats.satisfaction_rate || 0,
     },
     token_flow: tokenFlow,
     recent_decisions: recentDecisions.map(mapDecisionRow),

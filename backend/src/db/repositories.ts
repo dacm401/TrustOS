@@ -61,16 +61,32 @@ export const DecisionRepo = {
     return result.rows[0];
   },
 
+  /**
+   * Computes daily satisfaction rate — the fraction of decisions with positive
+   * feedback among all decisions that received any feedback.
+   * Replaces the old getRoutingAccuracyHistory which relied on routing_correct,
+   * a field that was always NULL (always hardcoded to true at logDecision time).
+   * We have no ground-truth correctness label; satisfaction_score is the
+   * honest proxy for routing quality.
+   */
   async getRoutingAccuracyHistory(userId: string, days = 30): Promise<{ date: string; value: number }[]> {
     const result = await query(
       `SELECT created_at::date as date,
-        CASE WHEN COUNT(*) FILTER (WHERE routing_correct IS NOT NULL) > 0
-          THEN (COUNT(*) FILTER (WHERE routing_correct = true)::float / COUNT(*) FILTER (WHERE routing_correct IS NOT NULL)::float * 100)
-          ELSE 0 END as value
-      FROM decision_logs WHERE user_id=$1 AND created_at >= CURRENT_DATE - $2::int GROUP BY created_at::date ORDER BY date`,
+        CASE WHEN COUNT(*) FILTER (WHERE feedback_score IS NOT NULL) > 0
+          THEN ROUND(
+            COUNT(*) FILTER (WHERE feedback_score > 0)::float /
+            COUNT(*) FILTER (WHERE feedback_score IS NOT NULL)::float * 100
+          )
+          ELSE NULL END as value
+      FROM decision_logs
+      WHERE user_id=$1 AND created_at >= CURRENT_DATE - $2::int
+      GROUP BY created_at::date
+      ORDER BY date`,
       [userId, days]
     );
-    return result.rows.map((r: any) => ({ date: r.date.toISOString().split("T")[0], value: Math.round(r.value * 10) / 10 }));
+    return result.rows
+      .filter((r: any) => r.value !== null)
+      .map((r: any) => ({ date: r.date.toISOString().split("T")[0], value: Number(r.value) }));
   },
 };
 
@@ -287,8 +303,9 @@ export const GrowthRepo = {
 
     return {
       user_id: userId, level: currentLevel.level, level_name: currentLevel.name, level_progress: progress,
-      routing_accuracy: history.length > 0 ? history[history.length - 1].value : 0,
-      routing_accuracy_history: history,
+      routing_accuracy: stats.satisfaction_rate || 0,  // was pulled from fake routing_correct history; now honest satisfaction proxy
+      routing_accuracy_history: history,  // kept for backward compat (deprecated)
+      satisfaction_history: history,  // honest proxy: daily satisfaction rate (positive feedback / all feedback)
       cost_saving_rate: stats.total_cost > 0 ? Math.round((stats.saved_cost / (stats.total_cost + stats.saved_cost)) * 100) : 0,
       total_saved_usd: savedResult.rows[0]?.total_saved || 0,
       satisfaction_rate: stats.satisfaction_rate || 0, total_interactions: totalInteractions,

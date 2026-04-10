@@ -154,8 +154,13 @@ export interface GrowthProfile {
   level: number;
   level_name: string;
   level_progress: number;
+  /** @deprecated Use satisfaction_rate. This field previously reflected fake routing_correct data. */
   routing_accuracy: number;
-  routing_accuracy_history: { date: string; value: number }[];
+  /**
+   * Daily satisfaction rate history (positive feedback / all feedback).
+   * Renamed from routing_accuracy_history which was based on routing_correct = always-null.
+   */
+  satisfaction_history: { date: string; value: number }[];
   cost_saving_rate: number;
   total_saved_usd: number;
   satisfaction_rate: number;
@@ -176,7 +181,11 @@ export interface DashboardData {
     saved_cost: number;
     saving_rate: number;
     avg_latency_ms: number;
-    routing_accuracy: number;
+    /**
+     * Proxy metric for routing quality: satisfaction rate (positive feedback / all feedback).
+     * Renamed from routing_accuracy which was a pseudo-metric backed by always-null routing_correct.
+     */
+    satisfaction_proxy: number;
   };
   token_flow: { fast_tokens: number; slow_tokens: number; compressed_tokens: number; fallback_tokens: number };
   recent_decisions: DecisionRecord[];

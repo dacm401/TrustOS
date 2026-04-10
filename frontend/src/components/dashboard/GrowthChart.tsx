@@ -7,7 +7,7 @@ interface GrowthChartProps { growth: any; }
 
 export function GrowthChart({ growth }: GrowthChartProps) {
   if (!growth) return null;
-  const history = growth.routing_accuracy_history || [];
+  const history = growth.satisfaction_history || growth.routing_accuracy_history || [];  // satisfaction_history = new honest field; routing_accuracy_history = deprecated
 
   return (
     <Card>
@@ -21,7 +21,7 @@ export function GrowthChart({ growth }: GrowthChartProps) {
         </div>
       </div>
       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-xs">
-        <div className="bg-gray-50 rounded-lg p-2"><div className="text-gray-400">满意率</div><div className="font-bold text-indigo-600 text-lg">{Math.round(growth.routing_accuracy || 0)}%</div></div>
+        <div className="bg-gray-50 rounded-lg p-2"><div className="text-gray-400">满意率</div><div className="font-bold text-indigo-600 text-lg">{Math.round(growth.satisfaction_rate || growth.routing_accuracy || 0)}%</div></div>
         <div className="bg-gray-50 rounded-lg p-2"><div className="text-gray-400">累计节省</div><div className="font-bold text-green-600 text-lg">${(growth.total_saved_usd || 0).toFixed(2)}</div></div>
         <div className="bg-gray-50 rounded-lg p-2"><div className="text-gray-400">行为记忆</div><div className="font-bold text-amber-600 text-lg">{growth.behavioral_memories_count || 0}条</div></div>
       </div>

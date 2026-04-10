@@ -100,6 +100,7 @@ describe("getProfile() — empty state", () => {
     expect(profile.milestones).toEqual([]);
     expect(profile.recent_learnings).toEqual([]);
     expect(profile.routing_accuracy_history).toEqual([]);
+    expect(profile.satisfaction_history).toEqual([]);
     expect(profile.routing_accuracy).toBe(0);
   });
 
@@ -350,8 +351,9 @@ describe("addMilestone()", () => {
 // ── GrowthProfile shape ───────────────────────────────────────────────────────
 
 describe("GrowthProfile — shape invariants", () => {
-  it("routing_accuracy_history entries have {date, value} shape", async () => {
-    // Insert a decision today so routing_accuracy_history has ≥1 entry
+  it("routing_accuracy_history (deprecated, kept for compat) entries have {date, value} shape", async () => {
+    // routing_accuracy_history is deprecated; satisfaction_history is the honest replacement.
+    // routing_correct is always null → routing_accuracy_history stays empty.
     await seedDecision({ userId: USER, routingCorrect: true });
 
     const profile = await GrowthRepo.getProfile(USER);
@@ -363,16 +365,25 @@ describe("GrowthProfile — shape invariants", () => {
     });
   });
 
-  it("routing_accuracy is the last value from routing_accuracy_history", async () => {
+  it("routing_accuracy (deprecated) now mirrors satisfaction_rate — not history", async () => {
+    // Previously routing_accuracy came from routing_correct (always null → always 0).
+    // Now it mirrors satisfaction_rate (positive feedback ratio) — honest proxy.
     await seedDecision({ userId: USER, routingCorrect: true });
 
     const profile = await GrowthRepo.getProfile(USER);
-    if (profile.routing_accuracy_history.length > 0) {
-      const last = profile.routing_accuracy_history[profile.routing_accuracy_history.length - 1];
-      expect(profile.routing_accuracy).toBe(last.value);
-    } else {
-      expect(profile.routing_accuracy).toBe(0);
-    }
+    expect(profile.routing_accuracy).toBe(profile.satisfaction_rate);
+  });
+
+  it("satisfaction_history has {date, value} shape (computed from feedback_score)", async () => {
+    await seedDecision({ userId: USER, routingCorrect: true });
+
+    const profile = await GrowthRepo.getProfile(USER);
+    profile.satisfaction_history.forEach((entry) => {
+      expect(entry).toHaveProperty("date");
+      expect(entry).toHaveProperty("value");
+      expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(typeof entry.value).toBe("number");
+    });
   });
 
   it("all numeric fields are numbers (not strings)", async () => {
