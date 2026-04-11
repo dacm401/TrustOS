@@ -6,7 +6,7 @@
 
 ## 项目状态：已达到可交付完成态 ✅ → Sprint 15+ 进行中
 
-Sprint 14 交付阻塞项全部清除。Sprint 15+ 已启动（C3a CLOSED）。
+Sprint 14 交付阻塞项全部清除。Sprint 15 已完成（C3a CLOSED），E1 CLOSED，4个 pre-existing TS 错误全部清理。
 
 ---
 
@@ -20,7 +20,12 @@ Sprint 14 交付阻塞项全部清除。Sprint 15+ 已启动（C3a CLOSED）。
 | P4 | Auto-detect Backfill | ✅ CLOSED | `f6371c4` |
 | P5 | Learning-side Signal Level Gating | ✅ CLOSED | `f6371c4` |
 
-**HEAD：** `5e6d7e8` 含 P1~P5 + C1 + C2 + C3a
+**HEAD：** `07d0b16` 含 P1~P5 + C1 + C2 + C3a + E1 + TS cleanup
+
+| Commit | 内容 |
+|--------|------|
+| `07d0b16` | E1: Evidence System v1 (table, repo, API, executor integration) |
+| `b8...` | ts-type: fix 4 pre-existing TS errors (chat.ts, repositories.ts, execution-loop.ts) |
 
 ---
 
@@ -31,6 +36,7 @@ Sprint 14 交付阻塞项全部清除。Sprint 15+ 已启动（C3a CLOSED）。
 | C1 | DecisionRepo satisfaction_rate signal_level 分层 | ✅ CLOSED | `getTodayStats()` / `getRoutingAccuracyHistory()` 加 LEFT JOIN `feedback_events`，按 `signal_level <= 1` 过滤；legacy fallback = 无 `feedback_events` 记录 + `feedback_score IS NOT NULL` |
 | C2 | Feedback dual-write consistency | ✅ CLOSED | `recordFeedback()` 调换写入顺序：`FeedbackEventRepo.save()` 先写，成功后再写 `decision_logs`；失败时两者均不更新 |
 | C3a | Server Identity Context Adapter | ✅ CLOSED | `identityMiddleware` + `getContextUserId()`；所有 handler 改从 middleware context 读 userId；生产模式无 X-User-Id header 直接 401 |
+| E1 | Evidence System v1（Layer 6 入口） | ✅ CLOSED | `evidence` 表 + `EvidenceRepo` + `/v1/evidence` CRUD API + `handleWebSearch` 自动写入 evidence（fire-and-forget）；`memory_entries` vs `evidence` 职责划分：独立建表，evidence 保留 provenance |
 
 ---
 
@@ -63,6 +69,34 @@ Sprint 14 交付阻塞项全部清除。Sprint 15+ 已启动（C3a CLOSED）。
 - 有 `userId` + `FeedbackEventRepo.save` 失败：`decision_logs` 不更新，无孤立记录
 - 无 `userId`：保持 legacy 路径，仅写 `decision_logs`
 - `feedback-collector.test.ts`：新增 5 个双写原子性测试，总计 48/48
+
+---
+
+## E1 核心实现要点
+
+- `src/db/schema.sql`：新增 `evidence` 表（含 `evidence_id`/`task_id`/`user_id`/`source`/`content`/`source_metadata`/`relevance_score`/`created_at`）
+- `src/types/index.ts`：`Evidence`、`EvidenceInput`、`EvidenceSource`（`"web_search" | "http_request" | "manual"`）
+- `src/db/repositories.ts`：`EvidenceRepo`（create / getById / listByTask / listByUser）
+- `src/api/evidence.ts`：POST `/v1/evidence`（201）、GET `/v1/evidence/:id`（200/404）、GET `/v1/evidence?task_id=`（200）；C3a middleware 保护
+- `src/tools/executor.ts`：`handleWebSearch` 成功返回前 fire-and-forget 写入 evidence；taskId 缺失时跳过
+- `tests/repositories/evidence-repo.test.ts`：18 个 repo 测试用例（DB 基础设施问题未执行）
+- `memory_entries` vs `evidence` 边界：memory_entries = 用户级/可编辑；evidence = 任务级/保留 provenance
+
+---
+
+## TypeScript 错误清理（Step B）
+
+| 错误 | 文件 | 修复方式 | 结论 |
+|------|------|---------|------|
+| TS2322 | `chat.ts:178` | `s.status as "pending" \| "in_progress" \| "completed" \| "failed"` | ✅ 纯类型 cast，无业务逻辑改动 |
+| TS2561 | `repositories.ts:428` | 删除 `routing_accuracy_history` 赋值（类型已移除该字段） | ✅ 清理遗留代码，与 GrowthProfile 类型同步 |
+| TS2339×3 | `execution-loop.ts:302/363/392` | `ExecutionStep` 类型补 `description?: string` | ✅ 纯类型字段，无业务逻辑改动 |
+
+**`tsc --noEmit` 结果：零错误。**
+
+---
+
+## 后续治理项（Deferred，不阻断交付）
 
 ---
 

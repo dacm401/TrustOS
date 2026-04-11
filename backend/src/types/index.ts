@@ -444,6 +444,8 @@ export interface ExecutionStep {
   status: StepStatus;
   result?: unknown;
   error?: string;
+  /** Optional longer description for step context (e.g. system-prompt generation) */
+  description?: string;
 }
 
 /**

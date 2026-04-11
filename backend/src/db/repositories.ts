@@ -425,7 +425,6 @@ export const GrowthRepo = {
     return {
       user_id: userId, level: currentLevel.level, level_name: currentLevel.name, level_progress: progress,
       routing_accuracy: stats.satisfaction_rate || 0,  // was pulled from fake routing_correct history; now honest satisfaction proxy
-      routing_accuracy_history: history,  // kept for backward compat (deprecated)
       satisfaction_history: history,  // honest proxy: daily satisfaction rate (positive feedback / all feedback)
       cost_saving_rate: stats.total_cost > 0 ? Math.round((stats.saved_cost / (stats.total_cost + stats.saved_cost)) * 100) : 0,
       total_saved_usd: savedResult.rows[0]?.total_saved || 0,

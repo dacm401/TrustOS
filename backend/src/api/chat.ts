@@ -179,7 +179,7 @@ chatRouter.post("/chat", async (c) => {
             index: i,
             title: s.title,
             type: s.type,
-            status: s.status,
+            status: s.status as "pending" | "in_progress" | "completed" | "failed",
             tool_name: s.tool_name,
             error: s.error,
           })),
