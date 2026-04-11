@@ -4,9 +4,9 @@
 
 ---
 
-## 项目状态：已达到可交付完成态 ✅
+## 项目状态：已达到可交付完成态 ✅ → Sprint 15+ 进行中
 
-所有交付阻塞项已清除，项目可进入归档。
+Sprint 14 交付阻塞项全部清除。Sprint 15+ 已启动（C3a CLOSED）。
 
 ---
 
@@ -20,7 +20,7 @@
 | P4 | Auto-detect Backfill | ✅ CLOSED | `f6371c4` |
 | P5 | Learning-side Signal Level Gating | ✅ CLOSED | `f6371c4` |
 
-**HEAD：** 最新 commit 含 P1~P5 + C1 + C2
+**HEAD：** `5e6d7e8` 含 P1~P5 + C1 + C2 + C3a
 
 ---
 
@@ -30,7 +30,7 @@
 |---|---|---|---|
 | C1 | DecisionRepo satisfaction_rate signal_level 分层 | ✅ CLOSED | `getTodayStats()` / `getRoutingAccuracyHistory()` 加 LEFT JOIN `feedback_events`，按 `signal_level <= 1` 过滤；legacy fallback = 无 `feedback_events` 记录 + `feedback_score IS NOT NULL` |
 | C2 | Feedback dual-write consistency | ✅ CLOSED | `recordFeedback()` 调换写入顺序：`FeedbackEventRepo.save()` 先写，成功后再写 `decision_logs`；失败时两者均不更新 |
-| C3 | Server Identity Context | ⏸ DEFERRED | 不在交付关键路径上，属后续治理项 |
+| C3a | Server Identity Context Adapter | ✅ CLOSED | `identityMiddleware` + `getContextUserId()`；所有 handler 改从 middleware context 读 userId；生产模式无 X-User-Id header 直接 401 |
 
 ---
 
@@ -40,6 +40,19 @@
 - L1 signal = `fe.signal_level <= 1` OR（无 `feedback_events` 记录 AND `d.feedback_score IS NOT NULL`）
 - `satisfaction_rate` 只在 L1 signal 上计算，与 `analyzeAndLearn()` truth 定义对齐
 - `decision-repo.test.ts`：新增 13 个 signal_level 过滤测试，总计 48/48
+
+---
+
+---
+
+## C3a 核心实现要点
+
+- `middleware/identity.ts`：identityMiddleware（身份解析）+ getContextUserId()
+- `config.identity.allowDevFallback`：环境变量 `ALLOW_DEV_FALLBACK=true` 开启 dev fallback
+- 身份优先级：① X-User-Id header → ② query.user_id（dev） → ③ 401
+- 所有 API handler（chat/feedback/tasks/memory/dashboard）改从 middleware context 读 userId
+- chat/feedback 端点：dev-only body shim（仅当 context 无值且 allowDevFallback=true 时读 body.user_id）
+- 未引入 session/token/JWT/auth 系统（严格遵守 scope 约束）
 
 ---
 
