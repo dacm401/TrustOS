@@ -4,8 +4,11 @@ import { GrowthRepo } from "../db/repositories.js";
 
 const dashboardRouter = new Hono();
 
+// C3a: userId now comes from middleware context (trusted source), not path param.
+// The :userId path segment is no longer used for identity.
 dashboardRouter.get("/dashboard/:userId", async (c) => {
-  const userId = c.req.param("userId");
+  // C3a: read from middleware context
+  const userId = (c as unknown as { userId: string }).userId;
   try {
     const data = await calculateDashboard(userId);
     return c.json(data);
@@ -16,7 +19,8 @@ dashboardRouter.get("/dashboard/:userId", async (c) => {
 });
 
 dashboardRouter.get("/growth/:userId", async (c) => {
-  const userId = c.req.param("userId");
+  // C3a: read from middleware context
+  const userId = (c as unknown as { userId: string }).userId;
   try {
     const profile = await GrowthRepo.getProfile(userId);
     return c.json(profile);

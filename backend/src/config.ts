@@ -11,6 +11,14 @@ export const config = {
   routerConfidenceThreshold: parseFloat(process.env.ROUTER_CONFIDENCE_THRESHOLD || "0.75"),
   qualityGateEnabled: process.env.QUALITY_GATE_ENABLED !== "false",
   fallbackEnabled: process.env.FALLBACK_ENABLED !== "false",
+
+  // C3a: Server Identity Context
+  // allowDevFallback: when true, query.user_id is accepted in dev mode.
+  // Production deployments must set this to false and provide X-User-Id header.
+  identity: {
+    allowDevFallback: process.env.ALLOW_DEV_FALLBACK === "true",
+  },
+
   tokenBudget: {
     systemPromptRatio: 0.15,
     memoryRatio: 0.10,

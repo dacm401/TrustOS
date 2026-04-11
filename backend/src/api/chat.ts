@@ -26,6 +26,8 @@ import { formatExecutionResultsForPlanner } from "../services/execution-result-f
 // EL-003: Execution Loop
 import { taskPlanner } from "../services/task-planner.js";
 import { executionLoop } from "../services/execution-loop.js";
+// C3a: unified identity
+import { getContextUserId } from "../middleware/identity.js";
 
 const chatRouter = new Hono();
 
@@ -44,7 +46,16 @@ async function callModel(
 chatRouter.post("/chat", async (c) => {
   const body = await c.req.json<ChatRequest>();
   const startTime = Date.now();
-  const userId = body.user_id || "default-user";
+
+  // C3a: Priority 1 — middleware context (trusted X-User-Id header)
+  // C3a: Priority 2 — dev-only body shim (only when allowDevFallback=true and no context)
+  let userId = (c as unknown as { userId: string | undefined }).userId;
+  if (!userId && config.identity.allowDevFallback && body.user_id) {
+    userId = body.user_id;
+  }
+  // Final fallback: production should never reach here if middleware is correctly mounted
+  userId = userId || body.user_id || "default-user";
+
   const sessionId = body.session_id || uuid();
 
   // 请求级覆盖：前端设置里的 Key / 模型优先于环境变量
@@ -345,19 +356,28 @@ chatRouter.post("/chat", async (c) => {
 chatRouter.post("/feedback", async (c) => {
   let decision_id: string;
   let feedback_type: string;
-  let user_id: string;
+  let body: Record<string, unknown>;
+
   try {
-    const body = await c.req.json();
-    decision_id = body.decision_id;
-    feedback_type = body.feedback_type;
-    user_id = body.user_id;
+    body = await c.req.json() as Record<string, unknown>;
+    decision_id = body.decision_id as string;
+    feedback_type = body.feedback_type as string;
   } catch {
     return c.json({ error: "invalid JSON body" }, 400);
   }
 
   if (!decision_id) return c.json({ error: "decision_id is required" }, 400);
   if (!feedback_type) return c.json({ error: "feedback_type is required" }, 400);
-  if (!user_id) return c.json({ error: "user_id is required" }, 400);
+
+  // C3a: Priority 1 — middleware context (trusted X-User-Id header)
+  // C3a: Priority 2 — dev-only body shim (only when allowDevFallback=true)
+  let user_id = (c as unknown as { userId: string | undefined }).userId;
+  if (!user_id && config.identity.allowDevFallback) {
+    user_id = body.user_id as string;
+  }
+  if (!user_id) {
+    return c.json({ error: "user_id is required (provide X-User-Id header)" }, 400);
+  }
 
   // P2-1: Runtime type whitelist validation
   if (!VALID_FEEDBACK_TYPES.includes(feedback_type as FeedbackType)) {

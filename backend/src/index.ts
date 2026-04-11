@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { config } from "./config.js";
+import { identityMiddleware } from "./middleware/identity.js";
 import { chatRouter } from "./api/chat.js";
 import { dashboardRouter } from "./api/dashboard.js";
 import { taskRouter } from "./api/tasks.js";
@@ -10,6 +11,9 @@ import { memoryRouter } from "./api/memory.js";
 const app = new Hono();
 
 app.use("/*", cors());
+// C3a: mount identity middleware on all API routes
+app.use("/api/*", identityMiddleware);
+app.use("/v1/*", identityMiddleware);
 app.get("/health", (c) => c.json({ status: "ok", version: "1.0.0" }));
 app.route("/api", chatRouter);
 app.route("/api", dashboardRouter);
