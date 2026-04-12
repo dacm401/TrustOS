@@ -121,6 +121,8 @@ export interface ChatRequest {
   execute?: boolean;
   /** T1: Explicit task resumption. If provided, system validates ownership and resumes the task. */
   task_id?: string;
+  /** S1: If true, return SSE stream instead of a single JSON response. */
+  stream?: boolean;
 }
 
 export interface ChatResponse {
@@ -294,8 +296,8 @@ export interface TraceSummary {
 
 // ── Memory entries (MC-001) ──────────────────────────────────────────────────
 
-export type MemoryCategory = "preference" | "fact" | "context" | "instruction";
-export type MemorySource = "manual" | "extracted" | "feedback";
+export type MemoryCategory = "preference" | "fact" | "context" | "instruction" | "skill" | "behavioral";
+export type MemorySource = "manual" | "extracted" | "feedback" | "auto_learn";
 
 export interface MemoryEntry {
   id: string;

@@ -3,9 +3,9 @@ import { useState, useRef, useEffect } from "react";
 import { v4 as uuid } from "uuid";
 import { MessageBubble } from "./MessageBubble";
 import { ModelSwitchAnim } from "./ModelSwitchAnim";
-import { sendMessage } from "@/lib/api";
+import { getApiConfig } from "@/lib/api";
 
-interface Message { id: string; role: "user" | "assistant"; content: string; decision?: any; }
+interface Message { id: string; role: "user" | "assistant"; content: string; decision?: any; streaming?: boolean; }
 const USER_ID = "user-001";
 
 interface ChatInterfaceProps {
@@ -23,6 +23,113 @@ export function ChatInterface({ onTaskIdChange }: ChatInterfaceProps) {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
 
+  /** SSE streaming send — returns true if stream succeeded */
+  const sendStreaming = async (text: string, history: any[]): Promise<boolean> => {
+    const { apiBase, apiKey, fastModel, slowModel } = getApiConfig();
+    const body: Record<string, any> = {
+      user_id: USER_ID,
+      session_id: sessionId,
+      message: text,
+      history,
+      stream: true,
+    };
+    if (apiKey) body.api_key = apiKey;
+    if (fastModel) body.fast_model = fastModel;
+    if (slowModel) body.slow_model = slowModel;
+
+    let response: Response;
+    try {
+      response = await fetch(`${apiBase}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-User-Id": USER_ID },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      return false; // network error → fallback
+    }
+
+    if (!response.ok || !response.body) return false;
+
+    // Create a placeholder streaming message
+    const placeholderId = uuid();
+    setMessages((prev) => [...prev, { id: placeholderId, role: "assistant", content: "", streaming: true }]);
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+          let data: any;
+          try { data = JSON.parse(raw); } catch { continue; }
+
+          if (data.type === "chunk") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === placeholderId ? { ...m, content: m.content + (data.content ?? "") } : m
+              )
+            );
+          } else if (data.type === "done") {
+            if (data.task_id) onTaskIdChange?.(data.task_id);
+            // Mark streaming complete, attach partial decision info
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === placeholderId ? { ...m, streaming: false, decision: data.decision } : m
+              )
+            );
+          } else if (data.type === "error") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === placeholderId ? { ...m, content: `⚠️ 流式错误：${data.message}`, streaming: false } : m
+              )
+            );
+          }
+        }
+      }
+    } catch {
+      // stream read failed — mark incomplete
+      setMessages((prev) =>
+        prev.map((m) => (m.id === placeholderId ? { ...m, streaming: false } : m))
+      );
+      return false;
+    }
+
+    return true;
+  };
+
+  /** Non-streaming fallback */
+  const sendFallback = async (text: string, history: any[]) => {
+    const { apiBase, apiKey, fastModel, slowModel } = getApiConfig();
+    const body: Record<string, any> = {
+      user_id: USER_ID,
+      session_id: sessionId,
+      message: text,
+      history,
+    };
+    if (apiKey) body.api_key = apiKey;
+    if (fastModel) body.fast_model = fastModel;
+    if (slowModel) body.slow_model = slowModel;
+
+    const res = await fetch(`${apiBase}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": USER_ID },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `服务器错误 (${res.status})`);
+    return data;
+  };
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || loading) return;
@@ -31,22 +138,35 @@ export function ChatInterface({ onTaskIdChange }: ChatInterfaceProps) {
     setInput("");
     setLoading(true);
     try {
-      // P4: include decision_id so backend can derive previousDecisionId for implicit feedback
       const history = messages.map((m) => ({ role: m.role, content: m.content, decision_id: m.decision?.id }));
-      const data = await sendMessage(text, history, USER_ID, sessionId);
-      // T1: propagate task_id to parent so workbench panels can bind to it
-      if (data.task_id) onTaskIdChange?.(data.task_id);
-      const replyContent = data.message || "⚠️ 收到空响应，请检查后端日志。";
-      if (data.decision?.execution?.did_fallback) {
-        setShowFallbackAnim({ fromModel: data.decision.routing.selected_model, toModel: data.decision.execution.model_used, reason: data.decision.execution.fallback_reason || "质量不达标" });
-        setTimeout(() => { setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision }]); setShowFallbackAnim(null); }, 3000);
-      } else {
-        setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision }]);
+
+      const streamed = await sendStreaming(text, history);
+      if (!streamed) {
+        // Fallback to non-streaming
+        const data = await sendFallback(text, history);
+        if (data.task_id) onTaskIdChange?.(data.task_id);
+        const replyContent = data.message || "⚠️ 收到空响应，请检查后端日志。";
+        if (data.decision?.execution?.did_fallback) {
+          setShowFallbackAnim({ fromModel: data.decision.routing.selected_model, toModel: data.decision.execution.model_used, reason: data.decision.execution.fallback_reason || "质量不达标" });
+          setTimeout(() => {
+            setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision }]);
+            setShowFallbackAnim(null);
+          }, 3000);
+        } else {
+          setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision }]);
+        }
       }
-    } catch (err: any) { setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: `⚠️ 请求失败：${err?.message || "请检查API配置或点击右上角设置。"}` }]); } finally { setLoading(false); }
+    } catch (err: any) {
+      setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: `⚠️ 请求失败：${err?.message || "请检查API配置或点击右上角设置。"}` }]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } };
+
+  // Whether any message is currently streaming
+  const isStreaming = messages.some((m) => m.streaming);
 
   return (
     <div className="flex flex-col h-full">
@@ -64,9 +184,20 @@ export function ChatInterface({ onTaskIdChange }: ChatInterfaceProps) {
             </div>
           </div>
         )}
-        {messages.map((msg) => (<MessageBubble key={msg.id} role={msg.role} content={msg.content} decision={msg.decision} userId={USER_ID} />))}
+        {messages.map((msg) => (
+          <div key={msg.id}>
+            <MessageBubble role={msg.role} content={msg.content} decision={msg.decision} userId={USER_ID} />
+            {/* Streaming cursor */}
+            {msg.streaming && (
+              <div className="flex justify-start -mt-2 mb-2 pl-4">
+                <span className="inline-block w-2 h-4 bg-blue-500 rounded-sm animate-pulse ml-1" />
+              </div>
+            )}
+          </div>
+        ))}
         {showFallbackAnim && <ModelSwitchAnim fromModel={showFallbackAnim.fromModel} toModel={showFallbackAnim.toModel} reason={showFallbackAnim.reason} onDone={() => {}} />}
-        {loading && !showFallbackAnim && (
+        {/* Loading dots only when NOT streaming (streaming shows cursor inline) */}
+        {loading && !isStreaming && !showFallbackAnim && (
           <div className="flex justify-start mb-4">
             <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3">
               <div className="flex items-center gap-1">

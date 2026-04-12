@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { stream } from "hono/streaming";
 import { v4 as uuid } from "uuid";
 import type { ChatRequest, ChatResponse, DecisionRecord, ExecutionStepsSummary, FeedbackType, TaskSummary } from "../types/index.js";
 
@@ -9,7 +10,7 @@ const VALID_FEEDBACK_TYPES: readonly FeedbackType[] = [
 ] as const;
 import { analyzeAndRoute } from "../router/router.js";
 import { manageContext } from "../services/context-manager.js";
-import { callModelFull } from "../models/model-gateway.js";
+import { callModelFull, callModelStream } from "../models/model-gateway.js";
 import { callOpenAIWithOptions } from "../models/providers/openai.js";
 import { checkQuality } from "../router/quality-gate.js";
 import { logDecision } from "../logging/decision-logger.js";
@@ -236,6 +237,123 @@ chatRouter.post("/chat", async (c) => {
     }
     // ── End EL-003 execution mode ────────────────────────────────────────────
 
+    // ── S1: Streaming SSE mode ──────────────────────────────────────────────
+    // Triggered when body.stream === true (non-execute path only).
+    // Falls through to the standard single-call path when stream is absent/false.
+    if (body.stream === true) {
+      const taskId = resumedTaskId || uuid();
+      const message = body.message ?? "";
+      const intentToMode: Record<string, string> = { simple_qa: "direct", chat: "direct", unknown: "direct" };
+      const mode = intentToMode[features.intent] || "research";
+      const complexityMap = ["low", "low", "medium", "high"];
+      const complexity = complexityMap[Math.min(Math.floor(features.complexity_score / 33), 3)];
+      const title = message.substring(0, 100);
+
+      // Fire-and-forget task creation (don't block stream)
+      TaskRepo.create({
+        id: taskId, user_id: userId, session_id: sessionId,
+        title, mode, complexity, risk: "low", goal: title,
+      }).catch((e) => console.error("[stream] Failed to create task:", e));
+
+      // Build prompt + context (same as non-stream path)
+      const memories = config.memory.enabled
+        ? await MemoryEntryRepo.getTopForUser(userId, config.memory.maxEntriesToInject)
+        : [];
+      const retrievalResults = memories.map((m) => ({ entry: m, score: m.importance, reason: "v1" }));
+
+      let taskSummary: { goal: string; summaryText: string; nextStep: string | null } | undefined;
+      if (resumedTaskSummary) {
+        const s = resumedTaskSummary;
+        const parts: string[] = [];
+        if (s.completed_steps?.length) parts.push(`已完成步骤:\n${s.completed_steps.join("\n")}`);
+        if (s.blocked_by?.length) parts.push(`卡点: ${s.blocked_by.join(", ")}`);
+        if (s.confirmed_facts?.length) parts.push(`已确认事实:\n${s.confirmed_facts.map((f: string) => `• ${f}`).join("\n")}`);
+        if (s.summary_text) parts.push(`任务摘要: ${s.summary_text}`);
+        taskSummary = { goal: s.goal || "继续任务", summaryText: parts.join("\n\n") || "(无详细摘要)", nextStep: s.next_step ?? null };
+      } else if (retrievalResults.length > 0) {
+        const { buildCategoryAwareMemoryText } = await import("../services/memory-retrieval.js");
+        taskSummary = { goal: "User memories:", summaryText: buildCategoryAwareMemoryText(retrievalResults as any).combined, nextStep: null };
+      }
+
+      const { assemblePrompt } = await import("../services/prompt-assembler.js");
+      const promptAssembly = assemblePrompt({
+        mode: mode as any,
+        userMessage: message,
+        taskSummary,
+        maxTaskSummaryTokens: config.memory.maxEntriesToInject * config.memory.maxTokensPerEntry,
+      });
+
+      const contextResult = await manageContext(
+        { ...body, user_id: userId, session_id: sessionId },
+        routing.selected_model,
+        promptAssembly.systemPrompt
+      );
+
+      // Set SSE headers
+      c.header("Content-Type", "text/event-stream");
+      c.header("Cache-Control", "no-cache");
+      c.header("Connection", "keep-alive");
+      c.header("X-Accel-Buffering", "no");
+
+      return stream(c, async (s) => {
+        let fullContent = "";
+        const streamStartTime = Date.now();
+
+        try {
+          for await (const chunk of callModelStream(routing.selected_model, contextResult.final_messages, reqApiKey)) {
+            fullContent += chunk;
+            await s.write(`data: ${JSON.stringify({ type: "chunk", content: chunk })}\n\n`);
+          }
+        } catch (streamErr: any) {
+          console.error("[stream] Model stream error:", streamErr.message);
+          await s.write(`data: ${JSON.stringify({ type: "error", message: streamErr.message })}\n\n`);
+          return;
+        }
+
+        // Build decision object for done event
+        const streamLatency = Date.now() - streamStartTime;
+        const { estimateCost } = await import("../models/token-counter.js");
+        const roughTokens = Math.ceil(fullContent.length / 4);
+        const totalCost = estimateCost(contextResult.original_tokens, roughTokens, routing.selected_model);
+
+        const decision: DecisionRecord = {
+          id: uuid(), user_id: userId, session_id: sessionId, timestamp: startTime,
+          input_features: features, routing, context: contextResult,
+          execution: {
+            model_used: routing.selected_model,
+            input_tokens: contextResult.original_tokens,
+            output_tokens: roughTokens,
+            total_cost_usd: totalCost,
+            latency_ms: streamLatency,
+            did_fallback: false,
+            response_text: "",
+          },
+        };
+
+        await s.write(`data: ${JSON.stringify({ type: "done", task_id: taskId, decision: { intent: features.intent, selected_model: routing.selected_model, confidence: routing.confidence } })}\n\n`);
+
+        // Fire-and-forget post-stream work
+        const { logDecision } = await import("../logging/decision-logger.js");
+        logDecision({ ...decision, execution: { ...decision.execution, response_text: fullContent } }).catch((e) => console.error("[stream] logDecision failed:", e));
+
+        const previousDecisionId: string | undefined = (() => {
+          for (let i = (body.history?.length ?? 0) - 1; i >= 0; i--) {
+            const msg = body.history![i];
+            if (msg.role === "assistant" && msg.decision_id) return msg.decision_id;
+          }
+          return undefined;
+        })();
+
+        learnFromInteraction({ ...decision, execution: { ...decision.execution, response_text: fullContent } }, message, previousDecisionId, userId)
+          .catch((e) => console.error("[stream] learnFromInteraction failed:", e));
+        TaskRepo.updateExecution(taskId, contextResult.original_tokens + roughTokens)
+          .catch((e) => console.error("[stream] updateExecution failed:", e));
+        TaskRepo.createTrace({ id: uuid(), task_id: taskId, type: "response", detail: { latency_ms: streamLatency, streaming: true } })
+          .catch((e) => console.error("[stream] createTrace failed:", e));
+      });
+    }
+    // ── End S1 streaming mode ─────────────────────────────────────────────
+
     // 创建任务记录（用 intent 作为 mode 推断：simple_qa/chat → direct，其他 → research）
     // T1: if we resumed an existing task, reuse its taskId instead of creating a new one
     const taskId = resumedTaskId || uuid();
@@ -440,6 +558,73 @@ chatRouter.post("/feedback", async (c) => {
   const { recordFeedback } = await import("../features/feedback-collector.js");
   // P3: also write to feedback_events (userId confirmed via ownership check above)
   await recordFeedback(decision_id, feedback_type as FeedbackType, user_id);
+
+  // S2: Fire-and-forget auto_learn on positive-signal feedback
+  // Fetches the full decision record and passes it to autoLearnFromDecision
+  // so memory_entries gets updated without blocking the feedback response.
+  if (["thumbs_up", "accepted", "follow_up_thanks"].includes(feedback_type)) {
+    const { autoLearnFromDecision } = await import("../services/memory-store.js");
+    const { query: q2 } = await import("../db/connection.js");
+    q2(`SELECT intent, selected_model, exec_input_tokens, exec_output_tokens FROM decision_logs WHERE id=$1`, [decision_id])
+      .then(async (res) => {
+        if (res.rows.length === 0 || !user_id) return;
+        const row = res.rows[0];
+        // Construct a minimal DecisionRecord sufficient for autoLearnFromDecision
+        const minDecision: DecisionRecord = {
+          id: decision_id,
+          user_id: user_id!,
+          session_id: "",
+          timestamp: Date.now(),
+          input_features: {
+            raw_query: "",
+            token_count: 0,
+            intent: row.intent ?? "unknown",
+            complexity_score: 50,
+            has_code: false,
+            has_math: false,
+            requires_reasoning: false,
+            conversation_depth: 0,
+            context_token_count: 0,
+            language: "zh",
+          },
+          routing: {
+            router_version: "v1",
+            scores: { fast: 0.5, slow: 0.5 },
+            confidence: 0.8,
+            selected_model: row.selected_model ?? "",
+            selected_role: "fast",
+            selection_reason: "",
+            fallback_model: "",
+          },
+          context: {
+            original_tokens: 0,
+            compressed_tokens: 0,
+            compression_level: "L0",
+            compression_ratio: 1,
+            memory_items_retrieved: 0,
+            final_messages: [],
+            compression_details: [],
+          },
+          execution: {
+            model_used: row.selected_model ?? "",
+            input_tokens: row.exec_input_tokens ?? 0,
+            output_tokens: row.exec_output_tokens ?? 0,
+            total_cost_usd: 0,
+            latency_ms: 0,
+            did_fallback: false,
+            response_text: "",
+          },
+          feedback: {
+            type: feedback_type as FeedbackType,
+            score: 1,
+            timestamp: Date.now(),
+          },
+        };
+        await autoLearnFromDecision(user_id!, minDecision);
+      })
+      .catch((e) => console.error("[feedback] autoLearnFromDecision failed:", e));
+  }
+
   return c.json({ success: true });
 });
 

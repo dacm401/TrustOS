@@ -115,3 +115,74 @@ export async function analyzeAndLearn(userId: string, latestDecision: DecisionRe
 
   return null;
 }
+
+// ── S2: Auto-learn from decision → memory_entries ──────────────────────────
+//
+// Rules-driven, no LLM. Fires on positive-signal decisions, extracts a
+// structured memory entry and deduplicates within a 7-day window.
+//
+// Called from learnFromInteraction (fire-and-forget, never throws).
+
+import { MemoryEntryRepo } from "../db/repositories.js";
+import type { MemoryCategory } from "../types/index.js";
+
+interface IntentRule {
+  category: MemoryCategory;
+  template: (intent: string, model: string) => string;
+}
+
+const INTENT_RULES: Record<string, IntentRule> = {
+  code:       { category: "skill",      template: (i, m) => `用户请求过代码类任务（${i}），使用 ${m} 效果良好` },
+  math:       { category: "skill",      template: (i, m) => `用户请求过数学类任务（${i}），使用 ${m} 效果良好` },
+  creative:   { category: "preference", template: (_i, _m) => "用户偏好创意类内容" },
+  simple_qa:  { category: "behavioral", template: (_i, m) => `用户倾向简短问答，${m} 路由准确` },
+  chat:       { category: "behavioral", template: (_i, m) => `用户倾向日常对话，${m} 路由准确` },
+  research:   { category: "behavioral", template: (_i, m) => `用户有深度研究需求，使用 ${m}` },
+  reasoning:  { category: "behavioral", template: (_i, m) => `用户有复杂推理需求，使用 ${m}` },
+};
+
+const POSITIVE_SIGNALS = new Set(["thumbs_up", "accepted", "follow_up_thanks"]);
+
+export async function autoLearnFromDecision(
+  userId: string,
+  decision: DecisionRecord
+): Promise<{ observation: string } | null> {
+  try {
+    // 1. Only process decisions with positive signal
+    const feedbackType = decision.feedback?.type;
+    const feedbackScore = decision.feedback?.score ?? 0;
+    const hasPositive = (feedbackType && POSITIVE_SIGNALS.has(feedbackType)) || feedbackScore > 0;
+    if (!hasPositive) return null;
+
+    // 2. Intent → rule lookup
+    const intent = decision.input_features.intent;
+    const rule = INTENT_RULES[intent];
+    if (!rule) return null;
+
+    const model = decision.execution.model_used || decision.routing.selected_model;
+    const content = rule.template(intent, model);
+    const category = rule.category;
+
+    // 3. Deduplication: skip if same category + similar content exists within 7 days
+    const recent = await MemoryEntryRepo.findRecent(userId, category, 7);
+    const fingerprint = content.substring(0, 50);
+    const duplicate = recent.find((m) => m.content.substring(0, 50) === fingerprint);
+    if (duplicate) return null;
+
+    // 4. Write to memory_entries
+    const entry = await MemoryEntryRepo.create({
+      user_id: userId,
+      category,
+      content,
+      importance: 2,
+      tags: [intent, model],
+      source: "auto_learn",
+    });
+
+    console.log(`[auto_learn] Wrote memory entry ${entry.id} for user ${userId}: ${content}`);
+    return { observation: content };
+  } catch (err) {
+    console.error("[auto_learn] Failed silently:", err);
+    return null;
+  }
+}

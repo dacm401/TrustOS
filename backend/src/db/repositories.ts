@@ -580,6 +580,22 @@ export const MemoryEntryRepo = {
     );
     return result.rows.map(mapMemoryRow);
   },
+
+  /**
+   * Fetch recent memory entries for a given user + category within the past N days.
+   * Used by analyzeAndLearn() for deduplication: avoids writing the same auto_learn
+   * observation twice within the time window.
+   */
+  async findRecent(userId: string, category: string, days: number): Promise<MemoryEntry[]> {
+    const result = await query(
+      `SELECT * FROM memory_entries
+       WHERE user_id=$1 AND category=$2
+         AND created_at > NOW() - ($3 || ' days')::INTERVAL
+       ORDER BY created_at DESC`,
+      [userId, category, days]
+    );
+    return result.rows.map(mapMemoryRow);
+  },
 };
 
 export const ExecutionResultRepo = {

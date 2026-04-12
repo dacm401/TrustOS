@@ -1,6 +1,6 @@
 import type { DecisionRecord, FeedbackType } from "../types/index.js";
 import { recordFeedback, detectImplicitFeedback } from "./feedback-collector.js";
-import { analyzeAndLearn } from "../services/memory-store.js";
+import { analyzeAndLearn, autoLearnFromDecision } from "../services/memory-store.js";
 import { checkAndRecordMilestones } from "./growth-tracker.js";
 import { MemoryRepo } from "../db/repositories.js";
 
@@ -29,6 +29,12 @@ export async function learnFromInteraction(
     const newMemory = await analyzeAndLearn(decision.user_id, decision);
     if (newMemory) result.new_memory = newMemory.observation;
   } catch (error) { console.error("Learning analysis failed:", error); }
+
+  // S2: Auto-learn — write structured memory_entries on positive-signal decisions
+  try {
+    const autoLearned = await autoLearnFromDecision(decision.user_id, decision);
+    if (autoLearned && !result.new_memory) result.new_memory = autoLearned.observation;
+  } catch (error) { console.error("Auto-learn failed:", error); }
 
   try {
     result.milestones = await checkAndRecordMilestones(decision.user_id, decision);
