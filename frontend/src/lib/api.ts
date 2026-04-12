@@ -172,3 +172,12 @@ export async function deleteMemory(id: string, userId: string): Promise<void> {
   });
   if (!res.ok) throw new Error(`删除记忆失败 (${res.status})`);
 }
+
+export async function fetchDecision(taskId: string, userId: string) {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}/decision`, {
+    headers: { "X-User-Id": userId },
+  });
+  if (!res.ok) throw new Error(`加载决策数据失败 (${res.status})`);
+  return res.json();
+}

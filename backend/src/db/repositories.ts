@@ -47,6 +47,21 @@ export const DecisionRepo = {
     return result.rows[0];
   },
 
+  /** Get the latest decision log for a task (ordered by created_at DESC) */
+  async getByTaskId(taskId: string): Promise<any | null> {
+    // First get session_id from the task
+    const taskResult = await query(`SELECT session_id FROM tasks WHERE id=$1`, [taskId]);
+    if (taskResult.rows.length === 0) return null;
+    const sessionId = taskResult.rows[0].session_id;
+    if (!sessionId) return null;
+    const result = await query(
+      `SELECT * FROM decision_logs WHERE session_id=$1 ORDER BY created_at DESC LIMIT 1`,
+      [sessionId],
+    );
+    if (result.rows.length === 0) return null;
+    return result.rows[0];
+  },
+
   async getTodayStats(userId: string): Promise<any> {
     const result = await query(
       `WITH base AS (

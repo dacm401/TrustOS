@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { TaskRepo } from "../db/repositories.js";
+import { TaskRepo, DecisionRepo } from "../db/repositories.js";
 import { formatTraceSummaries } from "../services/trace-formatter.js";
 import { getContextUserId } from "../middleware/identity.js";
 
@@ -59,6 +59,21 @@ taskRouter.get("/:task_id/traces", async (c) => {
     });
   } catch (error: any) {
     console.error("Task traces error:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// GET /v1/tasks/:task_id/decision — get latest decision log for a task (before /:task_id to avoid shadowing)
+taskRouter.get("/:task_id/decision", async (c) => {
+  const taskId = c.req.param("task_id");
+  try {
+    const task = await TaskRepo.getById(taskId);
+    if (!task) return c.json({ error: `Task not found: ${taskId}` }, 404);
+    const decision = await DecisionRepo.getByTaskId(taskId);
+    if (!decision) return c.json({ error: `No decision found for task: ${taskId}` }, 404);
+    return c.json({ decision });
+  } catch (error: any) {
+    console.error("Task decision error:", error);
     return c.json({ error: error.message }, 500);
   }
 });
