@@ -14,7 +14,8 @@ const INTENT_BASE_COMPLEXITY: Record<IntentType, number> = {
 };
 
 export function scoreComplexity(query: string, intent: IntentType, history: ChatMessage[]): { score: number; factors: ComplexityFactors } {
-  const wordCount = query.split(/\s+/).length;
+  const safeQuery = query ?? "";
+  const wordCount = safeQuery.split(/\s+/).length;
   const length_score = Math.min(20, Math.round(wordCount / 5));
   const intent_score = Math.round(INTENT_BASE_COMPLEXITY[intent] * 0.3);
   const conversationDepth = history.filter((m) => m.role === "user").length;

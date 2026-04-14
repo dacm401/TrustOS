@@ -44,7 +44,8 @@ export async function analyzeAndRoute(request: ChatRequest): Promise<{ features:
 }
 
 function detectLanguage(text: string): string {
-  const chineseChars = text.match(/[\u4e00-\u9fff]/g);
-  if (chineseChars && chineseChars.length > text.length * 0.1) return "zh";
+  const safeText = text ?? "";
+  const chineseChars = safeText.match(/[\u4e00-\u9fff]/g);
+  if (chineseChars && chineseChars.length > safeText.length * 0.1) return "zh";
   return "en";
 }
