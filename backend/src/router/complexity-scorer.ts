@@ -10,7 +10,7 @@ interface ComplexityFactors {
 
 const INTENT_BASE_COMPLEXITY: Record<IntentType, number> = {
   chat: 5, simple_qa: 15, translation: 25, summarization: 35,
-  creative: 50, code: 60, reasoning: 70, math: 75, unknown: 40,
+  creative: 50, code: 60, reasoning: 70, math: 75, unknown: 40, research: 65,
 };
 
 export function scoreComplexity(query: string, intent: IntentType, history: ChatMessage[]): { score: number; factors: ComplexityFactors } {

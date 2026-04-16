@@ -9,6 +9,7 @@ export type IntentType =
   | "translation"
   | "summarization"
   | "chat"
+  | "research"
   | "unknown";
 
 export type CompressionLevel = "L0" | "L1" | "L2" | "L3";
@@ -130,6 +131,11 @@ export interface ChatResponse {
   decision: DecisionRecord;
   /** T1: The task_id associated with this response. Present when a task was created or resumed. */
   task_id?: string;
+  /** O-001: Delegation info — present when slow model is triggered in background */
+  delegation?: {
+    task_id: string;
+    status: "triggered";
+  };
 }
 
 export interface IdentityMemory {
@@ -269,7 +275,10 @@ export type TraceType =
   | "step_failed"
   | "loop_start"
   | "loop_end"
-  | "error";
+  | "error"
+  // O-001: Orchestrator trace types
+  | "orchestrator_delegated"
+  | "orchestrator_delegation_failed";
 
 export interface TaskTrace {
   trace_id: string;

@@ -29,6 +29,8 @@ import { taskPlanner } from "../services/task-planner.js";
 import { executionLoop } from "../services/execution-loop.js";
 // C3a: unified identity
 import { getContextUserId } from "../middleware/identity.js";
+// O-001: Orchestrator — 快模型先回复 + 委托慢模型后台执行
+import { orchestrator, getDelegationResult } from "../services/orchestrator.js";
 
 const chatRouter = new Hono();
 
@@ -106,6 +108,111 @@ chatRouter.post("/chat", async (c) => {
     const { features, routing } = await analyzeAndRoute(
       { ...body, user_id: userId, session_id: sessionId }
     );
+
+    // ── O-001: Orchestrator 分支（Phase 0 最小验证）─────────────────────────────
+    // 覆盖场景：intent 为 chat/simple_qa/translation + 低复杂度 + 非 execute 模式
+    // 不覆盖：execute 模式（EL-003）、高复杂度场景（保持现有逻辑）
+    // 验证目标：快模型直接回复，慢模型后台执行，前端轮询获取最终结果
+    const SIMPLE_INTENTS = new Set(["chat", "simple_qa", "translation"]);
+    const useOrchestrator =
+      body.execute !== true &&
+      SIMPLE_INTENTS.has(features.intent) &&
+      features.complexity_score < 40;
+
+    if (useOrchestrator) {
+      const orchResult = await orchestrator({
+        message: body.message ?? "",
+        intent: features.intent,
+        complexity_score: features.complexity_score,
+        language: features.language as "zh" | "en",
+        user_id: userId,
+        session_id: sessionId,
+        history: body.history ?? [],
+        reqApiKey,
+      });
+
+      // 记录 routing decision（沿用分析结果）
+      await logDecision({
+        id: uuid(),
+        user_id: userId,
+        session_id: sessionId,
+        timestamp: startTime,
+        input_features: features,
+        routing: {
+          ...routing,
+          selected_model: config.fastModel,
+          selected_role: "fast",
+          selection_reason: `orchestrator: ${routing.selection_reason}`,
+        },
+        context: {
+          original_tokens: 0,
+          compressed_tokens: 0,
+          compression_level: "L0",
+          compression_ratio: 0,
+          memory_items_retrieved: 0,
+          final_messages: [],
+          compression_details: [],
+        },
+        execution: {
+          model_used: config.fastModel,
+          input_tokens: 0,
+          output_tokens: 0,
+          total_cost_usd: 0,
+          latency_ms: Date.now() - startTime,
+          did_fallback: false,
+          response_text: orchResult.fast_reply,
+        },
+      }).catch((e) => console.error("Failed to log orchestrator decision:", e));
+
+      const taskId = orchResult.delegation?.task_id || uuid();
+
+      // 快模型回复 + 委托信息（供前端判断是否需要轮询）
+      const response: ChatResponse = {
+        message: orchResult.fast_reply,
+        decision: {
+          id: uuid(),
+          user_id: userId,
+          session_id: sessionId,
+          timestamp: startTime,
+          input_features: features,
+          routing: {
+            router_version: "orchestrator_v0.1",
+            scores: { fast: 1.0, slow: 0 },
+            confidence: 1.0,
+            selected_model: config.fastModel,
+            selected_role: "fast",
+            selection_reason: "orchestrator direct reply",
+            fallback_model: config.slowModel,
+          },
+          context: {
+            original_tokens: 0,
+            compressed_tokens: 0,
+            compression_level: "L0",
+            compression_ratio: 0,
+            memory_items_retrieved: 0,
+            final_messages: [],
+            compression_details: [],
+          },
+          execution: {
+            model_used: config.fastModel,
+            input_tokens: 0,
+            output_tokens: 0,
+            total_cost_usd: 0,
+            latency_ms: Date.now() - startTime,
+            did_fallback: false,
+            response_text: orchResult.fast_reply,
+          },
+        },
+        task_id: taskId,
+        // O-001: 新增字段，告知前端是否有后台任务
+        delegation: orchResult.delegation
+          ? { task_id: orchResult.delegation.task_id, status: "triggered" }
+          : undefined,
+      };
+
+      return c.json(response);
+    }
+    // ── End O-001 Orchestrator 分支 ─────────────────────────────────────────────
 
     // 如果请求级有指定模型，替换路由结果里的模型名
     if (body.fast_model || body.slow_model) {
@@ -536,6 +643,48 @@ chatRouter.post("/chat", async (c) => {
     console.error("Chat error:", error);
     return c.json({ error: error.message }, 500);
   }
+});
+
+// O-001: 轮询接口 — 查询后台委托任务的最终结果
+chatRouter.get("/chat-result/:taskId", async (c) => {
+  const taskId = c.req.param("taskId");
+  if (!taskId) {
+    return c.json({ error: "taskId is required" }, 400);
+  }
+
+  const result = await getDelegationResult(taskId);
+
+  if (!result) {
+    return c.json({ error: "Task not found" }, 404);
+  }
+
+  // 如果慢模型已完成，返回完整结果
+  if (result.status === "completed" && result.slow_result) {
+    return c.json({
+      task_id: taskId,
+      status: "completed",
+      fast_reply: result.fast_reply,
+      slow_result: result.slow_result,
+      // 告诉前端：可以用 slow_result 替换 fast_reply，或追加显示
+      action: "replace",
+    });
+  }
+
+  if (result.status === "failed") {
+    return c.json({
+      task_id: taskId,
+      status: "failed",
+      error: result.error,
+      fast_reply: result.fast_reply,
+    });
+  }
+
+  // 还在处理中
+  return c.json({
+    task_id: taskId,
+    status: "pending",
+    fast_reply: result.fast_reply,
+  });
 });
 
 chatRouter.post("/feedback", async (c) => {
