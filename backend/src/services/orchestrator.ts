@@ -158,13 +158,31 @@ export function shouldDelegate(
   return { need_delegation: false, reason: "简单任务，快模型直接回复" };
 }
 
-// ── 快模型系统提示（极度精简，不含任何判断逻辑） ─────────────────────────────────
+// ── 快模型系统提示 ─────────────────────────────────────────────────────────────
+// 两套完全独立的 prompt：
+// 1. 人格化 prompt：直接回复时用，有风格有温度，用户体验好
+// 2. 结构化 prompt：委托慢模型时用，极简高效，不人格化，提高效率
 
-function buildOrchestratorFastPrompt(lang: "zh" | "en"): string {
+/** 人格化快模型 prompt — 直接回复时使用 */
+function buildHumanizedFastPrompt(lang: "zh" | "en"): string {
   if (lang === "zh") {
     return `你是 SmartRouter Pro 的快模型助手。职责：快速回复用户，口语化、自然，1-2句话足够，不要列清单，不要废话。`;
   }
   return `You are SmartRouter Pro's fast model assistant. Reply quickly, naturally, 1-2 sentences max, no lists, no fluff.`;
+}
+
+/** 结构化快模型 prompt — 委托慢模型时使用
+ * 没有人格描述，只有简洁指令，效率优先
+ */
+function buildStructuredFastPrompt(lang: "zh" | "en"): string {
+  if (lang === "zh") {
+    return `你是一个高效的助手，正在将任务委托给慢模型处理。
+直接告知用户：已收到请求，慢模型正在后台处理中。
+回复要极简（1-2句），不要展开分析，不要有人格，不要重复用户的问题。`;
+  }
+  return `You are an efficient assistant delegating a task to the slow model.
+Tell the user: request received, slow model is processing in the background.
+Keep it brief (1-2 sentences), no analysis, no personality.`;
 }
 
 // ── Orchestrator 主函数 ─────────────────────────────────────────────────────────
@@ -230,11 +248,15 @@ export async function orchestrator(input: OrchestratorInput): Promise<Orchestrat
     }
   }
 
-  // 构建快模型 system prompt（精简版，只有人格和直接回复规则，没有慢模型人格）
-  const fastSystemPrompt = buildOrchestratorFastPrompt(language);
+  // 根据是否委托选择对应的快模型 prompt
+  // 委托：结构化 prompt（效率优先，无人格）
+  // 直接回复：人格化 prompt（用户体验好）
+  const fastSystemPrompt = decision.need_delegation
+    ? buildStructuredFastPrompt(language)
+    : buildHumanizedFastPrompt(language);
 
   const userPrompt = decision.need_delegation
-    ? `${message}\n\n[系统指令] 这个问题需要委托慢模型处理。请先给用户一个简洁的初步回复（1-3句话），然后告知用户你已让慢模型在后台处理。不要等慢模型结果，直接回复。`
+    ? `用户请求：${message}`
     : message;
 
   const messages: ChatMessage[] = [
