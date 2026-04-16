@@ -16,9 +16,8 @@ import { v4 as uuid } from "uuid";
 import type { ChatMessage } from "../types/index.js";
 import { callModelFull, callModelStream } from "../models/model-gateway.js";
 import { callOpenAIWithOptions } from "../models/providers/openai.js";
-import { TaskRepo } from "../db/repositories.js";
+import { TaskRepo, MemoryEntryRepo, DelegationArchiveRepo } from "../db/repositories.js";
 import { config } from "../config.js";
-import { MemoryEntryRepo } from "../db/repositories.js";
 import { runRetrievalPipeline, buildCategoryAwareMemoryText } from "./memory-retrieval.js";
 import { assemblePrompt } from "./prompt-assembler.js";
 
@@ -303,7 +302,7 @@ export async function orchestrator(input: OrchestratorInput): Promise<Orchestrat
       session_id,
       fast_reply: fastReply,
       reqApiKey,
-      history, // 传递历史上下文给慢模型
+      // 不再传 history，慢模型独立对话，知识共享靠 delegation_archive 档案库
     }).catch((e) => console.error("[orchestrator] Slow model background trigger failed:", e.message));
 
     delegation = { task_id: taskId, status: "triggered" };
@@ -329,14 +328,90 @@ interface SlowModelBackgroundInput {
   session_id: string;
   fast_reply: string;
   reqApiKey?: string;
-  history?: ChatMessage[]; // 传入历史上下文
+  // 注意：不再传 history，慢模型每个任务独立对话
+  // 历史上下文改为从 delegation_archive 档案库查询
 }
 
+/**
+ * 后台慢模型触发（O-005 架构）
+ *
+ * 核心原则：慢模型每个任务独立对话，不累积历史上下文。
+ * - 委托时：建档案，写任务卡片（pending）
+ * - 执行时：干净对话，不读历史，只读档案中的相关任务摘要
+ * - 完成时：更新档案（completed），慢模型对话窗口关闭
+ * - 新任务：再开新对话，需要历史时查档案库
+ *
+ * 这样慢模型的 token 消耗是常数级，不随对话轮次增长。
+ */
 async function triggerSlowModelBackground(input: SlowModelBackgroundInput): Promise<void> {
-  const { taskId, message, user_id, session_id, fast_reply, reqApiKey, history = [] } = input;
+  const { taskId, message, user_id, session_id, reqApiKey } = input;
+  const startTime = Date.now();
 
   try {
-    // 创建任务记录
+    // Step 1: 读取用户记忆（从 memory_entries，这是长期知识库）
+    const memories = config.memory.enabled
+      ? await MemoryEntryRepo.getTopForUser(user_id, config.memory.maxEntriesToInject)
+      : [];
+
+    let memoryText = "";
+    if (memories.length > 0) {
+      const retrievalResults = memories.map((m) => ({ entry: m, score: m.importance, reason: "v1" }));
+      if (config.memory.retrieval.strategy === "v2") {
+        const context = { userMessage: message };
+        const candidates = await MemoryEntryRepo.getTopForUser(
+          user_id, Math.ceil(config.memory.maxEntriesToInject * 1.5)
+        );
+        const scored = runRetrievalPipeline({
+          entries: candidates,
+          context,
+          categoryPolicy: config.memory.retrieval.categoryPolicy,
+          maxTotalEntries: config.memory.maxEntriesToInject,
+        });
+        if (scored.length > 0) {
+          memoryText = buildCategoryAwareMemoryText(scored as any).combined;
+        }
+      }
+      if (!memoryText) {
+        memoryText = buildCategoryAwareMemoryText(retrievalResults as any).combined;
+      }
+    }
+
+    // Step 2: 查档案库获取相关历史上下文（替代历史消息传递）
+    // 只取最近 3 条完成的任务，作为"相关背景"注入，不走完整对话历史
+    const recentArchives = await DelegationArchiveRepo.getRecentByUser(user_id, 3);
+    let archiveContext = "";
+    if (recentArchives.length > 0) {
+      const archiveLines = recentArchives.map(
+        (a) => `[历史任务] ${a.original_message}\n[结果] ${a.slow_result ?? "(处理中)"}`
+      );
+      archiveContext = `\n【相关历史背景】（来自档案库）\n${archiveLines.join("\n\n")}`;
+    }
+
+    // Step 3: 构造慢模型任务卡片（delegation_prompt = 档案存档用）
+    const promptAssembly = assemblePrompt({
+      mode: "research",
+      modelMode: "slow",
+      intent: "reasoning",
+      userMessage: message,
+      memoryText: memoryText || undefined,
+      maxTaskSummaryTokens: config.memory.maxEntriesToInject * config.memory.maxTokensPerEntry,
+      lang: "zh",
+    });
+
+    // 快模型对人的回复（档案中不存，快模型已直接返回给用户）
+    // delegation_prompt = 慢模型收到的完整任务卡片
+    const delegationPrompt = promptAssembly.systemPrompt + (archiveContext ? `\n${archiveContext}` : "");
+
+    // Step 4: 写入档案（pending 状态）
+    await DelegationArchiveRepo.create({
+      task_id: taskId,
+      user_id,
+      session_id,
+      original_message: message,
+      delegation_prompt: delegationPrompt,
+    });
+
+    // Step 5: 创建任务记录
     await TaskRepo.create({
       id: taskId,
       user_id,
@@ -349,41 +424,13 @@ async function triggerSlowModelBackground(input: SlowModelBackgroundInput): Prom
       status: "responding",
     });
 
-    // 读取记忆（与 orchestrator 相同的逻辑）
-    const memories = config.memory.enabled
-      ? await MemoryEntryRepo.getTopForUser(user_id, config.memory.maxEntriesToInject)
-      : [];
-
-    let memoryText = "";
-    if (memories.length > 0) {
-      const retrievalResults = memories.map((m) => ({ entry: m, score: m.importance, reason: "v1" }));
-      memoryText = buildCategoryAwareMemoryText(retrievalResults as any).combined;
-    }
-
-    // 构造慢模型 prompt（用 prompt-assembler，模式为 research）
-    const promptAssembly = assemblePrompt({
-      mode: "research",
-      modelMode: "slow",
-      intent: "reasoning",
-      userMessage: message,
-      memoryText: memoryText || undefined,
-      maxTaskSummaryTokens: config.memory.maxEntriesToInject * config.memory.maxTokensPerEntry,
-      lang: "zh",
-    });
-
-    const systemPrompt = promptAssembly.systemPrompt;
-    // 慢模型读取最近 5 轮历史，保持上下文
-    const recentHistory = history
-      .filter((m) => m.role !== "system")
-      .slice(-10);
-
+    // Step 6: 慢模型独立对话（无历史消息，只有 system + user）
+    // 关键：messages 里没有 conversation history，每次都是全新对话
     const messages: ChatMessage[] = [
-      { role: "system", content: systemPrompt },
-      ...recentHistory,
+      { role: "system", content: delegationPrompt },
       { role: "user", content: message },
     ];
 
-    // 调用慢模型
     const slowModel = config.slowModel;
     let slowResult: string;
 
@@ -397,26 +444,37 @@ async function triggerSlowModelBackground(input: SlowModelBackgroundInput): Prom
       slowResult = resp.content;
     }
 
-    // 更新任务状态为 completed（写入 slow_result）
+    const processingMs = Date.now() - startTime;
+
+    // Step 7: 更新档案为 completed（写入慢模型结果）
+    await DelegationArchiveRepo.complete({
+      task_id: taskId,
+      slow_result: slowResult,
+      processing_ms: processingMs,
+    });
+
     await TaskRepo.setStatus(taskId, "completed").catch(() => {});
 
-    // 将慢模型结果写入 evidence 或专门的委托结果表
-    // 目前用 task trace 暂存，后续可扩展为专门的 delegation_results 表
+    // 写入 task trace（保留可观测性）
     await TaskRepo.createTrace({
       id: uuid(),
       task_id: taskId,
       type: "orchestrator_delegated",
       detail: {
         original_message: message,
-        fast_reply,
         slow_result: slowResult,
-        delegated_at: Date.now(),
+        processing_ms: processingMs,
+        archived: true,
+        delegated_at: startTime,
         completed_at: Date.now(),
       },
-    }).catch((e) => console.error("[orchestrator] Failed to write slow result trace:", e.message));
+    }).catch(() => {});
 
   } catch (e: any) {
     console.error(`[orchestrator] Slow model failed for task ${taskId}:`, e.message);
+
+    // 写失败档案（不重蹈 history 累积问题）
+    await DelegationArchiveRepo.fail(taskId, e.message).catch(() => {});
     await TaskRepo.setStatus(taskId, "failed").catch(() => {});
     await TaskRepo.createTrace({
       id: uuid(),

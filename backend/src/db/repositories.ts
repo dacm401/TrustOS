@@ -838,6 +838,133 @@ function mapEvidenceRow(r: any): Evidence {
   };
 }
 
+// ── Delegation Archive (O-005) ───────────────────────────────────────────────
+// 慢模型任务档案：每个委托任务的完整记录
+// 慢模型每个任务独立对话，共享知识靠档案，不靠上下文累积
+// 档案查询用于新任务启动时获取相关历史上下文
+
+export interface DelegationArchiveEntry {
+  id: string;
+  task_id: string;
+  user_id: string;
+  session_id: string;
+  original_message: string;
+  delegation_prompt: string;
+  slow_result: string | null;
+  related_task_ids: string[];
+  status: "pending" | "completed" | "failed";
+  processing_ms: number | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export const DelegationArchiveRepo = {
+  /**
+   * 档案创建：委托触发时写入任务卡片（pending 状态）
+   */
+  async create(data: {
+    task_id: string;
+    user_id: string;
+    session_id: string;
+    original_message: string;
+    delegation_prompt: string;
+  }): Promise<DelegationArchiveEntry> {
+    const id = uuid();
+    const result = await query(
+      `INSERT INTO delegation_archive
+        (id, task_id, user_id, session_id, original_message, delegation_prompt, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+       RETURNING *`,
+      [id, data.task_id, data.user_id, data.session_id, data.original_message, data.delegation_prompt]
+    );
+    return mapDelegationArchiveRow(result.rows[0]);
+  },
+
+  /**
+   * 档案完成：慢模型执行完毕后写入结果
+   * 注意：不再在慢模型对话中累积历史，任务间共享靠档案库
+   */
+  async complete(data: {
+    task_id: string;
+    slow_result: string;
+    processing_ms: number;
+  }): Promise<void> {
+    await query(
+      `UPDATE delegation_archive
+       SET slow_result=$1, status='completed', processing_ms=$2, completed_at=NOW()
+       WHERE task_id=$3`,
+      [data.slow_result, data.processing_ms, data.task_id]
+    );
+  },
+
+  /**
+   * 档案失败
+   */
+  async fail(task_id: string, error: string): Promise<void> {
+    await query(
+      `UPDATE delegation_archive SET status='failed', completed_at=NOW() WHERE task_id=$1`,
+      [task_id]
+    );
+  },
+
+  /**
+   * 查询用户最近的已完成档案（用于新任务启动时获取上下文）
+   * 返回最近 N 条，不传历史对话，靠档案共享知识
+   */
+  async getRecentByUser(userId: string, limit = 5): Promise<DelegationArchiveEntry[]> {
+    const result = await query(
+      `SELECT * FROM delegation_archive
+       WHERE user_id=$1 AND status='completed'
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+    return result.rows.map(mapDelegationArchiveRow);
+  },
+
+  /**
+   * 查询单个档案
+   */
+  async getById(taskId: string): Promise<DelegationArchiveEntry | null> {
+    const result = await query(
+      `SELECT * FROM delegation_archive WHERE task_id=$1`,
+      [taskId]
+    );
+    if (result.rows.length === 0) return null;
+    return mapDelegationArchiveRow(result.rows[0]);
+  },
+
+  /**
+   * 按 session 列出所有档案
+   */
+  async listBySession(userId: string, sessionId: string): Promise<DelegationArchiveEntry[]> {
+    const result = await query(
+      `SELECT * FROM delegation_archive
+       WHERE user_id=$1 AND session_id=$2
+       ORDER BY created_at ASC`,
+      [userId, sessionId]
+    );
+    return result.rows.map(mapDelegationArchiveRow);
+  },
+};
+
+function mapDelegationArchiveRow(r: any): DelegationArchiveEntry {
+  return {
+    id: r.id,
+    task_id: r.task_id,
+    user_id: r.user_id,
+    session_id: r.session_id,
+    original_message: r.original_message,
+    delegation_prompt: r.delegation_prompt,
+    slow_result: r.slow_result,
+    related_task_ids: r.related_task_ids ?? [],
+    status: r.status,
+    processing_ms: r.processing_ms,
+    created_at: new Date(r.created_at).toISOString(),
+    completed_at: r.completed_at ? new Date(r.completed_at).toISOString() : null,
+  };
+}
+
 export const EvidenceRepo = {
   async create(input: EvidenceInput): Promise<Evidence> {
     const id = uuid();

@@ -219,3 +219,25 @@ CREATE TABLE IF NOT EXISTS evidence (
 );
 CREATE INDEX IF NOT EXISTS idx_evidence_task_id ON evidence(task_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_user_id ON evidence(user_id);
+
+-- O-005: Delegation Archive（慢模型任务档案）
+-- 快模型委托慢模型时，每个任务的完整记录存入档案
+-- 慢模型每个任务独立对话，共享知识靠档案，不靠上下文累积
+CREATE TABLE IF NOT EXISTS delegation_archive (
+  id                  VARCHAR(36) PRIMARY KEY,
+  task_id             VARCHAR(36) NOT NULL,
+  user_id             VARCHAR(36) NOT NULL,
+  session_id          VARCHAR(36) NOT NULL,
+  original_message    TEXT NOT NULL,
+  delegation_prompt   TEXT NOT NULL,  -- 委托时发给慢模型的 prompt（任务卡片）
+  slow_result         TEXT,
+  related_task_ids    TEXT[] DEFAULT '{}',  -- 相关历史任务 ID（从档案查询得到）
+  status              VARCHAR(20) DEFAULT 'pending',  -- pending | completed | failed
+  processing_ms       INTEGER,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at        TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_da_user_session ON delegation_archive(user_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_da_task ON delegation_archive(task_id);
+CREATE INDEX IF NOT EXISTS idx_da_user_time ON delegation_archive(user_id, created_at DESC);
