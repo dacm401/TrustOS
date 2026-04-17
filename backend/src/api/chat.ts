@@ -152,7 +152,11 @@ chatRouter.post("/chat", async (c) => {
         pendingTaskMessage,     // O-007: pending 任务信息
       });
 
-      // 记录 routing decision（沿用分析结果）
+      // 实际路由结果：有委托 → slow，否则 → fast
+      const orchSelectedRole: "fast" | "slow" = orchResult.delegation ? "slow" : "fast";
+      const orchSelectedModel = orchSelectedRole === "slow" ? config.slowModel : config.fastModel;
+
+      // 记录 routing decision（沿用分析结果，selected_role 反映实际委托情况）
       await logDecision({
         id: uuid(),
         user_id: userId,
@@ -161,9 +165,9 @@ chatRouter.post("/chat", async (c) => {
         input_features: features,
         routing: {
           ...routing,
-          selected_model: config.fastModel,
-          selected_role: "fast",
-          selection_reason: `orchestrator: ${routing.selection_reason}`,
+          selected_model: orchSelectedModel,
+          selected_role: orchSelectedRole,
+          selection_reason: `orchestrator(${orchSelectedRole}): ${routing.selection_reason}`,
         },
         context: {
           original_tokens: 0,
@@ -175,7 +179,7 @@ chatRouter.post("/chat", async (c) => {
           compression_details: [],
         },
         execution: {
-          model_used: config.fastModel,
+          model_used: orchSelectedModel,
           input_tokens: 0,
           output_tokens: 0,
           total_cost_usd: 0,
@@ -198,12 +202,12 @@ chatRouter.post("/chat", async (c) => {
           input_features: features,
           routing: {
             router_version: "orchestrator_v0.2",
-            scores: { fast: 1.0, slow: 0 },
+            scores: orchSelectedRole === "slow" ? { fast: 0.0, slow: 1.0 } : { fast: 1.0, slow: 0 },
             confidence: 1.0,
-            selected_model: config.fastModel,
-            selected_role: "fast",
-            selection_reason: "orchestrator direct reply",
-            fallback_model: config.slowModel,
+            selected_model: orchSelectedModel,
+            selected_role: orchSelectedRole,
+            selection_reason: orchSelectedRole === "slow" ? "orchestrator delegated to slow model" : "orchestrator direct reply",
+            fallback_model: orchSelectedRole === "slow" ? config.fastModel : config.slowModel,
           },
           context: {
             original_tokens: 0,
@@ -215,7 +219,7 @@ chatRouter.post("/chat", async (c) => {
             compression_details: [],
           },
           execution: {
-            model_used: config.fastModel,
+            model_used: orchSelectedModel,
             input_tokens: 0,
             output_tokens: 0,
             total_cost_usd: 0,

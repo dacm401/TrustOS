@@ -304,5 +304,53 @@
     "expected_mode": "fast",
     "expected_intent": "creative",
     "reason": "简单创意"
+  },
+  {
+    "input": "帮我分析一下这个词的意思",
+    "expected_mode": "fast",
+    "expected_intent": "simple_qa",
+    "reason": "边界case: 分析+简单定义，关键词误捕风险"
+  },
+  {
+    "input": "解释一下Python和JavaScript的区别",
+    "expected_mode": "slow",
+    "expected_intent": "reasoning",
+    "reason": "边界case: 解释X和Y区别，无是什么但多约束"
+  },
+  {
+    "input": "用表格对比A公司和B公司的市场份额",
+    "expected_mode": "slow",
+    "expected_intent": "reasoning",
+    "reason": "边界case: structured output关键词"
+  },
+  {
+    "input": "Python是什么？Java是什么？",
+    "expected_mode": "slow",
+    "expected_intent": "simple_qa",
+    "reason": "边界case: 多个问号触发多步判断"
+  },
+  {
+    "input": "帮我总结一下这篇短文的主要内容，大概100字就够了",
+    "expected_mode": "fast",
+    "expected_intent": "summarization",
+    "reason": "边界case: 有总结词但量词限制为简单任务"
+  },
+  {
+    "input": "告诉我Python和JavaScript是什么，它们的主要区别是什么",
+    "expected_mode": "slow",
+    "expected_intent": "reasoning",
+    "reason": "边界case: 告诉我+X和Y-多约束"
+  },
+  {
+    "input": "关于微服务架构，你了解多少？",
+    "expected_mode": "slow",
+    "expected_intent": "reasoning",
+    "reason": "边界case: 关于开头+问号触发多步"
+  },
+  {
+    "input": "把这个句子翻译成英文：他今天很高兴",
+    "expected_mode": "fast",
+    "expected_intent": "translation",
+    "reason": "边界case: 翻译+简单句子，应走fast"
   }
 ]
