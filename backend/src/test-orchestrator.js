@@ -7,10 +7,11 @@
 
 // ── 复制 shouldDelegate 逻辑（独立运行）────────────────────────────────────
 
-/** 需要委托慢模型的任务类型（扩大范围） */
+/** 需要委托慢模型的任务类型 */
 const NEED_DELEGATION_INTENTS = new Set([
   "reasoning", "math", "code", "research",
-  "search", "qa", "general",
+  "summarization", "creative",
+  "translation",
 ]);
 
 /** 高复杂度关键词 */
@@ -21,7 +22,7 @@ const HIGH_COMPLEXITY_KEYWORDS = [
   /写.*报告|写.*文章|写.*文档|写.*方案|起草|撰写/i,
   /写.*代码|实现.*算法|debug|调试|编程|写个函数|写个程序/i,
   /哪个好|哪个更好|有什么区别|差异是|优缺点|推荐.*不|建议.*不/i,
-  /告诉我.*是什么|什么是|解释一下|说明一下|介绍一下/i,
+  /告诉我.*是什么|解释一下.*是什么|介绍一下.*是什么/,
   /翻译成|译成|翻译为|翻译下|英译|中译/i,
   /总结|概括|提炼|摘要|归纳|要点|核心是/i,
   /首先.*然后|第一步|接下来|一步步|详细|步骤/i,
@@ -31,35 +32,53 @@ const HIGH_COMPLEXITY_KEYWORDS = [
 /** 结构性多步判断 */
 const MULTI_STEP_PATTERNS = [
   (msg) => msg.trim().length > 150,
-  (msg) => (msg.match(/\?/g) || []).length > 1,
-  (msg) => (msg.match(/[。.!?]/g) || []).length > 3,
-  (msg) => (msg.match(/，|,/g) || []).length > 5,
-  (msg) => /[。.!?]$/.test(msg.trim()) && msg.trim().length > 30,
+  (msg) => (msg.match(/[?？]/g) || []).length > 1,   // 中文问号也计入
+  (msg) => (msg.match(/[。.!?！？]/g) || []).length > 3,
+  (msg) => (msg.match(/[，,]/g) || []).length > 5,
+  (msg) => /[。.!?！？]$/.test(msg.trim()) && msg.trim().length > 30,
   (msg) => /^关于|关于.*，|对于|关于.*和/.test(msg.trim()),
   (msg) => /①|②|③|\d+个|第一.*第二.*第三|首先.*其次.*最后/i.test(msg),
 ];
 
 function shouldDelegate(intent, complexityScore, message) {
+  const msgLen = message.trim().length;
+
+  if (intent === "unknown" && msgLen > 30) {
+    return { need_delegation: true, reason: "意图未知且消息较长" };
+  }
   for (const pattern of MULTI_STEP_PATTERNS) {
     if (pattern(message)) {
       return { need_delegation: true, reason: "结构性多步任务" };
     }
   }
-  for (const kw of HIGH_COMPLEXITY_KEYWORDS) {
-    if (kw.test(message)) {
-      return { need_delegation: true, reason: "高复杂度关键词" };
+  // 极短消息（< 25字符）豁免关键词触发
+  const skipKeywordCheck = msgLen < 25;
+  if (!skipKeywordCheck) {
+    for (const kw of HIGH_COMPLEXITY_KEYWORDS) {
+      if (kw.test(message)) {
+        return { need_delegation: true, reason: "高复杂度关键词" };
+      }
     }
   }
   if (NEED_DELEGATION_INTENTS.has(intent)) {
-    if (intent === "math" && complexityScore < 20 && message.length < 30) {
-      return { need_delegation: false, reason: "简单数学" };
+    if (intent === "math" && msgLen < 30 &&
+        !/证明|求解|微分|积分|矩阵|特征值|特征向量|优化|黎曼|费马|拉格朗日|行列式|泰勒|傅里叶|不等式|极限|导数|偏导|方程组/i.test(message)) {
+      return { need_delegation: false, reason: "简单数学短句" };
     }
-    if ((intent === "qa" || intent === "search" || intent === "general") && message.length < 25) {
-      return { need_delegation: false, reason: "消息极短" };
+    if (intent === "translation" && msgLen < 50 &&
+        !/保留|风格|学术|专业|术语|格式|语气|准确性|按照/i.test(message)) {
+      return { need_delegation: false, reason: "简单翻译短句" };
+    }
+    if (intent === "summarization" && msgLen < 30) {
+      return { need_delegation: false, reason: "简单总结短指令" };
+    }
+    if (intent === "creative" && msgLen < 30 &&
+        !/完整|全面|系列|详细|人物弧光|情节转折|弧光|结构|章节/i.test(message)) {
+      return { need_delegation: false, reason: "简单创作短句" };
     }
     return { need_delegation: true, reason: `意图"${intent}"` };
   }
-  if (complexityScore >= 40) {
+  if (complexityScore >= 35) {
     return { need_delegation: true, reason: `复杂度(${complexityScore})` };
   }
   return { need_delegation: false, reason: "简单任务" };
@@ -74,7 +93,8 @@ const testCases = [
   { name: "极短搜索", message: "搜一下", intent: "search", complexityScore: 10, expected: false },
   { name: "简单问好", message: "你好啊，今天怎么样", intent: "chat", complexityScore: 20, expected: false },
   { name: "短 math", message: "10+20等于多少", intent: "math", complexityScore: 15, expected: false },
-  { name: "短 qa", message: "什么是量子计算", intent: "qa", complexityScore: 25, expected: false },
+  // 注意：intent 应为 simple_qa（旧版 "qa" 已废弃）
+  { name: "短 simple_qa", message: "什么是量子计算", intent: "simple_qa", complexityScore: 25, expected: false },
 
   // 分析研究类（应委托）
   { name: "分析财务数据", message: "帮我分析一下 A 公司和 B 公司的财务数据", intent: "research", complexityScore: 60, expected: true },
