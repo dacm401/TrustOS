@@ -1,5 +1,5 @@
 /**
- * Sprint 26: Benchmark Runner v3 — 完整评测体系
+ * Sprint 31: Benchmark Runner v4 — LLM-Native Routing 评测
  *
  * 评测维度：
  *   1. 路由准确率 (Routing Accuracy) — 路由选对了吗？
@@ -11,6 +11,7 @@
  *   npx tsx evaluation/runner.ts --suite quality
  *   npx tsx evaluation/runner.ts --suite all --report
  *   npx tsx evaluation/runner.ts --suite quality --judge  (启用 LLM Judge)
+ *   npx tsx evaluation/runner.ts --suite routing --json-out  (输出 JSON 供 CI 使用)
  */
 
 import * as fs from "fs";
@@ -66,6 +67,9 @@ interface BenchmarkSummary {
     intent_accuracy: string;
     by_intent: Record<string, { total: number; correct: number; rate: string }>;
     failures: RoutingResult[];
+    ci_passed?: boolean;
+    ci_threshold_mode?: string;
+    ci_threshold_intent?: string;
   };
   quality?: {
     total: number;
@@ -77,6 +81,12 @@ interface BenchmarkSummary {
   commit_hash?: string;
 }
 
+// CI 回归门阈值（可被环境变量覆盖）
+const CI_THRESHOLDS = {
+  routing_mode_accuracy: parseFloat(process.env.CI_THRESHOLD_MODE ?? "50"),
+  routing_intent_accuracy: parseFloat(process.env.CI_THRESHOLD_INTENT ?? "70"),
+};
+
 // ── CLI argument parsing ────────────────────────────────────────────────────────
 
 interface CliArgs {
@@ -85,6 +95,7 @@ interface CliArgs {
   suite: "routing" | "quality" | "all";
   judge: boolean;
   report: boolean;
+  jsonOut: boolean;  // CI 模式：输出 JSON 结果文件
 }
 
 function parseArgs(): CliArgs {
@@ -94,6 +105,7 @@ function parseArgs(): CliArgs {
   let suite: CliArgs["suite"] = "all";
   let judge = false;
   let report = false;
+  let jsonOut = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -110,10 +122,12 @@ function parseArgs(): CliArgs {
       judge = true;
     } else if (arg === "--report") {
       report = true;
+    } else if (arg === "--json-out") {
+      jsonOut = true;
     }
   }
 
-  return { baseUrl, userId, suite, judge, report };
+  return { baseUrl, userId, suite, judge, report, jsonOut };
 }
 
 // ── Utils ──────────────────────────────────────────────────────────────────────
@@ -148,33 +162,34 @@ async function runRoutingBenchmark(
   const cases: RoutingTestCase[] = JSON.parse(fs.readFileSync(tasksPath, "utf-8"));
   const results: RoutingResult[] = [];
 
-  console.log(`\n=== Routing Benchmark ===`);
-  console.log(`Running ${cases.length} test cases...\n`);
+  console.log(`\n=== Routing Benchmark (LLM-Native v4) ===`);
+  console.log(`Running ${cases.length} test cases via /api/chat/eval/routing...\n`);
 
   for (let i = 0; i < cases.length; i++) {
     const tc = cases[i];
     const start = Date.now();
 
     try {
-      const res = await fetch(`${baseUrl}/api/chat`, {
+      // 使用 LLM-Native 路由评估端点
+      const res = await fetch(`${baseUrl}/api/chat/eval/routing`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-User-Id": userId,
         },
         body: JSON.stringify({
-          user_id: userId,
-          session_id: `bench-routing-${i}`,
           message: tc.input,
-          history: [],
-          stream: false,
+          language: "zh",
         }),
       });
 
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
       const data = await res.json() as any;
-      const decision = data?.decision;
-      const actualMode = decision?.routing?.selected_role ?? "unknown";
-      const actualIntent = decision?.input_features?.intent ?? "unknown";
+      const actualMode = data?.selected_role ?? "unknown";
+      const actualIntent = data?.routing_intent ?? "unknown";
 
       const modeCorrect = actualMode === tc.expected_mode;
       const intentCorrect = actualIntent === tc.expected_intent;
@@ -533,10 +548,11 @@ async function main() {
   const resultsDir = path.join(__dirname, "results");
   ensureDir(resultsDir);
 
-  console.log("🏃 SmartRouter Pro — Benchmark Runner v3");
+  console.log("🏃 SmartRouter Pro — Benchmark Runner v4");
   console.log(`   API Base: ${args.baseUrl}`);
   console.log(`   User ID:  ${args.userId}`);
   console.log(`   Suite:    ${args.suite}`);
+  console.log(`   CI Mode:  ${args.jsonOut ? "ON" : "OFF"}`);
 
   const summary: BenchmarkSummary = {
     timestamp: new Date().toISOString(),
@@ -554,6 +570,35 @@ async function main() {
     // Save results
     const timestamp = new Date().toISOString().slice(0, 10);
     writeJson(path.join(resultsDir, `routing-${timestamp}.json`), results);
+
+    // CI Gate: routing mode + intent accuracy
+    const modeAcc = parseFloat(routingSummary.mode_accuracy);
+    const intentAcc = parseFloat(routingSummary.intent_accuracy);
+    const ciPassed = modeAcc >= CI_THRESHOLDS.routing_mode_accuracy
+      && intentAcc >= CI_THRESHOLDS.routing_intent_accuracy;
+    summary.routing.ci_passed = ciPassed;
+    summary.routing.ci_threshold_mode = `${CI_THRESHOLDS.routing_mode_accuracy}%`;
+    summary.routing.ci_threshold_intent = `${CI_THRESHOLDS.routing_intent_accuracy}%`;
+
+    if (args.jsonOut) {
+      const ciResult = {
+        ci_passed: ciPassed,
+        routing_mode_accuracy: modeAcc,
+        routing_intent_accuracy: intentAcc,
+        threshold_mode: CI_THRESHOLDS.routing_mode_accuracy,
+        threshold_intent: CI_THRESHOLDS.routing_intent_accuracy,
+        commit_hash: summary.commit_hash,
+        timestamp: summary.timestamp,
+      };
+      writeJson(path.join(resultsDir, `ci-gate-routing-${timestamp}.json`), ciResult);
+      console.log(`\n${ciPassed ? "✅ CI GATE PASSED" : "❌ CI GATE FAILED"}`);
+      console.log(`   mode_accuracy:    ${modeAcc.toFixed(1)}% (threshold: ${CI_THRESHOLDS.routing_mode_accuracy}%)`);
+      console.log(`   intent_accuracy:  ${intentAcc.toFixed(1)}% (threshold: ${CI_THRESHOLDS.routing_intent_accuracy}%)`);
+
+      if (!ciPassed) {
+        process.exit(1);
+      }
+    }
   }
 
   // Run quality benchmark

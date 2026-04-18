@@ -31,7 +31,7 @@ import { detectWeatherQuery, fetchRealTimeWeather, formatWeatherPrompt } from ".
 // C3a: unified identity
 import { getContextUserId } from "../middleware/identity.js";
 // O-001: Orchestrator — 快模型先回复 + 委托慢模型后台执行
-import { orchestrator, getDelegationResult, pollArchiveAndYield } from "../services/orchestrator.js";
+import { orchestrator, getDelegationResult, pollArchiveAndYield, evaluateRouting } from "../services/orchestrator.js";
 // O-007: 安抚功能 — 检测 pending 任务
 import { DelegationArchiveRepo } from "../db/repositories.js";
 
@@ -422,7 +422,7 @@ chatRouter.post("/chat", async (c) => {
       return stream(c, async (s) => {
         // Step 1: 立即推送 fast_reply（安抚消息或 Fast 直接回复）
         if (orchResult.fast_reply) {
-          await s.write(`data: ${JSON.stringify({ type: "fast_reply", content: orchResult.fast_reply })}\n\n`);
+          await s.write(`data: ${JSON.stringify({ type: "fast_reply", stream: orchResult.fast_reply })}\n\n`);
         }
 
         // Step 2: 如果有委托，启动轮询 loop 推送结果
@@ -497,11 +497,11 @@ chatRouter.post("/chat", async (c) => {
           try {
             for await (const chunk of callModelStream(orchSelectedModel, contextResult.final_messages, reqApiKey)) {
               fullContent += chunk;
-              await s.write(`data: ${JSON.stringify({ type: "chunk", content: chunk })}\n\n`);
+              await s.write(`data: ${JSON.stringify({ type: "chunk", stream: chunk })}\n\n`);
             }
           } catch (streamErr: any) {
             console.error("[stream] Model stream error:", streamErr.message);
-            await s.write(`data: ${JSON.stringify({ type: "error", message: streamErr.message })}\n\n`);
+            await s.write(`data: ${JSON.stringify({ type: "error", stream: streamErr.message })}\n\n`);
             return;
           }
 
@@ -873,6 +873,39 @@ chatRouter.post("/feedback", async (c) => {
   }
 
   return c.json({ success: true });
+});
+
+// ── Routing Evaluation（供 Benchmark 使用）──────────────────────────────────────
+
+interface EvalRequest {
+  message: string;
+  language?: "zh" | "en";
+}
+
+chatRouter.post("/eval/routing", async (c) => {
+  let body: EvalRequest;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  if (!body.message?.trim()) {
+    return c.json({ error: "message is required" }, 400);
+  }
+
+  const lang = body.language ?? "zh";
+  const startTime = Date.now();
+  const result = await evaluateRouting(body.message, lang);
+
+  return c.json({
+    routing_intent: result.routing_intent,
+    selected_role: result.selected_role,
+    tool_used: result.tool_used ?? null,
+    fast_reply: result.fast_reply,
+    confidence: result.confidence,
+    latency_ms: Date.now() - startTime,
+  });
 });
 
 export { chatRouter };

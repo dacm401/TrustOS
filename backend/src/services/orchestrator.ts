@@ -48,6 +48,7 @@ export interface OrchestratorResult {
     delegated: boolean;
     tool_used?: string;            // 如 "web_search"
     is_reassuring?: boolean;       // O-007: 是否是安抚回复
+    routing_intent?: string;       // 路由意图（供 benchmark 使用）
   };
 }
 
@@ -611,4 +612,128 @@ export async function getDelegationResult(taskId: string): Promise<DelegationRes
     console.error("[orchestrator] getDelegationResult failed:", e.message);
     return null;
   }
+}
+
+// ── Routing Evaluation（供 Benchmark 使用）──────────────────────────────────────
+
+export interface RoutingEvaluation {
+  routing_intent: string;    // 路由意图: chat/knowledge/research/analysis/code/creative
+  selected_role: "fast" | "slow";
+  tool_used?: string;       // 如 "web_search"
+  fast_reply: string;       // Fast 模型的直接回复
+  confidence: number;       // 0-1 置信度
+}
+
+const EVAL_SYSTEM_PROMPT_ZH = `你是一个严格的路由分类器。
+给定用户输入，你需要输出一个 JSON 对象（不含 markdown）：
+
+{
+  "routing_intent": "chat|knowledge|research|analysis|code|creative|other",
+  "selected_role": "fast|slow",
+  "tool_used": "web_search|null",
+  "fast_reply": "直接回复内容（1-2句话）",
+  "confidence": 0.0-1.0
+}
+
+分类规则：
+- routing_intent:
+  * chat: 闲聊、问候、感谢、简单问答
+  * knowledge: 需要查实时信息（天气/新闻/股价/比赛结果）
+  * research: 需要深度分析、多角度对比、调研报告
+  * analysis: 数据分析、因果推理、多步骤计算
+  * code: 代码生成、bug修复、技术问题
+  * creative: 写作、创意、内容生成
+  * other: 不属于以上类别
+- selected_role: fast=快模型直接回答, slow=需要慢模型深度处理
+- tool_used: 如需查实时数据填 "web_search"，否则 null
+- fast_reply: 如果 selected_role=fast，给出简短回复；如果是 slow，给出确认语如"让我深入分析一下这个问题"
+- confidence: 你对这个分类的置信度
+
+只输出 JSON，不要解释。`;
+
+const EVAL_SYSTEM_PROMPT_EN = `You are a strict routing classifier.
+Given the user input, output a JSON object (no markdown):
+
+{
+  "routing_intent": "chat|knowledge|research|analysis|code|creative|other",
+  "selected_role": "fast|slow",
+  "tool_used": "web_search|null",
+  "fast_reply": "direct reply (1-2 sentences)",
+  "confidence": 0.0-1.0
+}
+
+Classification rules:
+- routing_intent:
+  * chat: casual talk, greetings, thanks, simple Q&A
+  * knowledge: needs real-time info (weather/news/stocks/results)
+  * research: deep analysis, multi-perspective comparison, investigation
+  * analysis: data analysis, causal reasoning, multi-step computation
+  * code: code generation, bug fixes, technical questions
+  * creative: writing, creative content
+  * other: doesn't fit above
+- selected_role: fast=direct answer, slow=deep processing needed
+- tool_used: "web_search" if real-time data needed, else null
+- fast_reply: short reply if fast, confirmation if slow
+- confidence: 0.0-1.0
+
+Output only JSON, no explanation.`;
+
+/**
+ * 路由评估函数（供 Benchmark runner 调用）
+ * 独立于 orchestrator 主流程，专注返回结构化路由决策
+ */
+export async function evaluateRouting(
+  message: string,
+  language: "zh" | "en" = "zh",
+  reqApiKey?: string
+): Promise<RoutingEvaluation> {
+  const systemPrompt = language === "zh" ? EVAL_SYSTEM_PROMPT_ZH : EVAL_SYSTEM_PROMPT_EN;
+  const messages: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: message },
+  ];
+
+  let raw = "";
+  try {
+    if (reqApiKey) {
+      const resp = await callOpenAIWithOptions(config.fastModel, messages, reqApiKey, config.openaiBaseUrl || undefined);
+      raw = resp.content;
+    } else {
+      const resp = await callModelFull(config.fastModel, messages);
+      raw = resp.content;
+    }
+  } catch (e: any) {
+    console.error("[evaluateRouting] LLM call failed:", e.message);
+    return {
+      routing_intent: "other",
+      selected_role: "fast",
+      fast_reply: language === "zh" ? "（路由评估失败，使用默认）" : "(Routing eval failed, using default)",
+      confidence: 0,
+    };
+  }
+
+  // 解析 JSON
+  try {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        routing_intent: parsed.routing_intent ?? "other",
+        selected_role: parsed.selected_role === "slow" ? "slow" : "fast",
+        tool_used: parsed.tool_used === "web_search" ? "web_search" : undefined,
+        fast_reply: parsed.fast_reply ?? "",
+        confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
+      };
+    }
+  } catch {
+    // fall through to default
+  }
+
+  // 解析失败，使用默认值
+  return {
+    routing_intent: "other",
+    selected_role: "fast",
+    fast_reply: raw.slice(0, 200),
+    confidence: 0,
+  };
 }
