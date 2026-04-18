@@ -12,6 +12,7 @@ import { manageContext } from "../services/context-manager.js";
 import { callModelFull, callModelStream } from "../models/model-gateway.js";
 import { callOpenAIWithOptions } from "../models/providers/openai.js";
 import { checkQuality } from "../router/quality-gate.js";
+import { analyzeAndRoute, getDefaultRouting } from "../router/router.js";
 import { logDecision } from "../logging/decision-logger.js";
 import { learnFromInteraction } from "../features/learning-engine.js";
 import { estimateCost } from "../models/token-counter.js";
@@ -108,9 +109,11 @@ chatRouter.post("/chat", async (c) => {
   const effectiveSlowModel = body.slow_model || config.slowModel;
 
   try {
-    const { features, routing } = await analyzeAndRoute(
+    const { features } = await analyzeAndRoute(
       { ...body, user_id: userId, session_id: sessionId }
     );
+    // LLM-native routing: routing done by orchestrator, analyzeAndRoute returns empty routing
+    const routing: import("../types/index.js").RoutingDecision = getDefaultRouting();
 
     // ── O-001/O-006: Orchestrator 分支 ─────────────────────────────────────────
     // 所有非 execute + 非 streaming 的请求都走 orchestrator
@@ -200,7 +203,7 @@ chatRouter.post("/chat", async (c) => {
           timestamp: startTime,
           input_features: features,
           routing: {
-            router_version: "orchestrator_v0.2",
+            router_version: "orchestrator_v0.4",
             scores: orchSelectedRole === "slow" ? { fast: 0.0, slow: 1.0 } : { fast: 1.0, slow: 0 },
             confidence: 1.0,
             selected_model: orchSelectedModel,
@@ -423,6 +426,11 @@ chatRouter.post("/chat", async (c) => {
         // Step 1: 立即推送 fast_reply（安抚消息或 Fast 直接回复）
         if (orchResult.fast_reply) {
           await s.write(`data: ${JSON.stringify({ type: "fast_reply", stream: orchResult.fast_reply })}\n\n`);
+        }
+
+        // Phase 1.5: Clarifying 流程 → 推送澄清问题给前端
+        if (orchResult.clarifying) {
+          await s.write(`data: ${JSON.stringify({ type: "clarifying", stream: orchResult.clarifying.question_text, options: orchResult.clarifying.options, question_id: orchResult.clarifying.question_id })}\n\n`);
         }
 
         // Step 2: 如果有委托，启动轮询 loop 推送结果

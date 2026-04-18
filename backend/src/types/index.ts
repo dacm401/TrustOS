@@ -10,6 +10,7 @@ export type IntentType =
   | "summarization"
   | "chat"
   | "research"
+  | "general"   // LLM-native routing: Fast model self-judges, no hardcoded intent
   | "unknown";
 
 export type CompressionLevel = "L0" | "L1" | "L2" | "L3";

@@ -33,7 +33,7 @@ import type {
   MemoryCategoryPolicy,
 } from "../types/index.js";
 import { getEmbedding } from "./embedding.js";
-import { MemoryEntryRepo } from "../db/repositories.js";
+import { MemoryEntryRepo, EvidenceRepo } from "../db/repositories.js";
 
 // ── Scoring helpers ──────────────────────────────────────────────────────────
 
@@ -204,6 +204,118 @@ export function runRetrievalPipeline(
   );
 
   return result;
+}
+
+// ── Sprint 32: Intent-aware category boost ─────────────────────────────────
+
+/**
+ * Sprint 32 P2: 根据用户消息的语义意图，提升对应类别的相关性权重。
+ *
+ * 示例：
+ * - 用户问"我偏好什么" → preference 类别权重 ×1.5
+ * - 用户问事实性问题 → fact 类别权重 ×1.5
+ * - 用户请求指令类 → instruction 类别权重 ×1.5
+ */
+export function getIntentAwareWeights(
+  context: MemoryRetrievalContext
+): Record<string, number> {
+  const msg = context.userMessage.toLowerCase();
+  const boostMap: Array<[string[], string]> = [
+    [["偏好", "喜欢", "倾向", "不要", "prefer", "like", "dislike"], "preference"],
+    [["我的", "事实", "记录", "之前", "历史", "fact", "history", "remember"], "fact"],
+    [["指令", "要求", "怎么做", "应该", "按照", "instruction", "should", "must", "rule"], "instruction"],
+    [["当前", "上下文", "情况", "现在", "context", "current"], "context"],
+  ];
+
+  const weights: Record<string, number> = {};
+  for (const [keywords, category] of boostMap) {
+    if (keywords.some((kw) => msg.includes(kw))) {
+      weights[category] = 1.5;
+    }
+  }
+  return weights;
+}
+
+/**
+ * Sprint 32 P2: 将 intent-aware weights 应用到评分结果。
+ * 在 runRetrievalPipeline 之后调用，对匹配意图的类别结果加分。
+ */
+export function applyIntentBoost(
+  results: MemoryRetrievalResult[],
+  intentWeights: Record<string, number>
+): MemoryRetrievalResult[] {
+  if (Object.keys(intentWeights).length === 0) return results;
+
+  return results.map((r) => {
+    const boost = intentWeights[r.entry.category];
+    if (boost !== undefined) {
+      return {
+        ...r,
+        score: r.score * boost,
+        reason: `${r.reason} [intent_boost ×${boost}]`,
+      };
+    }
+    return r;
+  }).sort((a, b) => b.score - a.score);
+}
+
+// ── Sprint 32: Evidence 跨任务关联 ──────────────────────────────────────────
+
+export interface EvidenceRetrievalOptions {
+  userId: string;
+  /** 任务相关的关键词（从 SlowModelCommand.query_keys 或 userMessage 提取） */
+  queryKeys?: string[];
+  /** 返回数量上限 */
+  maxResults?: number;
+}
+
+/**
+ * Sprint 32 P2: 检索与当前任务相关的 Evidence，供 Task Brief 的 relevant_facts 使用。
+ *
+ * Evidence 关联策略：
+ * 1. 按 relevance_score 降序
+ * 2. 过滤 relevance_score > 0.3 的条目
+ * 3. 对 queryKeys 匹配的内容加分
+ * 4. 返回格式化后的字符串数组
+ */
+export async function retrieveEvidenceForContext(
+  options: EvidenceRetrievalOptions
+): Promise<string[]> {
+  const { userId, queryKeys = [], maxResults = 5 } = options;
+
+  try {
+    const evidence = await EvidenceRepo.getEvidenceForUser(userId, maxResults * 2);
+    if (!evidence || evidence.length === 0) return [];
+
+    // 过滤 relevance_score > 0.3
+    const relevant = evidence.filter((e: { relevance_score: number | null }) => {
+      if (typeof e.relevance_score === "number" && e.relevance_score > 0.3) return true;
+      return false;
+    });
+
+    // 如果有 queryKeys，对匹配的证据额外加权
+    let scored = relevant.map((e: { relevance_score: number | null; content: string; source_metadata: Record<string, unknown> | null; source: string }) => {
+      let score = typeof e.relevance_score === "number" ? e.relevance_score : 0;
+      if (queryKeys.length > 0) {
+        const contentLower = e.content.toLowerCase();
+        const matchedKeys = queryKeys.filter((kw: string) => contentLower.includes(kw.toLowerCase()));
+        score += matchedKeys.length * 0.1;
+      }
+      return { evidence: e, score };
+    });
+
+    // 排序取 top N
+    scored.sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+    const topEvidence = scored.slice(0, maxResults);
+
+    return topEvidence.map(({ evidence: e }: { evidence: { content: string; source_metadata: Record<string, unknown> | null; source: string } }) => {
+      const src = e.source_metadata ? JSON.stringify(e.source_metadata).substring(0, 60) : e.source;
+      return `[来源: ${src}] ${e.content.substring(0, 200)}`;
+    });
+  } catch {
+    // evidence 检索失败不阻塞主流程
+    return [];
+  }
 }
 
 // ── Sprint 25: Hybrid Retrieval Entry Point ─────────────────────────────────

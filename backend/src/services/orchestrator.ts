@@ -44,20 +44,36 @@ export interface OrchestratorResult {
     task_id: string;
     status: "triggered";
   };
+  // Phase 1.5: Clarifying 流程
+  clarifying?: ClarifyQuestion;
   routing_info: {
     delegated: boolean;
     tool_used?: string;            // 如 "web_search"
     is_reassuring?: boolean;       // O-007: 是否是安抚回复
     routing_intent?: string;       // 路由意图（供 benchmark 使用）
+    clarify_requested?: boolean;   // Phase 1.5: Fast 请求澄清
   };
 }
 
 /** Slow 模型升级命令（从 Fast 模型输出中解析） */
 export interface SlowModelCommand {
-  action: "research" | "analysis" | "code" | "creative";
+  action: "research" | "analysis" | "code" | "creative" | "comparison";
   task: string;
   constraints: string[];
   query_keys: string[];
+  // Phase 1.5: 任务卡片扩展字段
+  relevant_facts?: string[];
+  user_preference_summary?: string;
+  priority?: "high" | "normal" | "low";
+  max_execution_time_ms?: number;
+}
+
+/** Phase 1.5: 澄清问题（Fast → 前端） */
+export interface ClarifyQuestion {
+  question_id: string;
+  question_text: string;
+  options?: string[];    // 多选时提供选项
+  context: string;       // 触发澄清的上下文
 }
 
 // ── O-007 安抚 prompt ─────────────────────────────────────────────────────────
@@ -92,10 +108,13 @@ function buildFastModelSystemPrompt(lang: "zh" | "en"): string {
 2. 问题是否需要实时数据（天气/新闻/股价/比分/任何你不确定的事）？
    → 调用 web_search 工具获取数据，再回答
 
-3. 问题是否超出你的知识截止日期，或需要多步复杂推理？
-   → 用【SLOW_MODEL_REQUEST】格式输出（见下方），我们会把请求升级到更强模型处理
+3. 用户的请求是否模糊、缺少关键信息（如目标、范围、格式）？
+   → 用【CLARIFYING_REQUEST】格式输出（见下方），向用户提问确认
 
-4. 以上都不是？
+4. 问题是否超出你的知识截止日期，或需要多步复杂推理？
+   → 用【SLOW_MODEL_REQUEST】格式输出（见下方），请求升级到更强模型
+
+5. 以上都不是？
    → 用你的内建知识直接回答，简短，自然
 
 【web_search 使用时机】
@@ -106,12 +125,20 @@ function buildFastModelSystemPrompt(lang: "zh" | "en"): string {
 - 任何你不确定、需要确认的实时信息
 - 你的知识截止日期之后发生的事
 
-【慢模型请求格式】
-当需要升级慢模型时，先用 1-2 句自然语言告知用户（如"让我想想"、"这个问题有点深"），
-然后输出结构化 JSON（放在一行内，不要包裹代码块）：
+【澄清请求格式】（第3条触发）
+输出1-2句自然语言问题，然后输出单行JSON（不包裹代码块）：
+
+【CLARIFYING_REQUEST】
+{"question_text": "你想要哪种格式的报告？", "options": ["表格", "Markdown", "JSON"]}
+【/CLARIFYING_REQUEST】
+
+然后停止输出，等待用户回复。
+
+【慢模型请求格式】（第4条触发）
+先用1-2句自然语言告知用户（如"让我想想"、"这个问题有点深"），然后输出单行JSON（不包裹代码块）：
 
 【SLOW_MODEL_REQUEST】
-{"action": "research | analysis | code | creative", "task": "一句话任务描述", "constraints": ["约束1", "约束2"], "query_keys": ["关键词1", "关键词2"]}
+{"action": "research|analysis|code|creative|comparison", "task": "核心任务描述（<100字）", "constraints": ["约束1", "约束2"], "query_keys": ["关键词1"], "priority": "normal", "relevant_facts": [], "user_preference_summary": ""}
 【/SLOW_MODEL_REQUEST】
 
 然后停止输出，等待处理。`;
@@ -127,24 +154,29 @@ After receiving the user's request, judge in order:
 2. Does the question need real-time data (weather/news/stocks/scores/anything you're unsure about)?
    → Call web_search tool to get data, then answer
 
-3. Does the question exceed your knowledge cutoff, or require multi-step complex reasoning?
-   → Output in 【SLOW_MODEL_REQUEST】 format (see below), we will escalate to a stronger model
+3. Is the request ambiguous or missing key information (goal/scope/format)?
+   → Output in 【CLARIFYING_REQUEST】 format (see below), ask the user to clarify
 
-4. None of the above?
+4. Does the question exceed your knowledge cutoff, or require multi-step complex reasoning?
+   → Output in 【SLOW_MODEL_REQUEST】 format (see below), request escalation
+
+5. None of the above?
    → Answer directly with your built-in knowledge, concise and natural.
 
-【web_search When to Use】
-- Weather queries
-- Real-time stock prices, indices, fund NAVs
-- Latest news, announcements
-- Scores, match results
-- Anything you're unsure about or beyond your knowledge cutoff
+【Clarifying Request Format】(Rule 3)
+Say 1-2 natural sentences asking for clarification, then output single-line JSON (no code block):
 
-【Slow Model Request Format】
-When needing to escalate, first say 1-2 natural sentences to the user (e.g. "Let me think about this"), then output a single-line JSON (no code block):
+【CLARIFYING_REQUEST】
+{"question_text": "What format do you want the report in?", "options": ["table", "Markdown", "JSON"]}
+【/CLARIFYING_REQUEST】
+
+Then stop and wait for user response.
+
+【Slow Model Request Format】(Rule 4)
+First say 1-2 natural sentences (e.g. "Let me think about this"), then output single-line JSON (no code block):
 
 【SLOW_MODEL_REQUEST】
-{"action": "research | analysis | code | creative", "task": "one-line task description", "constraints": ["constraint1", "constraint2"], "query_keys": ["keyword1", "keyword2"]}
+{"action": "research|analysis|code|creative|comparison", "task": "Core task description (<100 chars)", "constraints": ["constraint1"], "query_keys": ["keyword1"], "priority": "normal", "relevant_facts": [], "user_preference_summary": ""}
 【/SLOW_MODEL_REQUEST】
 
 Then stop outputting and wait for processing.`;
@@ -184,6 +216,41 @@ function parseSlowModelCommand(text: string): SlowModelCommand | null {
       task: parsed.task,
       constraints: Array.isArray(parsed.constraints) ? parsed.constraints : [],
       query_keys: Array.isArray(parsed.query_keys) ? parsed.query_keys : [],
+      // Phase 1.5 扩展字段
+      relevant_facts: Array.isArray(parsed.relevant_facts) ? parsed.relevant_facts : undefined,
+      user_preference_summary: typeof parsed.user_preference_summary === "string" ? parsed.user_preference_summary : undefined,
+      priority: (parsed.priority === "high" || parsed.priority === "normal" || parsed.priority === "low") ? parsed.priority : undefined,
+      max_execution_time_ms: typeof parsed.max_execution_time_ms === "number" ? parsed.max_execution_time_ms : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Phase 1.5: 从 Fast 模型输出中解析【CLARIFYING_REQUEST】 */
+function parseClarifyQuestion(text: string): ClarifyQuestion | null {
+  let jsonStr: string | null = null;
+
+  // 格式1：包含在【CLARIFYING_REQUEST】标记中
+  const tagMatch = text.match(/【CLARIFYING_REQUEST】\s*(\{[\s\S]*?\})\s*【\/CLARIFYING_REQUEST】/);
+  if (tagMatch) { jsonStr = tagMatch[1]; }
+
+  // 格式2：单行JSON（兼容无标记格式）
+  if (!jsonStr) {
+    const jsonLineMatch = text.match(/(\{"question_text"[\s\S]*?\})/);
+    if (jsonLineMatch) { jsonStr = jsonLineMatch[1]; }
+  }
+
+  if (!jsonStr) return null;
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (!parsed.question_text) return null;
+    return {
+      question_id: uuid(),
+      question_text: parsed.question_text,
+      options: Array.isArray(parsed.options) ? parsed.options : undefined,
+      context: parsed.context || "",
     };
   } catch {
     return null;
@@ -194,9 +261,9 @@ function parseSlowModelCommand(text: string): SlowModelCommand | null {
 
 async function callFastModelWithTools(
   messages: ChatMessage[],
-  reqApiKey?: string,
-  lang: "zh" | "en"
-): Promise<{ reply: string; toolUsed?: string; command?: SlowModelCommand }> {
+  lang: "zh" | "en",
+  reqApiKey?: string
+): Promise<{ reply: string; toolUsed?: string; command?: SlowModelCommand; clarifyQuestion?: ClarifyQuestion }> {
   const MAX_TOOL_ROUNDS = 5;
   let currentMessages = [...messages];
 
@@ -245,8 +312,19 @@ async function callFastModelWithTools(
       continue;
     }
 
-    // 情况 2：无 tool_calls → 检查慢模型升级请求
+    // 情况 2：无 tool_calls → 检查澄清请求（Phase 1.5）
     if (content) {
+      const clarifyQ = parseClarifyQuestion(content);
+      if (clarifyQ) {
+        const prefix = content
+          .replace(/【CLARIFYING_REQUEST】[\s\S]*?【\/CLARIFYING_REQUEST】/, "")
+          .trim();
+        return {
+          reply: prefix || (lang === "zh" ? "我需要确认一下..." : "Let me clarify..."),
+          clarifyQuestion: clarifyQ,
+        };
+      }
+      // 情况 3：检查慢模型升级请求
       const command = parseSlowModelCommand(content);
       if (command) {
         const prefix = content
@@ -257,7 +335,7 @@ async function callFastModelWithTools(
           command,
         };
       }
-      // 情况 3：普通回复
+      // 情况 4：普通回复
       return { reply: content };
     }
 
@@ -338,7 +416,16 @@ export async function orchestrator(input: OrchestratorInput): Promise<Orchestrat
   ];
 
   // Step 3: 调用 Fast 模型（带工具）
-  const { reply, toolUsed, command } = await callFastModelWithTools(messages, reqApiKey, language);
+  const { reply, toolUsed, command, clarifyQuestion } = await callFastModelWithTools(messages, language, reqApiKey);
+
+  // Phase 1.5: Fast 请求澄清 → 直接返回
+  if (clarifyQuestion) {
+    return {
+      fast_reply: reply,
+      clarifying: clarifyQuestion,
+      routing_info: { delegated: false, tool_used: toolUsed, clarify_requested: true },
+    };
+  }
 
   // Step 4: Fast 请求慢模型升级 → 创建 TaskArchive → 后台执行
   if (command) {
@@ -411,8 +498,25 @@ async function triggerSlowModelBackground(input: SlowModelBackgroundInput): Prom
       archiveContext = `\n【相关历史背景】\n${lines.join("\n\n")}`;
     }
 
-    // Step 3: 从 command 构造慢模型任务卡（结构化，不依赖 Fast 二次调用）
-    const taskCard = `【任务类型】${command.action}\n【用户请求】${command.task}\n【输出约束】\n${command.constraints.map((c) => `- ${c}`).join("\n")}\n${archiveContext ? `\n${archiveContext}` : ""}`;
+    // Step 3: 构造 Phase 1.5 Task Brief（只读，不含历史对话）
+    const taskBrief = {
+      task_type: command.action,
+      instruction: command.task,
+      constraints: command.constraints,
+      output_format: "markdown",
+      relevant_facts: command.relevant_facts || [],
+      user_preference_summary: command.user_preference_summary || "",
+      priority: command.priority || "normal",
+      max_execution_time_ms: command.max_execution_time_ms || 60000,
+    };
+    const taskCard = "【任务卡片 — Phase 1.5 只读模式】\n" +
+      "你是执行者。任务信息在上面的任务卡片中。\n" +
+      "【重要】不要读取任何外部历史对话，只使用任务卡片中的信息。\n" +
+      "如果需要了解用户偏好，使用 user_preference_summary 字段。\n" +
+      "如果需要相关事实，使用 relevant_facts 字段。\n\n" +
+      "【任务卡片】\n" + JSON.stringify(taskBrief, null, 2) + "\n\n" +
+      "【输出约束】\n" + command.constraints.map((c) => "- " + c).join("\n") +
+      (archiveContext ? "\n\n【相关历史背景】（仅作参考，不要复制）\n" + archiveContext : "");
 
     // Step 4: 慢模型执行（独立对话，无历史累积）
     const slowModel = config.slowModel;
@@ -597,8 +701,8 @@ export async function getDelegationResult(taskId: string): Promise<DelegationRes
     if (!task) return null;
 
     const traces = await TaskRepo.getTraces(taskId);
-    const delegatedTrace = traces.find((t) => t.type === "llm_native_delegated");
-    const failedTrace = traces.find((t) => t.type === "llm_native_delegation_failed");
+    const delegatedTrace = traces.find((t) => (t.type as string) === "llm_native_delegated");
+    const failedTrace = traces.find((t) => (t.type as string) === "llm_native_delegation_failed");
 
     if (failedTrace) {
       return { task_id: taskId, status: "failed", error: (failedTrace.detail as any)?.error || "Unknown error" };

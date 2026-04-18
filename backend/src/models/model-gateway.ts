@@ -13,10 +13,14 @@ export async function callModel(model: string, messages: ChatMessage[]): Promise
   return response.content;
 }
 
-export async function callModelFull(model: string, messages: ChatMessage[]): Promise<ModelResponse> {
+export async function callModelFull(
+  model: string,
+  messages: ChatMessage[],
+  tools?: ToolParam[]
+): Promise<ModelResponse> {
   const provider = providers.find((p) => p.supports(model));
   if (!provider) throw new Error(`No provider found for model: ${model}`);
-  try { return await provider.chat(model, messages); }
+  try { return await provider.chat(model, messages, tools); }
   catch (error: any) { console.error(`Model call failed [${model}]:`, error.message); throw error; }
 }
 

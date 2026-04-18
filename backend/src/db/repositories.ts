@@ -1001,6 +1001,167 @@ function mapDelegationArchiveRow(r: any): DelegationArchiveEntry {
   };
 }
 
+// ── Task Archive (LLM-Native Routing) ────────────────────────────────────────
+// Fast/Slow 共享工作台：Fast 写入命令，Slow 执行中查/写结果
+
+export interface TaskArchiveEntry {
+  id: string;
+  session_id: string;
+  turn_id: number;
+  command: {
+    action: string;
+    task: string;
+    constraints: string[];
+    query_keys: string[];
+  };
+  user_input: string;
+  constraints: string[];
+  fast_observations: Array<{ timestamp: number; observation: string }>;
+  slow_execution: {
+    started_at?: string;
+    deviations?: string[];
+    result?: string;
+    errors?: string[];
+  };
+  status: "pending" | "running" | "done" | "failed" | "cancelled";
+  delivered: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export const TaskArchiveRepo = {
+  async create(data: {
+    task_id: string;
+    session_id: string;
+    turn_id?: number;
+    command: TaskArchiveEntry["command"];
+    user_input: string;
+    constraints?: string[];
+  }): Promise<TaskArchiveEntry> {
+    const id = uuid();
+    const result = await query(
+      `INSERT INTO task_archives
+        (id, session_id, turn_id, command, user_input, constraints, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+       RETURNING *`,
+      [
+        id,
+        data.session_id,
+        data.turn_id ?? 0,
+        JSON.stringify(data.command),
+        data.user_input,
+        data.constraints ?? [],
+      ]
+    );
+    return mapTaskArchiveRow(result.rows[0]);
+  },
+
+  async getById(id: string): Promise<TaskArchiveEntry | null> {
+    const result = await query(
+      `SELECT * FROM task_archives WHERE id=$1`,
+      [id]
+    );
+    if (result.rows.length === 0) return null;
+    return mapTaskArchiveRow(result.rows[0]);
+  },
+
+  async updateStatus(id: string, status: TaskArchiveEntry["status"]): Promise<void> {
+    await query(
+      `UPDATE task_archives SET status=$1, updated_at=NOW() WHERE id=$2`,
+      [status, id]
+    );
+  },
+
+  async appendObservation(
+    id: string,
+    observation: { timestamp: number; observation: string }
+  ): Promise<void> {
+    await query(
+      `UPDATE task_archives
+       SET fast_observations = fast_observations || $1::jsonb,
+           updated_at = NOW()
+       WHERE id=$2`,
+      [JSON.stringify([observation]), id]
+    );
+  },
+
+  async writeExecution(data: {
+    id: string;
+    status: "done" | "failed";
+    result?: string;
+    errors?: string[];
+    started_at?: string;
+    deviations?: string[];
+  }): Promise<void> {
+    const exec = {
+      started_at: data.started_at ?? null,
+      deviations: data.deviations ?? [],
+      result: data.result ?? null,
+      errors: data.errors ?? [],
+    };
+    await query(
+      `UPDATE task_archives
+       SET slow_execution=$1, status=$2, updated_at=NOW()
+       WHERE id=$3`,
+      [JSON.stringify(exec), data.status, data.id]
+    );
+  },
+
+  async markDelivered(id: string): Promise<void> {
+    await query(
+      `UPDATE task_archives SET delivered=TRUE, updated_at=NOW() WHERE id=$1`,
+      [id]
+    );
+  },
+
+  async getBySession(sessionId: string, limit = 10): Promise<TaskArchiveEntry[]> {
+    const result = await query(
+      `SELECT * FROM task_archives
+       WHERE session_id=$1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [sessionId, limit]
+    );
+    return result.rows.map(mapTaskArchiveRow);
+  },
+
+  async listPending(sessionId: string): Promise<TaskArchiveEntry[]> {
+    const result = await query(
+      `SELECT * FROM task_archives
+       WHERE session_id=$1 AND status NOT IN ('done', 'failed', 'cancelled')
+       ORDER BY created_at ASC`,
+      [sessionId]
+    );
+    return result.rows.map(mapTaskArchiveRow);
+  },
+
+  async hasPending(sessionId: string): Promise<boolean> {
+    const result = await query(
+      `SELECT COUNT(*) as cnt FROM task_archives
+       WHERE session_id=$1 AND status NOT IN ('done', 'failed', 'cancelled')`,
+      [sessionId]
+    );
+    return parseInt(result.rows[0]?.cnt ?? "0") > 0;
+  },
+};
+
+function mapTaskArchiveRow(r: any): TaskArchiveEntry {
+  return {
+    id: r.id,
+    session_id: r.session_id,
+    turn_id: r.turn_id,
+    command: r.command,
+    user_input: r.user_input,
+    constraints: r.constraints ?? [],
+    fast_observations: r.fast_observations ?? [],
+    slow_execution: r.slow_execution ?? {},
+    status: r.status,
+    delivered: r.delivered ?? false,
+    created_at: new Date(r.created_at).toISOString(),
+    updated_at: new Date(r.updated_at).toISOString(),
+  };
+}
+
 export const EvidenceRepo = {
   async create(input: EvidenceInput): Promise<Evidence> {
     const id = uuid();
@@ -1041,6 +1202,18 @@ export const EvidenceRepo = {
   async listByUser(userId: string, limit = 100): Promise<Evidence[]> {
     const result = await query(
       `SELECT * FROM evidence WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2`,
+      [userId, limit]
+    );
+    return result.rows.map(mapEvidenceRow);
+  },
+
+  /** Sprint 32 P2: 按相关性排序，获取用户的证据列表（供 Task Brief relevant_facts） */
+  async getEvidenceForUser(userId: string, limit = 20): Promise<Evidence[]> {
+    const result = await query(
+      `SELECT * FROM evidence
+       WHERE user_id=$1 AND (relevance_score IS NULL OR relevance_score > 0.1)
+       ORDER BY relevance_score DESC NULLS LAST, created_at DESC
+       LIMIT $2`,
       [userId, limit]
     );
     return result.rows.map(mapEvidenceRow);

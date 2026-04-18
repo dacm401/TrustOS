@@ -1,4 +1,4 @@
-import type { ChatRequest, InputFeatures } from "../types/index.js";
+import type { ChatRequest, InputFeatures, RoutingDecision } from "../types/index.js";
 import { countTokens } from "../models/token-counter.js";
 
 export async function analyzeAndRoute(request: ChatRequest): Promise<{ features: InputFeatures }> {
@@ -24,6 +24,18 @@ export async function analyzeAndRoute(request: ChatRequest): Promise<{ features:
   };
 
   return { features };
+}
+
+export function getDefaultRouting(): RoutingDecision {
+  return {
+    router_version: "llm_native_v0.4",
+    scores: { fast: 0, slow: 0 },
+    confidence: 0,
+    selected_model: "",
+    selected_role: "fast",
+    selection_reason: "llm_native_routing",
+    fallback_model: "",
+  };
 }
 
 function detectLanguage(text: string): string {

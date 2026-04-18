@@ -72,6 +72,7 @@ function buildFastSystemPrompt(intent: IntentType, memoryText: string, lang: "zh
     reasoning: lang === "zh" ? "分析问题，结构清晰，但不要过度展开。" : "Analysis task. Be structured but don't over-elaborate.",
     creative: lang === "zh" ? "创作任务，发挥创意，符合用户要求的风格和长度。" : "Creative task. Be creative and match the requested style and length.",
     research: lang === "zh" ? "研究类问题，给出有结构的分析，可以适当使用列表。" : "Research question. Provide structured analysis, lists are acceptable.",
+    general: lang === "zh" ? "根据问题内容自然回应，不需要特别处理。" : "Respond naturally based on the content of the question.",
     unknown: lang === "zh" ? "根据问题性质判断合适的回答方式。" : "Respond appropriately based on the nature of the question.",
   };
 
@@ -109,6 +110,7 @@ function buildSlowSystemPrompt(intent: IntentType, memoryText: string, lang: "zh
     reasoning: lang === "zh" ? "深入分析，展示思考过程，给出明确结论。" : "Deep analysis showing reasoning process with clear conclusions.",
     creative: lang === "zh" ? "创作要有深度和独特性，不只是完成任务。" : "Create with depth and originality, not just fulfill the request.",
     research: lang === "zh" ? "研究类问题要系统、全面，有数据支撑更好。" : "Research questions should be systematic, comprehensive, data-backed when possible.",
+    general: lang === "zh" ? "根据问题给出适当深度的回答，自然流畅。" : "Provide answers with appropriate depth, naturally and fluently.",
     unknown: lang === "zh" ? "根据问题复杂度给出适当的深度回答。" : "Respond with appropriate depth based on question complexity.",
   };
 

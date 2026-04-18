@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS memory_entries (
   importance  INTEGER NOT NULL DEFAULT 3, -- 1–5, higher = more important
   tags        TEXT[] DEFAULT '{}',
   source      VARCHAR(50) NOT NULL DEFAULT 'manual',  -- "manual" | "extracted" | "feedback"
+  relevance_score REAL DEFAULT 0.5,  -- M2: 0.0–1.0, higher = more relevant
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -241,3 +242,52 @@ CREATE TABLE IF NOT EXISTS delegation_archive (
 CREATE INDEX IF NOT EXISTS idx_da_user_session ON delegation_archive(user_id, session_id);
 CREATE INDEX IF NOT EXISTS idx_da_task ON delegation_archive(task_id);
 CREATE INDEX IF NOT EXISTS idx_da_user_time ON delegation_archive(user_id, created_at DESC);
+
+-- LLM-Native Routing: Task Archive（Fast/Slow 共享工作台）
+CREATE TABLE IF NOT EXISTS task_archives (
+  id              VARCHAR(36) PRIMARY KEY,
+  session_id      VARCHAR(64) NOT NULL,
+  turn_id         INTEGER NOT NULL DEFAULT 0,
+
+  -- 任务命令（Fast → Slow 的结构化指令）
+  command         JSONB NOT NULL,
+  -- { action, task, constraints, query_keys, relevant_facts, user_preference_summary, priority, max_execution_time_ms }
+
+  -- 原始用户输入（供 Slow 查询）
+  user_input      TEXT NOT NULL,
+  constraints     TEXT[] DEFAULT '{}',
+
+  -- Phase 1.5: 任务类型 + 任务卡片 JSONB
+  task_type       VARCHAR(20) DEFAULT 'analysis',
+  -- research | analysis | code | creative | comparison
+
+  task_brief      JSONB DEFAULT '{}',
+  -- Phase 1.5: 完整任务卡片，包含 relevant_facts / user_preference_summary / priority 等
+
+  -- Fast 模型写入：执行过程中的观察
+  fast_observations JSONB DEFAULT '[]',
+  -- [{timestamp: number, observation: string}]
+
+  -- Slow 模型写入：执行轨迹
+  slow_execution  JSONB DEFAULT '{}',
+  -- {started_at: string, deviations: string[], result: string, errors: string[]}
+
+  -- Phase 1.5: 状态机
+  state           VARCHAR(20) DEFAULT 'chattering',
+  -- chattering | clarifying | task_ready | executing | done | failed | cancelled
+
+  status          VARCHAR(16) DEFAULT 'pending',
+  -- pending → running → done | failed | cancelled
+
+  delivered       BOOLEAN DEFAULT FALSE,
+  -- 结果是否已推送给用户
+
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ta_session ON task_archives(session_id);
+CREATE INDEX IF NOT EXISTS idx_ta_status ON task_archives(status) WHERE status != 'done';
+CREATE INDEX IF NOT EXISTS idx_ta_command ON task_archives USING GIN (command);
+CREATE INDEX IF NOT EXISTS idx_ta_task_brief ON task_archives USING GIN (task_brief);
+CREATE INDEX IF NOT EXISTS idx_ta_state ON task_archives(state);

@@ -9,6 +9,7 @@ import { taskRouter } from "./api/tasks.js";
 import { memoryRouter } from "./api/memory.js";
 import { evidenceRouter } from "./api/evidence.js";
 import { healthRouter } from "./api/health.js";
+import { archiveRouter } from "./api/archive.js";
 
 const app = new Hono();
 
@@ -23,6 +24,7 @@ app.route("/api", dashboardRouter);
 app.route("/v1/tasks", taskRouter);
 app.route("/v1/memory", memoryRouter);
 app.route("/v1/evidence", evidenceRouter);
+app.route("/v1", archiveRouter);
 
 console.log(`
 ╔══════════════════════════════════════════╗
