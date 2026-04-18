@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * R1 — E2E Regression Pack: POST /api/chat
  *
@@ -8,7 +9,6 @@
  * Only the dynamic import of chatRouter lives in beforeAll (after hoisting).
  */
 
-import { describe, it, expect, vi, beforeAll } from "vitest";
 
 // ── Mocks (vitest HOISTS these to module top — must stay at top level) ────────
 

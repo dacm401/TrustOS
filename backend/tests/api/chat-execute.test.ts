@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * ET-002: chat.ts execute path integration tests
  *
@@ -15,7 +16,6 @@
  *   taskPlanner, executionLoop, formatExecutionResultsForPlanner, config
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ── Mock factory refs (hoisted, populated before vi.mock) ───────────────────
 

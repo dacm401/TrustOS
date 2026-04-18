@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * IT-001: ExecutionResultRepo Integration Tests
  *
@@ -14,7 +15,6 @@
  *   Isolation: beforeEach → truncateTables() → COMMIT
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import { ExecutionResultRepo } from "../../src/db/repositories.js";
 import { truncateTables } from "../db/harness.js";
 import type { ExecutionResultInput } from "../../src/types/index.js";

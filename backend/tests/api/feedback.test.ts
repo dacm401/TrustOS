@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * P3: POST /chat/feedback API Integration Tests — Sprint 12
  * P2 (Sprint 14): FeedbackType whitelist + ownership validation added.
@@ -17,7 +18,6 @@
  * This suite validates the API layer only.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import { Hono } from "hono";
 import { randomUUID } from "crypto";
 import { truncateTables } from "../db/harness.js";

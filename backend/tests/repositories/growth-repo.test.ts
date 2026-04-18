@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * IT-004: GrowthRepo Integration Tests — Sprint 11
  *
@@ -99,7 +100,6 @@ describe("getProfile() — empty state", () => {
     expect(profile.behavioral_memories_count).toBe(0);
     expect(profile.milestones).toEqual([]);
     expect(profile.recent_learnings).toEqual([]);
-    expect(profile.routing_accuracy_history).toEqual([]);
     expect(profile.satisfaction_history).toEqual([]);
     expect(profile.routing_accuracy).toBe(0);
   });
@@ -351,13 +351,12 @@ describe("addMilestone()", () => {
 // ── GrowthProfile shape ───────────────────────────────────────────────────────
 
 describe("GrowthProfile — shape invariants", () => {
-  it("routing_accuracy_history (deprecated, kept for compat) entries have {date, value} shape", async () => {
-    // routing_accuracy_history is deprecated; satisfaction_history is the honest replacement.
-    // routing_correct is always null → routing_accuracy_history stays empty.
+  it("satisfaction_history entries have {date, value} shape", async () => {
+    // satisfaction_history: daily satisfaction rate (honest proxy for routing accuracy).
     await seedDecision({ userId: USER, routingCorrect: true });
 
     const profile = await GrowthRepo.getProfile(USER);
-    profile.routing_accuracy_history.forEach((entry) => {
+    profile.satisfaction_history.forEach((entry) => {
       expect(entry).toHaveProperty("date");
       expect(entry).toHaveProperty("value");
       expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);

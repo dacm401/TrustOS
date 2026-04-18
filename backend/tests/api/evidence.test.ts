@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * R1 — E2E Regression Pack: POST /v1/evidence + GET /v1/evidence
  *
@@ -5,7 +6,6 @@
  * All DB calls are mocked via vi.mock — no real DB required.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import { evidenceRouter } from "../../src/api/evidence.js";
 

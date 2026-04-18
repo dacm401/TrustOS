@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * TA-001: ExecutionLoop Unit Tests
  *
@@ -7,7 +8,6 @@
  * - Tests access the shared mock functions via the hoisted object reference.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ExecutionPlan, ExecutionStep } from "../../src/types/index.js";
 
 // ── Shared mock references (hoisted so vi.mock factories can reference them) ─

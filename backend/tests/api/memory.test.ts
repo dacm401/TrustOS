@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * SI-001: Memory API Integration Tests
  *
@@ -17,7 +18,6 @@
  *     contamination from repo tests or mock suite.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import { Hono } from "hono";
 import { memoryRouter } from "../../src/api/memory.js";
 import { truncateTables } from "../db/harness.js";

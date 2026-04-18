@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * TA-004: Trace Formatter Tests
  *
@@ -5,7 +6,6 @@
  * for all trace types written by the execution system.
  */
 
-import { describe, it, expect } from "vitest";
 import { formatTraceSummary, formatTraceSummaries } from "../../src/services/trace-formatter.js";
 import type { TaskTrace } from "../../src/types/index.js";
 

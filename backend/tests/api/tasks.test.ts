@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * R1 — E2E Regression Pack: GET /v1/tasks/all + PATCH /v1/tasks/:id
  *
@@ -5,7 +6,6 @@
  * All DB calls are mocked via vi.mock — no real DB required.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import { taskRouter } from "../../src/api/tasks.js";
 

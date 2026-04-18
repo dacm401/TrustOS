@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * SI-003: chat.ts non-execute path integration tests
  *
@@ -18,7 +19,6 @@
  * Isolation: truncateTables() in beforeEach — same harness as memory.test.ts / task.test.ts
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import { randomUUID } from "crypto";
 import { truncateTables } from "../db/harness.js";

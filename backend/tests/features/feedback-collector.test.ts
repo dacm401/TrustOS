@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * P4 (Sprint 14): Implicit Feedback → feedback_events Backfill Tests
  *
@@ -13,7 +14,6 @@
  *   Isolation: beforeEach → truncateTables() → COMMIT
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
 import { randomUUID } from "crypto";
 import { truncateTables } from "../db/harness.js";
 import { FeedbackEventRepo } from "../../src/db/repositories.js";
@@ -153,6 +153,7 @@ describe("recordFeedback — implicit types to feedback_events", () => {
 // so it performs real writes to feedback_events — validating the full wiring.
 vi.mock("../../src/services/memory-store.js", () => ({
   analyzeAndLearn: vi.fn().mockResolvedValue(null),
+  autoLearnFromDecision: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("../../src/features/growth-tracker.js", () => ({
   checkAndRecordMilestones: vi.fn().mockResolvedValue([]),

@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * TA-003: ToolGuardrail Policy Tests
  *
@@ -14,7 +15,6 @@
  *   - No network, no DB, no orchestration — pure function assertions
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Module-level mocks (hoisted — runs before imports) ────────────────────────
 

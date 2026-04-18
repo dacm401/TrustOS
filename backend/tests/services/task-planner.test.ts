@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * ET-001: TaskPlanner Unit Tests
  *
@@ -15,7 +16,6 @@
  *   - TaskRepo            → stubs out DB writes (planning trace)
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ModelResponse } from "../../src/models/providers/base-provider.js";
 
 // ── Hoisted mock references ──────────────────────────────────────────────────

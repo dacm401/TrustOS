@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * SI-004: Dashboard API Integration Tests — Sprint 11
  *
@@ -16,7 +17,6 @@
  * Seed strategy: raw SQL INSERTs — same pattern as IT-003 / IT-004.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import { Hono } from "hono";
 import { randomUUID } from "crypto";
 import { dashboardRouter } from "../../src/api/dashboard.js";

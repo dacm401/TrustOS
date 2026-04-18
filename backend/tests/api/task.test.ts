@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * SI-002: Task API Integration Tests
  *
@@ -25,7 +26,6 @@
  *     via HTTP endpoints.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import { Hono } from "hono";
 import { randomUUID } from "crypto";
 import { taskRouter } from "../../src/api/tasks.js";

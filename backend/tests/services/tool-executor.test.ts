@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * TA-002: ToolExecutor Integration Tests
  *
@@ -23,7 +24,6 @@
  *   executor module itself and inject a controlled fetch inside the factory.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ToolCall, ToolHandlerContext } from "../../src/types/index.js";
 
 // ── Shared mock references (hoisted so vi.mock factories can reference them) ──

@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * E1: EvidenceRepo Integration Tests
  *
@@ -11,7 +12,6 @@
  *             (evidence FK → tasks ON DELETE CASCADE; truncating tasks cleans evidence)
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import { v4 as uuid } from "uuid";
 import { EvidenceRepo, TaskRepo } from "../../src/db/repositories.js";
 import { truncateTables } from "../db/harness.js";
@@ -22,10 +22,10 @@ import type { EvidenceInput } from "../../src/types/index.js";
 const USER_A = uuid();
 const USER_B = uuid();
 
-function makeTask(userId: string): string {
+async function makeTask(userId: string): Promise<string> {
   const id = uuid();
   // E1: evidence.task_id FK references tasks(id); task must exist first
-  TaskRepo.create({
+  await TaskRepo.create({
     id,
     user_id: userId,
     session_id: uuid(),
@@ -60,7 +60,7 @@ beforeEach(async () => {
 describe("EvidenceRepo", () => {
   describe("create()", () => {
     it("1. saves a record with all fields and returns it", async () => {
-      const taskId = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
       const input = makeInput(taskId, USER_A, {
         source: "web_search",
         content: "Latest TypeScript news",
@@ -81,7 +81,7 @@ describe("EvidenceRepo", () => {
     });
 
     it("2. source_metadata defaults to null when omitted", async () => {
-      const taskId = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
       const { source_metadata: _sm, ...input } = makeInput(taskId, USER_A);
 
       const saved = await EvidenceRepo.create(input as EvidenceInput);
@@ -90,7 +90,7 @@ describe("EvidenceRepo", () => {
     });
 
     it("3. relevance_score defaults to null when omitted", async () => {
-      const taskId = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
       const { relevance_score: _rs, ...input } = makeInput(taskId, USER_A);
 
       const saved = await EvidenceRepo.create(input as EvidenceInput);
@@ -99,7 +99,7 @@ describe("EvidenceRepo", () => {
     });
 
     it("4. source accepts all valid EvidenceSource values", async () => {
-      const taskId = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
       const sources = ["web_search", "http_request", "manual"] as const;
 
       for (const source of sources) {
@@ -109,7 +109,7 @@ describe("EvidenceRepo", () => {
     });
 
     it("5. Unicode and special characters round-trip in content", async () => {
-      const taskId = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
       const content = "🎉 Hello 世界 <script>alert('xss')</script> 中文测试";
       const saved = await EvidenceRepo.create(makeInput(taskId, USER_A, { content }));
 
@@ -117,7 +117,7 @@ describe("EvidenceRepo", () => {
     });
 
     it("6. source_metadata JSONB round-trips complex nested objects", async () => {
-      const taskId = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
       const metadata = {
         query: "AI models",
         results: [
@@ -136,7 +136,7 @@ describe("EvidenceRepo", () => {
 
   describe("getById()", () => {
     it("7. returns the record when it exists", async () => {
-      const taskId = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
       const created = await EvidenceRepo.create(makeInput(taskId, USER_A));
 
       const found = await EvidenceRepo.getById(created.evidence_id);
@@ -160,8 +160,8 @@ describe("EvidenceRepo", () => {
 
   describe("listByTask()", () => {
     it("10. returns all evidence records for a given task", async () => {
-      const taskId = makeTask(USER_A);
-      const taskB = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
+      const taskB = await makeTask(USER_A);
       await EvidenceRepo.create(makeInput(taskId, USER_A, { content: "e1" }));
       await EvidenceRepo.create(makeInput(taskId, USER_A, { content: "e2" }));
       await EvidenceRepo.create(makeInput(taskId, USER_A, { content: "e3" }));
@@ -174,13 +174,13 @@ describe("EvidenceRepo", () => {
     });
 
     it("11. returns [] when task has no evidence records", async () => {
-      const taskId = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
       const results = await EvidenceRepo.listByTask(taskId);
       expect(results).toEqual([]);
     });
 
     it("12. orders by created_at ASC (oldest first, per spec)", async () => {
-      const taskId = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
       await EvidenceRepo.create(makeInput(taskId, USER_A, { content: "first" }));
       await EvidenceRepo.create(makeInput(taskId, USER_A, { content: "second" }));
       await EvidenceRepo.create(makeInput(taskId, USER_A, { content: "third" }));
@@ -193,8 +193,8 @@ describe("EvidenceRepo", () => {
 
   describe("listByUser()", () => {
     it("13. returns only records belonging to the specified user", async () => {
-      const taskA = makeTask(USER_A);
-      const taskB = makeTask(USER_B);
+      const taskA = await makeTask(USER_A);
+      const taskB = await makeTask(USER_B);
       await EvidenceRepo.create(makeInput(taskA, USER_A, { content: "a-evidence" }));
       await EvidenceRepo.create(makeInput(taskB, USER_B, { content: "b-evidence" }));
 
@@ -213,7 +213,7 @@ describe("EvidenceRepo", () => {
     });
 
     it("15. orders by created_at DESC (newest first)", async () => {
-      const taskId = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
       await EvidenceRepo.create(makeInput(taskId, USER_A, { content: "oldest" }));
       await EvidenceRepo.create(makeInput(taskId, USER_A, { content: "newest" }));
 
@@ -224,7 +224,7 @@ describe("EvidenceRepo", () => {
     });
 
     it("16. respects limit parameter", async () => {
-      const taskId = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
       for (let i = 0; i < 5; i++) {
         await EvidenceRepo.create(makeInput(taskId, USER_A, { content: `item-${i}` }));
       }
@@ -235,7 +235,7 @@ describe("EvidenceRepo", () => {
     });
 
     it("17. defaults limit to 100 when omitted", async () => {
-      const taskId = makeTask(USER_A);
+      const taskId = await makeTask(USER_A);
       for (let i = 0; i < 3; i++) {
         await EvidenceRepo.create(makeInput(taskId, USER_A));
       }
@@ -246,8 +246,8 @@ describe("EvidenceRepo", () => {
 
   describe("cross-user isolation", () => {
     it("18. User A never sees User B's evidence records", async () => {
-      const taskA = makeTask(USER_A);
-      const taskB = makeTask(USER_B);
+      const taskA = await makeTask(USER_A);
+      const taskB = await makeTask(USER_B);
       await EvidenceRepo.create(makeInput(taskA, USER_A, { content: "A secret" }));
       await EvidenceRepo.create(makeInput(taskB, USER_B, { content: "B secret" }));
 

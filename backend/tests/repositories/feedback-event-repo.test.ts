@@ -1,3 +1,4 @@
+﻿// workspace: 20260416214742
 /**
  * P3 (Sprint 14): FeedbackEventRepo Tests
  *
@@ -13,7 +14,6 @@
  *   Isolation: beforeEach → truncateTables() → COMMIT
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import { randomUUID } from "crypto";
 import { truncateTables } from "../db/harness.js";
 import { FeedbackEventRepo } from "../../src/db/repositories.js";
