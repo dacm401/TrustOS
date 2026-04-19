@@ -530,3 +530,426 @@ export interface ExecutionResultInput {
   duration_ms?: number;
   reason: string;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Phase 3.0: Manager-Worker Runtime
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── ManagerDecision ────────────────────────────────────────────────────────────
+
+/**
+ * ManagerDecision — Phase 3.0 Fast Manager 的标准输出协议。
+ * 职责：只表达"下一步怎么做"，不包含最终回答内容本身。
+ * 流转：Fast Model → Runtime Orchestrator → 各 Worker / Archive
+ */
+export interface ManagerDecision {
+  /** Schema 版本，用于协议演进校验 */
+  schema_version: "manager_decision_v1";
+  /** 决策类型：Fast Manager 决定的下一步处理路径 */
+  decision_type: ManagerDecisionType;
+  /** 兼容现有前端/评测体系，与 decision_type 存在逻辑映射 */
+  routing_layer: RoutingLayer;
+  /** 决策原因，供日志/trace/debug 使用 */
+  reason: string;
+  /** 决策置信度 0.0 ~ 1.0 */
+  confidence: number;
+  /** 是否需要写入/更新 Task Archive */
+  needs_archive: boolean;
+  /** direct_answer 时的回复草稿 */
+  direct_response?: DirectResponse;
+  /** ask_clarification 时的澄清问题 */
+  clarification?: ClarifyQuestion;
+  /** delegate_to_slow / execute_task 时的结构化命令 */
+  command?: CommandPayload;
+}
+
+/** 决策类型枚举（Phase 0 精简版，4 种） */
+export type ManagerDecisionType =
+  | "direct_answer"
+  | "ask_clarification"
+  | "delegate_to_slow"
+  | "execute_task";
+
+/** 路由层（兼容现有 L0/L1/L2/L3） */
+export type RoutingLayer = "L0" | "L1" | "L2" | "L3";
+
+/** decision_type ↔ routing_layer 默认映射表 */
+export const DECISION_TO_LAYER: Record<ManagerDecisionType, RoutingLayer> = {
+  direct_answer: "L0",
+  ask_clarification: "L0",
+  delegate_to_slow: "L2",
+  execute_task: "L3",
+};
+
+/** 路由层 → decision_type 反向映射（用于旧 router fallback） */
+export const LAYER_TO_DECISION: Record<RoutingLayer, ManagerDecisionType> = {
+  L0: "direct_answer",
+  L1: "direct_answer",
+  L2: "delegate_to_slow",
+  L3: "execute_task",
+};
+
+// ── DirectResponse ─────────────────────────────────────────────────────────────
+
+/** Fast Manager 直接回答时的回复草稿。仅当 decision_type = "direct_answer" 时出现。 */
+export interface DirectResponse {
+  style: "concise" | "natural" | "structured";
+  content: string;
+  max_tokens_hint?: number;
+}
+
+// ── ClarifyQuestion（复用 Phase 1.5）──────────────────────────────────────────
+
+/** 澄清问题结构，与 Phase 1.5 Clarifying 完全对齐。 */
+export interface ClarifyQuestion {
+  question_id: string;
+  question_text: string;
+  options?: ClarifyOption[];
+  allow_free_text?: boolean;
+  clarification_reason: string;
+  missing_fields?: string[];
+}
+
+export interface ClarifyOption {
+  label: string;
+  value: string;
+}
+
+// ── CommandPayload ─────────────────────────────────────────────────────────────
+
+/** Manager → Worker 的结构化任务命令。仅当 decision_type = "delegate_to_slow" 或 "execute_task" 时出现。 */
+export interface CommandPayload {
+  /** 命令类型（Phase 0 精简版，4 种） */
+  command_type: CommandType;
+  /** 任务类型描述 */
+  task_type: string;
+  /** Manager 压缩后的任务摘要 */
+  task_brief: string;
+  /** 最终目标 */
+  goal: string;
+  /** 约束条件列表 */
+  constraints?: string[];
+  /** 输入材料引用 */
+  input_materials?: InputMaterial[];
+  /** 输出格式要求 */
+  required_output?: RequiredOutput;
+  /** 允许使用的工具列表（execute_task 时必填） */
+  tools_allowed?: string[];
+  /** 优先级 */
+  priority?: "low" | "normal" | "high";
+  /** 超时秒数建议 */
+  timeout_sec?: number;
+  /** Worker 类型提示 */
+  worker_hint?: WorkerHint;
+}
+
+/** 命令类型枚举（Phase 0 精简版，4 种） */
+export type CommandType =
+  | "delegate_analysis"
+  | "delegate_summarization"
+  | "execute_plan"
+  | "execute_research";
+
+/** Worker 类型提示 */
+export type WorkerHint =
+  | "slow_analyst"
+  | "execute_worker"
+  | "search_worker";
+
+// ── InputMaterial ──────────────────────────────────────────────────────────────
+
+/** Command 的输入材料。 */
+export interface InputMaterial {
+  type: InputMaterialType;
+  content?: string;
+  ref_id?: string;
+  title?: string;
+  importance?: number;
+}
+
+export type InputMaterialType =
+  | "user_query"
+  | "excerpt"
+  | "evidence_ref"
+  | "memory_ref"
+  | "archive_fact";
+
+// ── RequiredOutput ─────────────────────────────────────────────────────────────
+
+/** Manager 对 Worker 产出的格式要求。 */
+export interface RequiredOutput {
+  format: OutputFormat;
+  sections?: string[];
+  must_include?: string[];
+  max_points?: number;
+  tone?: "neutral" | "professional" | "concise";
+}
+
+export type OutputFormat =
+  | "structured_analysis"
+  | "bullet_summary"
+  | "answer"
+  | "json";
+
+// ── WorkerResult ───────────────────────────────────────────────────────────────
+
+/** Worker → Manager 的结构化结果。Worker 完成后写入 Archive，Manager 读取后统一对外表达。 */
+export interface WorkerResult {
+  task_id: string;
+  worker_type: WorkerHint;
+  status: WorkerResultStatus;
+  summary: string;
+  structured_result: Record<string, unknown>;
+  confidence: number;
+  ask_for_more_context?: string[];
+  error_message?: string;
+}
+
+export type WorkerResultStatus =
+  | "completed"
+  | "partial"
+  | "failed";
+
+// ── ajv 简化校验 Schema ────────────────────────────────────────────────────────
+
+/**
+ * ajv 运行时校验用简化 JSON Schema。
+ * 用法：ajv.addSchema(managerDecisionJsonSchema, 'ManagerDecision')
+ */
+export const managerDecisionJsonSchema = {
+  $id: "https://smartrouter.pro/schemas/manager-decision-v1.json",
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "schema_version",
+    "decision_type",
+    "routing_layer",
+    "reason",
+    "confidence",
+    "needs_archive",
+  ],
+  properties: {
+    schema_version: { type: "string", const: "manager_decision_v1" },
+    decision_type: {
+      type: "string",
+      enum: ["direct_answer", "ask_clarification", "delegate_to_slow", "execute_task"],
+    },
+    routing_layer: { type: "string", enum: ["L0", "L1", "L2", "L3"] },
+    reason: { type: "string", minLength: 1, maxLength: 300 },
+    confidence: { type: "number", minimum: 0, maximum: 1 },
+    needs_archive: { type: "boolean" },
+    direct_response: {
+      type: "object",
+      additionalProperties: false,
+      required: ["style", "content"],
+      properties: {
+        style: { type: "string", enum: ["concise", "natural", "structured"] },
+        content: { type: "string", minLength: 1, maxLength: 2000 },
+        max_tokens_hint: { type: "integer", minimum: 1, maximum: 2000 },
+      },
+    },
+    clarification: {
+      type: "object",
+      additionalProperties: false,
+      required: ["question_id", "question_text", "clarification_reason"],
+      properties: {
+        question_id: { type: "string", minLength: 1, maxLength: 100 },
+        question_text: { type: "string", minLength: 1, maxLength: 500 },
+        options: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["label", "value"],
+            properties: {
+              label: { type: "string", minLength: 1, maxLength: 200 },
+              value: { type: "string", minLength: 1, maxLength: 100 },
+            },
+          },
+          maxItems: 10,
+        },
+        allow_free_text: { type: "boolean" },
+        clarification_reason: { type: "string", minLength: 1, maxLength: 300 },
+        missing_fields: {
+          type: "array",
+          items: { type: "string" },
+          maxItems: 20,
+        },
+      },
+    },
+    command: {
+      type: "object",
+      additionalProperties: false,
+      required: ["command_type", "task_type", "task_brief", "goal"],
+      properties: {
+        command_type: {
+          type: "string",
+          enum: ["delegate_analysis", "delegate_summarization", "execute_plan", "execute_research"],
+        },
+        task_type: { type: "string", minLength: 1, maxLength: 100 },
+        task_brief: { type: "string", minLength: 1, maxLength: 4000 },
+        goal: { type: "string", minLength: 1, maxLength: 1000 },
+        constraints: {
+          type: "array",
+          items: { type: "string", maxLength: 300 },
+          maxItems: 20,
+        },
+        input_materials: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["type"],
+            properties: {
+              type: {
+                type: "string",
+                enum: ["user_query", "excerpt", "evidence_ref", "memory_ref", "archive_fact"],
+              },
+              content: { type: "string", maxLength: 4000 },
+              ref_id: { type: "string", maxLength: 100 },
+              title: { type: "string", maxLength: 200 },
+              importance: { type: "number", minimum: 0, maximum: 1 },
+            },
+          },
+          maxItems: 30,
+        },
+        required_output: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            format: {
+              type: "string",
+              enum: ["structured_analysis", "bullet_summary", "answer", "json"],
+            },
+            sections: { type: "array", items: { type: "string" }, maxItems: 20 },
+            must_include: { type: "array", items: { type: "string" }, maxItems: 20 },
+            max_points: { type: "integer", minimum: 1, maximum: 20 },
+            tone: { type: "string", enum: ["neutral", "professional", "concise"] },
+          },
+        },
+        tools_allowed: { type: "array", items: { type: "string" }, maxItems: 20 },
+        priority: { type: "string", enum: ["low", "normal", "high"] },
+        timeout_sec: { type: "integer", minimum: 1, maximum: 3600 },
+        worker_hint: { type: "string", enum: ["slow_analyst", "execute_worker", "search_worker"] },
+      },
+    },
+  },
+  allOf: [
+    {
+      if: { properties: { decision_type: { const: "direct_answer" } } },
+      then: { required: ["direct_response"] },
+    },
+    {
+      if: { properties: { decision_type: { const: "ask_clarification" } } },
+      then: { required: ["clarification"] },
+    },
+    {
+      if: { properties: { decision_type: { enum: ["delegate_to_slow", "execute_task"] } } },
+      then: { required: ["command"] },
+    },
+  ],
+};
+
+// ── SSE Phase 3.0 事件 ────────────────────────────────────────────────────────
+
+export type SSEEventTypePhase3 =
+  | "manager_decision"
+  | "clarifying_needed"
+  | "command_issued"
+  | "worker_progress"
+  | "worker_completed"
+  | "manager_synthesized";
+
+export interface SSEManagerDecisionEvent {
+  type: "manager_decision";
+  decision: ManagerDecision;
+  timestamp: string;
+}
+
+export interface SSECommandIssuedEvent {
+  type: "command_issued";
+  command_id: string;
+  delegated_to: WorkerHint;
+  task_id: string;
+  timestamp: string;
+}
+
+export interface SSEWorkerCompletedEvent {
+  type: "worker_completed";
+  task_id: string;
+  command_id: string;
+  worker_type: WorkerHint;
+  summary: string;
+  timestamp: string;
+}
+
+// ── Task Archive Repository Types ─────────────────────────────────────────────
+
+/** task_archives 表记录（Phase 3.0 扩展版） */
+export interface TaskArchiveRecord {
+  id: string;
+  session_id: string;
+  turn_id: number;
+  command: Record<string, unknown> | null;
+  user_input: string;
+  constraints: string[];
+  task_type: string;
+  task_brief: Record<string, unknown> | null;
+  /** Phase 3.0: Manager 决策 JSONB */
+  manager_decision: Record<string, unknown> | null;
+  fast_observations: Record<string, unknown>[];
+  slow_execution: Record<string, unknown> | null;
+  state: string;
+  status: string;
+  delivered: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** task_commands 表记录（Phase 3.0 新表） */
+export interface TaskCommandRecord {
+  id: string;
+  task_id: string;
+  archive_id: string;
+  user_id: string;
+  issuer_role: string;
+  command_type: string;
+  worker_hint: string | null;
+  priority: string;
+  status: CommandStatus;
+  payload_json: CommandPayload;
+  idempotency_key: string | null;
+  timeout_sec: number | null;
+  issued_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error_message: string | null;
+}
+
+export type CommandStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+/** task_worker_results 表记录（Phase 3.0 新表） */
+export interface TaskWorkerResultRecord {
+  id: string;
+  task_id: string;
+  archive_id: string;
+  command_id: string;
+  user_id: string;
+  worker_role: string;
+  result_type: string;
+  status: string;
+  summary: string;
+  result_json: Record<string, unknown>;
+  confidence: number | null;
+  tokens_input: number | null;
+  tokens_output: number | null;
+  cost_usd: number | null;
+  started_at: string | null;
+  completed_at: string;
+  error_message: string | null;
+}
