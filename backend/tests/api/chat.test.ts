@@ -88,6 +88,25 @@ vi.mock("../../src/db/repositories", () => ({
     create: vi.fn(), getById: vi.fn(),
     listByTask: vi.fn(), listByUser: vi.fn(),
   },
+  MemoryEntryRepo: {
+    add: vi.fn().mockResolvedValue(undefined),
+    findRelevant: vi.fn().mockResolvedValue([]),
+    listByCategory: vi.fn().mockResolvedValue([]),
+  },
+  ExecutionResultRepo: {
+    add: vi.fn().mockResolvedValue(undefined),
+    getByTask: vi.fn().mockResolvedValue([]),
+  },
+  DelegationArchiveRepo: {
+    save: vi.fn().mockResolvedValue(undefined),
+    getById: vi.fn().mockResolvedValue(null),
+    listActive: vi.fn().mockResolvedValue([]),
+    markDone: vi.fn().mockResolvedValue(undefined),
+  },
+  TaskArchiveRepo: {
+    save: vi.fn().mockResolvedValue(undefined),
+    getById: vi.fn().mockResolvedValue(null),
+  },
 }));
 
 vi.mock("../../src/router/router.js", () => ({
@@ -113,6 +132,15 @@ vi.mock("../../src/router/router.js", () => ({
       selection_reason: "test",
       fallback_model: "gpt-4o",
     },
+  }),
+  getDefaultRouting: vi.fn().mockReturnValue({
+    router_version: "llm_native_v0.4",
+    scores: { fast: 0, slow: 0 },
+    confidence: 0,
+    selected_model: "",
+    selected_role: "fast",
+    selection_reason: "llm_native_routing",
+    fallback_model: "",
   }),
 }));
 
@@ -182,6 +210,40 @@ vi.mock("../../src/services/execution-result-formatter.js", () => ({
 vi.mock("../../src/services/task-planner.js", () => ({ taskPlanner: {} }));
 vi.mock("../../src/services/execution-loop.js", () => ({ executionLoop: {} }));
 
+// O-001 / Phase 2.0: orchestrator — 必须 mock，否则 chat.ts 加载时 orchestrator.ts
+// 导入 DelegationArchiveRepo/TaskArchiveRepo/toolExecutor/FAST_MODEL_TOOLS 全部失败
+vi.mock("../../src/services/orchestrator.js", () => ({
+  orchestrator: vi.fn().mockResolvedValue({
+    fast_reply: "Hello from mock orchestrator",
+    routing_info: { delegated: false },
+  }),
+  getDelegationResult: vi.fn().mockResolvedValue(null),
+  pollArchiveAndYield: vi.fn(),
+  evaluateRouting: vi.fn().mockReturnValue({
+    routing_intent: "chat",
+    selected_role: "fast",
+    confidence: 0.9,
+  }),
+  inferRoutingLayer: vi.fn().mockReturnValue("L0"),
+}));
+
+// O-008: weather-search — 必须 mock，否则 weather-search.ts 导入失败
+vi.mock("../../src/services/weather-search.js", () => ({
+  detectWeatherQuery: vi.fn().mockReturnValue(false),
+  fetchRealTimeWeather: vi.fn().mockRejectedValue(new Error("weather not mocked")),
+  formatWeatherPrompt: vi.fn().mockReturnValue(""),
+}));
+
+// Phase 2.0: fast-model-tools — orchestrator 依赖
+vi.mock("../../src/services/fast-model-tools.js", () => ({
+  FAST_MODEL_TOOLS: [],
+}));
+
+// EL-001: tool executor — orchestrator 依赖
+vi.mock("../../src/tools/executor.js", () => ({
+  toolExecutor: vi.fn().mockResolvedValue({ success: true, result: {} }),
+}));
+
 // ── Test app builder (dynamic import AFTER mocks are hoisted) ─────────────────
 
 let _chatRouter: any = null;
@@ -196,7 +258,7 @@ async function buildApp() {
   const { Hono } = await import("hono");
   const app = new Hono();
   app.use("/api/*", async (c, next) => {
-    (c as unknown as { userId: string }).userId = "test-user";
+    c.set("userId", "test-user");
     await next();
   });
   app.route("/api", _chatRouter);

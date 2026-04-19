@@ -19,7 +19,47 @@
 
 // ── Mock factory refs (hoisted, populated before vi.mock) ───────────────────
 
-// taskPlanner is exported as `new TaskPlanner()` — an instance, not a plain fn
+// router mocks — hoisted so vi.clearAllMocks() does NOT reset their return values
+// (clearAllMocks resets calls history and mock.calls, but mockImplementation set
+//  inside vi.mock() factory is wiped; hoisted refs survive because they are
+//  re-applied on each call via the closure).
+const mockAnalyzeAndRoute = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({
+    features: {
+      raw_query: "帮我完成这个任务",
+      token_count: 5,
+      intent: "task",
+      complexity_score: 60,
+      has_code: false,
+      has_math: false,
+      requires_reasoning: false,
+      conversation_depth: 0,
+      context_token_count: 0,
+      language: "zh",
+    },
+    routing: {
+      router_version: "v1",
+      scores: { fast: 0.3, slow: 0.9 },
+      confidence: 0.8,
+      selected_model: "gpt-4o",
+      selected_role: "slow" as const,
+      selection_reason: "test",
+      fallback_model: "gpt-4o",
+    },
+  })
+);
+
+const mockGetDefaultRouting = vi.hoisted(() =>
+  vi.fn().mockReturnValue({
+    router_version: "llm_native_v0.4",
+    scores: { fast: 0, slow: 0 },
+    confidence: 0,
+    selected_model: "",
+    selected_role: "fast" as const,
+    selection_reason: "llm_native_routing",
+    fallback_model: "",
+  })
+);
 const mockPlan = vi.hoisted(() =>
   vi.fn().mockResolvedValue({
     taskId: "mock-task-id",
@@ -117,15 +157,9 @@ vi.mock("../../src/models/model-gateway.js", () => ({
 }));
 
 vi.mock("../../src/router/router.js", () => ({
-  analyzeAndRoute: vi.fn().mockResolvedValue({
-    features: { intent: "unknown", complexity_score: 50 },
-    routing: {
-      selected_model: "gpt-4o",
-      selected_role: "slow" as const,
-      fallback_model: "gpt-4o",
-      confidence: 0.8,
-    },
-  }),
+  analyzeAndRoute: mockAnalyzeAndRoute,
+  // Phase 2.0: getDefaultRouting used by chat.ts LLM-Native routing branch
+  getDefaultRouting: mockGetDefaultRouting,
 }));
 
 vi.mock("../../src/services/context-manager.js", () => ({
@@ -241,6 +275,41 @@ vi.mock("../../src/config.js", () => ({
   config: mockConfig,
 }));
 
+// ── Phase 2.0 dependency mocks (required by chat.ts top-level imports) ────────
+
+// orchestrator.ts — used by chat.ts non-execute path; mock prevents real imports
+vi.mock("../../src/services/orchestrator.js", () => ({
+  orchestrator: vi.fn().mockResolvedValue({
+    fast_reply: "mock orchestrator reply",
+    routing_info: { delegated: false },
+  }),
+  getDelegationResult: vi.fn().mockResolvedValue(null),
+  pollArchiveAndYield: vi.fn(),
+  evaluateRouting: vi.fn().mockReturnValue({
+    routing_intent: "chat",
+    selected_role: "fast",
+    confidence: 0.9,
+  }),
+  inferRoutingLayer: vi.fn().mockReturnValue("L0"),
+}));
+
+// weather-search.ts — imported at module level in chat.ts
+vi.mock("../../src/services/weather-search.js", () => ({
+  detectWeatherQuery: vi.fn().mockReturnValue(false),
+  fetchRealTimeWeather: vi.fn().mockRejectedValue(new Error("weather not mocked")),
+  formatWeatherPrompt: vi.fn().mockReturnValue(""),
+}));
+
+// fast-model-tools.ts — imported at module level in chat.ts (via orchestrator)
+vi.mock("../../src/services/fast-model-tools.js", () => ({
+  FAST_MODEL_TOOLS: [],
+}));
+
+// tool executor — used by orchestrator
+vi.mock("../../src/tools/executor.js", () => ({
+  toolExecutor: vi.fn().mockResolvedValue({ success: true, result: {} }),
+}));
+
 // Hono router test client
 async function POSTChat(body: Record<string, unknown>) {
   const { chatRouter } = await import("../../src/api/chat.js");
@@ -257,11 +326,63 @@ async function POSTChat(body: Record<string, unknown>) {
 
 describe("POST /api/chat – execute mode", () => {
   beforeEach(() => {
+    // Reset call counts only — do NOT restoreAllMocks() because that would wipe
+    // the mockResolvedValue implementations set on hoisted vi.fn() refs.
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
+    // Re-apply default return values after clearAllMocks (which strips implementations)
+    mockAnalyzeAndRoute.mockResolvedValue({
+      features: {
+        raw_query: "帮我完成这个任务",
+        token_count: 5,
+        intent: "task",
+        complexity_score: 60,
+        has_code: false,
+        has_math: false,
+        requires_reasoning: false,
+        conversation_depth: 0,
+        context_token_count: 0,
+        language: "zh",
+      },
+      routing: {
+        router_version: "v1",
+        scores: { fast: 0.3, slow: 0.9 },
+        confidence: 0.8,
+        selected_model: "gpt-4o",
+        selected_role: "slow" as const,
+        selection_reason: "test",
+        fallback_model: "gpt-4o",
+      },
+    });
+    mockGetDefaultRouting.mockReturnValue({
+      router_version: "llm_native_v0.4",
+      scores: { fast: 0, slow: 0 },
+      confidence: 0,
+      selected_model: "",
+      selected_role: "fast" as const,
+      selection_reason: "llm_native_routing",
+      fallback_model: "",
+    });
+    mockLoopRun.mockResolvedValue({
+      finalContent: "✅ Mock execution completed.",
+      reason: "completed" as const,
+      completedSteps: 1,
+      toolCallsExecuted: 2,
+      messages: [{ role: "assistant", content: "✅ Mock execution completed." }],
+    });
+    mockPlan.mockResolvedValue({
+      taskId: "mock-task-id",
+      steps: [
+        {
+          id: "step-1",
+          title: "Mock Step",
+          type: "tool_call" as const,
+          tool_name: "mock_tool",
+          depends_on: [],
+          status: "pending" as const,
+        },
+      ],
+      currentStepIndex: 0,
+    });
   });
 
   // ── Happy path ──────────────────────────────────────────────────────────────

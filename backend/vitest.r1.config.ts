@@ -9,6 +9,7 @@
  *   npm run test:r1:watch   — watch mode
  */
 import { defineConfig } from "vitest/config";
+import { resolve } from "path";
 
 export default defineConfig({
   test: {
@@ -21,5 +22,12 @@ export default defineConfig({
       "tests/api/chat-execute.test.ts",
     ],
     // R1 tests run in isolation — no shared state
+    // NODE_PATH: force vitest workers to resolve packages from THIS workspace's
+    // node_modules. On Windows, NTFS hardlinks cause npm to reuse inodes across
+    // workspaces, so without NODE_PATH the worker may load vitest/hono from an
+    // older workspace's node_modules — leading to wrong module versions.
+    env: {
+      NODE_PATH: resolve("node_modules"),
+    },
   },
 });

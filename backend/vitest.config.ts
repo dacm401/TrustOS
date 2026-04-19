@@ -42,12 +42,10 @@ export default defineConfig({
       // instance than the one vitest's runner uses, causing "No test suite found" errors.
       NODE_PATH: resolve("node_modules"),
     },
-    // Runs once before all tests — creates test DB and loads schema.
-    // setupFiles runs in a separate VM context BEFORE the test bundle,
-    // so process.env changes here affect how app modules initialize.
-    setupFiles: ["./tests/db/setup.ts"],
-    // Runs once after all tests — closes the test connection pool.
-    globalTeardown: "./tests/db/teardown.ts",
+    // NOTE: No setupFiles / globalTeardown here — this config is for UNIT tests
+    // (services/**) which use vi.mock for all dependencies and do NOT need a real DB.
+    // DB schema setup lives in vitest.repo.config.ts (used by test:repos) and
+    // vitest.api.config.ts (used by test:api-integration).
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
