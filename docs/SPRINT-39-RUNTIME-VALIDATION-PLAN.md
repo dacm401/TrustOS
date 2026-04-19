@@ -290,19 +290,17 @@ O-007 安抚功能依赖 `DelegationArchiveRepo.hasPending()`，但 delegation_a
 
 ---
 
-## 下一步：Card 39-E
+## Sprint 39 ✅ 全部完成
 
-Sprint 39 六步收口进度：
+六步收口全部完成：
+- **Card 39-A**：B39-01/02/03 P0 三枚修复 ✅
+- **Card 39-B**：状态机语义白皮书 + B39-04 修复 ✅
+- **Card 39-C**：SSE 协议冻结 + B39-05 修复 ✅
+- **Card 39-D**：Runtime E2E 测试用例（7 个） ✅
+- **Card 39-E**：兼容层清点 + 死导入清理 ✅
 
-| 卡片 | 状态 | 产出 |
-|------|------|------|
-| Card 39-A（B39-01/02/03） | ✅ | 权威数据源决策 + B39-01/02/03 修复 |
-| Card 39-B | ✅ | 状态机语义白皮书 + B39-04 修复 |
-| **Card 39-C** | ✅ | SSE-EVENT-PROTOCOL-v1.md + B39-05 修复 |
-| **Card 39-D** | ✅ | SPRINT-39-E2E-TEST-CASES.md（7 个用例） |
-| Card 39-E | 🔲 | 兼容层清点（旧 orchestrator/delegation_archive 清理计划） |
-
-- **Card 39-E**：兼容层清点（旧 orchestrator/delegation_archive 清理计划）
+**下一阶段**：Sprint 40 → Phase 4.1 Data Classification + Permission Layer
+详见：`docs/PHASE-4-IMPLEMENTATION-PLAN.md`
 
 ---
 
