@@ -284,19 +284,24 @@ O-007 安抚功能依赖 `DelegationArchiveRepo.hasPending()`，但 delegation_a
 | **B39-01** | llm-native-router delegate_to_slow 同时调用 TaskCommandRepo + triggerSlowModelBackground，双写 delegation_archive | 数据不一致 | 🔴 P0 | ✅ **已修复** (`2975282`) |
 | **B39-02** | ask_clarification 不写 task_archives，无法追踪 ClarifyQuestion 后续状态 | 状态不可追踪 | 🔴 P0 | ✅ **已修复** (`2975282`) |
 | **B39-03** | slow-worker-loop 写 `state=done`，但 pollArchiveAndYield 读 `status=done` | Worker 结果推送失败 | 🔴 P0 | ✅ **已修复** (`2975282`) |
-| **B39-04** | execute-worker-loop hardcode 模型名，非从 config 读取 | 配置失效 | 🟡 P1 | 🔲 待处理 |
-| **B39-05** | SSE done 事件两路语义不一致（旧 SSE 三种 done，Phase 3.0 一种） | 前端需区分处理 | 🟡 P1 | 🔲 Card 39-C |
+| **B39-04** | (1) Worker `failed` 分支只写 `state`，不写 `status` → SSE error 事件无法触发；(2) execute-worker-loop hardcode 模型名 `"qwen2.5-72b-instruct"` | (1) SSE 错误推送失败；(2) 配置失效 | 🟡 P1 | ✅ **已修复** |
+| **B39-05** | SSE done 事件两路语义不一致（旧 SSE done 带 stream，Phase 3.0 不带） | 前端需区分处理 | 🟡 P1 | ✅ **已修复** (`016e19a` + Card 39-C) |
 | **B39-06** | fast_observations 方法无调用方，死代码 | 技术债务 | 🟡 P2 | 🔲 待处理 |
 
 ---
 
-## 下一步：Card 39-B → Card 39-C → Card 39-D → Card 39-E
+## 下一步：Card 39-E
 
-Card 39-A（B39-01/02/03）✅ 已完成。后续 Sprint 39 五步收口：
+Sprint 39 六步收口进度：
 
-- **Card 39-B**：状态机语义统一（state vs. status 双轨合并）
-- **Card 39-C**：SSE 协议冻结（统一 done 语义）
-- **Card 39-D**：Runtime E2E 验收
+| 卡片 | 状态 | 产出 |
+|------|------|------|
+| Card 39-A（B39-01/02/03） | ✅ | 权威数据源决策 + B39-01/02/03 修复 |
+| Card 39-B | ✅ | 状态机语义白皮书 + B39-04 修复 |
+| **Card 39-C** | ✅ | SSE-EVENT-PROTOCOL-v1.md + B39-05 修复 |
+| **Card 39-D** | ✅ | SPRINT-39-E2E-TEST-CASES.md（7 个用例） |
+| Card 39-E | 🔲 | 兼容层清点（旧 orchestrator/delegation_archive 清理计划） |
+
 - **Card 39-E**：兼容层清点（旧 orchestrator/delegation_archive 清理计划）
 
 ---
