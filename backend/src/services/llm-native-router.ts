@@ -22,7 +22,6 @@ import type {
   ExecutionPlan,
 } from "../types/index.js";
 import { parseAndValidate } from "../orchestrator/decision-validator.js";
-import { triggerSlowModelBackground, type SlowModelCommand } from "./orchestrator.js";
 import { taskPlanner } from "./task-planner.js";
 
 // ── Manager Prompt ────────────────────────────────────────────────────────────
