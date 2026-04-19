@@ -19,9 +19,11 @@ import type {
   DirectResponse,
   ClarifyQuestion,
   CommandPayload,
+  ExecutionPlan,
 } from "../types/index.js";
 import { parseAndValidate } from "../orchestrator/decision-validator.js";
-import { triggerSlowModelBackground } from "./orchestrator.js";
+import { triggerSlowModelBackground, type SlowModelCommand } from "./orchestrator.js";
+import { taskPlanner } from "./task-planner.js";
 
 // ── Manager Prompt ────────────────────────────────────────────────────────────
 
@@ -119,6 +121,8 @@ export interface LLMNativeRouterResult {
   decision_type: ManagerDecisionType | null;
   /** Manager JSON 原始文本（调试用） */
   raw_manager_output?: string;
+  /** execute_task 的执行计划（Phase 2 新增） */
+  execution_plan?: ExecutionPlan;
 }
 
 // ── 主入口 ───────────────────────────────────────────────────────────────────
@@ -247,6 +251,7 @@ async function routeByDecision(
           user_id,
           session_id,
           decision,
+          user_input: message,
         });
       } catch (e: any) {
         console.warn("[llm-native-router] TaskArchive create failed:", e.message);
@@ -264,8 +269,7 @@ async function routeByDecision(
             command_type: command.command_type,
             worker_hint: command.worker_hint,
             priority: command.priority ?? "normal",
-            status: "queued",
-            payload_json: command,
+            payload: command,
           });
         }
       } catch (e: any) {
@@ -275,11 +279,12 @@ async function routeByDecision(
       // 触发慢模型后台执行（复用 orchestrator 的 triggerSlowModelBackground）
       // 注意：Phase 1 使用 Phase 1.5 SlowModelCommand 格式，与 Phase 3 CommandPayload 有差异
       // Phase 1 直接传 message，不传 Phase 3 command_payload
-      const taskBrief = command
+      const taskBrief: SlowModelCommand = command
         ? {
-            action: (command.task_type ?? "analysis") as any,
+            action: (command.task_type ?? "analysis") as SlowModelCommand["action"],
             task: command.task_brief,
             constraints: command.constraints ?? [],
+            query_keys: [],
             relevant_facts: [],
             user_preference_summary: "",
             priority: command.priority ?? "normal",
@@ -289,6 +294,7 @@ async function routeByDecision(
             action: "analysis",
             task: message,
             constraints: [],
+            query_keys: [],
             relevant_facts: [],
             user_preference_summary: "",
             priority: "normal",
@@ -320,16 +326,80 @@ async function routeByDecision(
     }
 
     case "execute_task": {
-      // Phase 1: execute_task 暂时回退到旧链路
-      // Phase 2+ 才接入 TaskPlanner + ExecutionLoop
-      console.warn("[llm-native-router] execute_task not yet implemented in Phase 1, fallback to direct_answer");
+      // Phase 2: 调用 TaskPlanner 规划 + 写 Archive + SSE 推送 plan
+      // Phase 3 才实现后台异步 ExecutionLoop
+      const command = decision.command as CommandPayload | undefined;
+      const taskId = uuid();
+
+      // Step 1: 调用 TaskPlanner 生成执行计划
+      let executionPlan: ExecutionPlan | undefined;
+      try {
+        executionPlan = await taskPlanner.plan({
+          taskId,
+          goal: command?.goal ?? message,
+          userId: user_id,
+          sessionId: session_id,
+        });
+      } catch (e: any) {
+        console.warn("[llm-native-router] TaskPlanner.plan failed:", e.message);
+        // TaskPlanner 失败 → fallback，不阻断
+      }
+
+      // Step 2: 写入 TaskArchive（state: executing）
+      try {
+        const { TaskArchiveRepo } = await import("../db/task-archive-repo.js");
+        await TaskArchiveRepo.create({
+          task_id: taskId,
+          user_id,
+          session_id,
+          decision,
+          user_input: message,
+          task_brief: command?.task_brief,
+          goal: command?.goal,
+        });
+        if (executionPlan) {
+          await TaskArchiveRepo.updateState(taskId, "executing");
+        }
+      } catch (e: any) {
+        console.warn("[llm-native-router] TaskArchive create failed:", e.message);
+      }
+
+      // Step 3: 写入 task_commands（Phase 3 worker 拉取）
+      try {
+        const { TaskCommandRepo } = await import("../db/task-archive-repo.js");
+        if (command) {
+          await TaskCommandRepo.create({
+            task_id: taskId,
+            archive_id: taskId,
+            user_id,
+            command_type: command.command_type,
+            worker_hint: command.worker_hint,
+            priority: command.priority ?? "normal",
+            payload: command,
+            timeout_sec: command.timeout_sec,
+          });
+        }
+      } catch (e: any) {
+        console.warn("[llm-native-router] TaskCommand create failed:", e.message);
+      }
+
+      // 快速安抚回复（Phase 3 后台执行完成后才推送结果）
+      const planStepCount = executionPlan?.steps.length ?? 0;
+      const fastReply = language === "zh"
+        ? planStepCount > 0
+          ? `好的，已为你规划了 ${planStepCount} 个步骤，正在执行中...`
+          : "好的，正在处理这个任务。"
+        : planStepCount > 0
+          ? `Got it. I've planned ${planStepCount} step(s) and am executing them...`
+          : "Got it. Processing this task.";
+
       return {
-        message: language === "zh"
-          ? "好的，我来帮你处理这个任务。"
-          : "Got it, I'll help you with this task.",
+        message: fastReply,
         decision,
+        delegation: { task_id: taskId, status: "triggered" },
         routing_layer: "L3",
         decision_type: "execute_task",
+        execution_plan: executionPlan,
         raw_manager_output: raw,
       };
     }

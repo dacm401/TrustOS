@@ -480,7 +480,7 @@ interface SlowModelBackgroundInput {
   reqApiKey?: string;
 }
 
-async function triggerSlowModelBackground(input: SlowModelBackgroundInput): Promise<void> {
+export async function triggerSlowModelBackground(input: SlowModelBackgroundInput): Promise<void> {
   const { taskId, message, command, user_id, session_id, reqApiKey } = input;
   const startTime = Date.now();
 

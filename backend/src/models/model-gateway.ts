@@ -43,6 +43,9 @@ export function getAvailableModels(): string[] {
   return ["gpt-4o-mini", "gpt-4o", "claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022"];
 }
 
+// Re-export callOpenAIWithOptions from the OpenAI provider for use by other modules
+export { callOpenAIWithOptions } from "./providers/openai.js";
+
 /**
  * Streaming model call — yields content chunks as they arrive from the provider.
  * OpenAI-compatible models use the OpenAI streaming API.

@@ -344,6 +344,9 @@ chatRouter.post("/chat", async (c) => {
           delegation: llmNativeResult.delegation,
           // Phase 3.0: 澄清字段
           clarifying: llmNativeResult.clarifying,
+          // Phase 2.0: execute_task 的执行计划
+          // @ts-ignore Phase 2 新增字段，ChatResponse 类型后续对齐
+          execution_plan: llmNativeResult.execution_plan,
         };
 
         return c.json(response);
