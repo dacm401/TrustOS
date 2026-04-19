@@ -632,8 +632,8 @@ chatRouter.post("/chat", async (c) => {
             console.error("[stream] pollArchiveAndYield error:", e.message);
             await s.write(`data: ${JSON.stringify({ type: "error", stream: "轮询出错", routing_layer: "L2" })}\n\n`);
           }
-          // SSE done 事件
-          await s.write(`data: ${JSON.stringify({ type: "done", stream: "[delegation_complete]", routing_layer: "L2" })}\n\n`);
+          // SSE done 事件（对齐 Phase 3.0：done 是纯终止信号，无 stream 字段）
+          await s.write(`data: ${JSON.stringify({ type: "done", routing_layer: "L2" })}\n\n`);
         } else {
           // Step 3: Fast 直接回复 → 流式输出（复用原有 streaming 逻辑）
           const memories = config.memory.enabled
@@ -741,8 +741,8 @@ chatRouter.post("/chat", async (c) => {
 
           TaskRepo.updateExecution(taskId, contextResult.original_tokens + roughTokens).catch((e) => console.error("[stream] updateExecution failed:", e));
 
-          // Product polish: SSE done 事件，告知前端流结束
-          await s.write(`data: ${JSON.stringify({ type: "done", stream: "[stream_complete]", tokens: roughTokens, latency_ms: streamLatency, routing_layer: routingLayer })}\n\n`);
+          // Product polish: SSE done 事件（对齐 Phase 3.0：无 stream 字段）
+          await s.write(`data: ${JSON.stringify({ type: "done", routing_layer: routingLayer })}\n\n`);
         }
       });
     }
