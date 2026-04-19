@@ -1,8 +1,8 @@
 # Current Sprint
 
-**Sprint 37 — Phase 3.0 Manager-Worker 路由接入（Phase 1）**
-**Status:** ✅ Phase 1 Complete — 2026-04-19
-**Commit:** `ef8a502` | pushed ✅
+**Sprint 37 — Phase 3.0 Manager-Worker 路由接入（Phase 2）**
+**Status:** 🔄 Phase 2 In Progress — 2026-04-19
+**Commit:** `af38192` | pushed ✅
 
 ---
 
@@ -77,6 +77,55 @@ npx tsc --noEmit
 
 # 4. 单元测试
 npx vitest run --reporter=dot
+```
+
+---
+
+## Phase 2 交付说明（execute_task → TaskPlanner）
+
+### 核心变化
+
+当 `ManagerDecision.decision_type === "execute_task"` 时：
+1. 调用 `TaskPlanner.plan()` 生成 `ExecutionPlan`
+2. 写入 `TaskArchive`（state: `executing`）
+3. 写入 `TaskCommandRepo`（Phase 3 worker 拉取）
+4. 返回 `execution_plan` 字段（含步骤列表）
+
+**Phase 2 策略**：同步规划 + 立即返回 plan（后台异步 ExecutionLoop → Phase 3）
+
+### 修改文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `backend/src/services/llm-native-router.ts` | execute_task 分支接入 TaskPlanner |
+| `backend/src/services/orchestrator.ts` | 导出 `triggerSlowModelBackground` |
+| `backend/src/models/model-gateway.ts` | 导出 `callOpenAIWithOptions` |
+| `backend/src/api/chat.ts` | 返回 `execution_plan` 字段 |
+
+### Phase 2 路由逻辑（execute_task）
+
+```
+ManagerDecision { decision_type: "execute_task", command: CommandPayload }
+   ↓
+TaskPlanner.plan({ goal, taskId, userId, sessionId })
+   ↓
+ExecutionPlan { task_id, steps[] }
+   ↓
+TaskArchiveRepo.create(state: "executing")
+TaskCommandRepo.create(command: queued)
+   ↓
+返回 execution_plan + 快速安抚消息
+```
+
+### Phase 2 验证方法
+
+```bash
+# 触发 execute_task（Manager 判断需要工具调用）
+curl -X POST http://localhost:3001/chat \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"u1","session_id":"s1","message":"帮我搜索最新的AI新闻","use_llm_native_routing":true}'
+
+# 期望：返回 execution_plan 字段（steps 列表）
 ```
 
 ---
