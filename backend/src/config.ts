@@ -93,6 +93,24 @@ export const config = {
     // Max response size for http_request in bytes
     httpMaxResponseBytes: parseInt(process.env.HTTP_MAX_RESPONSE_BYTES || "1048576"), // 1 MB
   },
+
+  // ── Phase 4: Local Trust Gateway ─────────────────────────────────────────────
+  permission: {
+    // Master switch for Permission Layer
+    enabled: process.env.USE_PERMISSION_LAYER === "true",
+    // Enable Data Classification (requires permission.enabled)
+    dataClassification: process.env.USE_DATA_CLASSIFICATION === "true",
+    // Enable Redaction Engine (requires permission.enabled)
+    redaction: process.env.USE_REDACTION === "true",
+    // Enable SmallModelGuard (requires permission.enabled)
+    smallModelGuard: process.env.USE_SMALL_MODEL_GUARD === "true",
+    // User data exposure preferences (defaults)
+    userDataPreferences: {
+      allowCloudConversationHistory: process.env.ALLOW_CLOUD_CONVERSATION_HISTORY !== "false",
+      allowCloudMemory: process.env.ALLOW_CLOUD_MEMORY !== "false",
+      allowCloudToolResults: process.env.ALLOW_CLOUD_TOOL_RESULTS !== "false",
+    },
+  },
 };
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {

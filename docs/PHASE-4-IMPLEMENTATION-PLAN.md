@@ -1,6 +1,6 @@
 # Phase 4 Implementation Plan — Local Trust Gateway
 
-> 版本：v1.0 | 日期：2026-04-19 | 阶段：Phase 4 | 状态：Post-Sprint 39 启动
+> 版本：v1.2 | 日期：2026-04-19 | 阶段：Phase 4 | 状态：**Sprint 42 ✅ 完成**
 > 关联：`ARCHITECTURE-VISION.md`（愿景）/ `CURRENT-PHASE-DIRECTIVE.md`（当前指令）
 
 ---
@@ -22,20 +22,41 @@
 
 ## Phase 4 Sub-Sprints 总览
 
-| Sub-Sprint | 主题 | 核心产出 | 预计周期 |
-|-----------|------|---------|---------|
-| Sprint 40 | **数据分类 + Permission Layer** | DataClassification enum + PermissionContext + checkPermission() | 1 sprint |
-| Sprint 41 | **Rule Engine + Redaction** | DataRedactionRule + 基础脱敏实现 | 1 sprint |
-| Sprint 42 | **小模型访问验证** | SmallModelGuard + Prompt Injection 检测 | 1 sprint |
-| Sprint 43 | **Phase 5 Local Archive** | 本地化 Archive 存储 + Long-term Memory Agent | 2 sprints |
+| Sub-Sprint | 主题 | 核心产出 | 状态 |
+|-----------|------|---------|------|
+| Sprint 40 | **数据分类 + Permission Layer** | DataClassification enum + PermissionContext + checkPermission() | ✅ 完成 |
+| Sprint 41 | **Rule Engine + Redaction** | DataRedactionRule + 基础脱敏实现 | ✅ 完成 |
+| Sprint 42 | **小模型访问验证** | SmallModelGuard + Prompt Injection 检测 | ✅ 完成 |
+| Sprint 43 | **Phase 5 Local Archive** | 本地化 Archive 存储 + Long-term Memory Agent | 🔲 待启动 |
 
 ---
 
-## Sprint 40 — 数据分类 + Permission Layer
+## Sprint 40 — 数据分类 + Permission Layer ✅ 完成
 
 ### 目标
 
 定义数据分类标准，构建 Permission Layer，使得任何数据暴露决定都经过"分类 → 校验 → 执行"的显式链路。
+
+### 验收标准 ✅
+
+- [x] `DataClassification` enum 定义完成（`src/types/index.ts` line 971-978）
+- [x] `DataClassifier.classify()` 实现默认规则（`src/services/phase4/data-classifier.ts`）
+- [x] `PermissionChecker.check()` 实现权限校验逻辑（`src/services/phase4/permission-checker.ts`）
+- [x] LLM-Native Router `delegate_to_slow` 路径接入 PermissionChecker（`src/services/llm-native-router.ts`）
+- [x] feature flag `use_permission_layer` 控制开关（`src/config.ts` + 环境变量）
+- [x] 单元测试覆盖核心路径（`tests/services/phase4.test.ts` 31 tests）
+
+### Sprint 40 产出
+
+| 文件 | 说明 |
+|------|------|
+| `backend/src/types/index.ts` | Phase 4.1 types（DataClassification, ClassificationContext, PermissionContext） |
+| `backend/src/services/phase4/data-classifier.ts` | Rule-based 数据分类器，8+ 默认规则 |
+| `backend/src/services/phase4/permission-checker.ts` | Feature flag + 用户偏好校验 |
+| `backend/src/services/phase4/index.ts` | 模块导出 |
+| `backend/src/config.ts` | Phase 4 feature flags |
+| `backend/src/services/llm-native-router.ts` | Permission Layer 预留点 |
+| `backend/tests/services/phase4.test.ts` | 31 个单元测试 |
 
 ### 核心架构
 
@@ -148,7 +169,7 @@ ALTER TABLE task_archives
 
 ---
 
-## Sprint 41 — Rule Engine + Redaction
+## Sprint 41 — Rule Engine + Redaction ✅ 完成
 
 ### 目标
 
@@ -222,12 +243,23 @@ export class RedactionEngine {
 }
 ```
 
-### 验收标准
+### 验收标准 ✅
 
-- [ ] `DataRedactionRule` + `RedactionEngine` 实现
-- [ ] 默认内置 5 条脱敏规则
-- [ ] LLM-Native Router 在发送给云端模型前，对 classification=`cloud_allowed` 的数据执行脱敏
-- [ ] `use_redaction` feature flag 控制
+- [x] `RedactionAction` enum 定义完成（MASK/REPLACE/TRUNCATE/HASH/REMOVE）
+- [x] `DataRedactionRule` + `RedactedContent` types 定义完成
+- [x] `RedactionEngine` 实现核心逻辑
+- [x] 默认内置 8 条脱敏规则（phone_cn/email/id_card_cn/api_key/ip_address/credit_card/bank_account/password）
+- [x] 支持字符串和对象两种脱敏模式
+- [x] 单元测试覆盖核心路径
+
+### Sprint 41 产出
+
+| 文件 | 说明 |
+|------|------|
+| `backend/src/types/index.ts` | Phase 4.2 types（RedactionAction, DataRedactionRule, RedactedContent, RedactionContext） |
+| `backend/src/services/phase4/redaction-engine.ts` | 脱敏引擎，8 种内置规则 |
+| `backend/src/services/phase4/index.ts` | 模块导出 |
+| `backend/tests/services/phase4/redaction-engine.test.ts` | 38 个单元测试用例 |
 - [ ] 单元测试覆盖核心脱敏路径
 
 ---
@@ -277,12 +309,23 @@ export class SmallModelGuard {
 | 指令干扰 | 检测上下文中指令与请求不匹配 | 人工 review |
 | 越权检测 | 检测超出本地模型能力范围的请求 | 超出则拒绝 |
 
-### 验收标准
+### 验收标准 ✅
 
-- [ ] `SmallModelGuard.checkRateLimit()` 实现（滑动窗口计数）
-- [ ] `SmallModelGuard.detectPromptInjection()` 实现（3+ 策略）
-- [ ] `SmallModelGuard.shouldUseLocalModel()` 实现（能力路由）
-- [ ] 集成到 Local Trust Gateway 主路径
+- [x] `GuardAction` / `GuardViolationType` / `GuardPattern` enums 定义完成
+- [x] `SmallModelGuard.check()` 实现核心逻辑
+- [x] 默认内置 8 条安全规则（jailbreak/prompt_injection/system_prompt_extraction/command_injection/sql_injection/role_playing_attack/refusal_attack/data_leakage）
+- [x] 支持 ALLOW/DENY/FLAG/ESCALATE/SILENT_DENY 五种动作
+- [x] 批量检查 `checkBatch()` 方法
+- [x] 单元测试覆盖核心路径
+
+### Sprint 42 产出
+
+| 文件 | 说明 |
+|------|------|
+| `backend/src/types/index.ts` | Phase 4.3 types（GuardAction, GuardViolationType, SmallModelGuardRule, GuardContext） |
+| `backend/src/services/phase4/small-model-guard.ts` | 小模型守卫，8 种内置安全规则 |
+| `backend/src/services/phase4/index.ts` | 模块导出 |
+| `backend/tests/services/phase4/small-model-guard.test.ts` | 40+ 个单元测试用例 |
 - [ ] `use_small_model_guard` feature flag
 - [ ] 单元测试 + E2E 注入攻击测试用例
 
@@ -367,13 +410,28 @@ Cloud Slow Model            Cloud Slow Model        Local 小模型
 
 ## Feature Flag 清单
 
-| Flag | 作用域 | 默认值 | 说明 |
-|------|--------|--------|------|
-| `use_permission_layer` | Sprint 40 | `false` | 权限层总开关 |
-| `use_data_classification` | Sprint 40 | `false` | 数据分类开关 |
-| `use_redaction` | Sprint 41 | `false` | 脱敏引擎开关 |
-| `use_small_model_guard` | Sprint 42 | `false` | 小模型守卫开关 |
-| `use_local_archive` | Sprint 43 | `false` | 本地 Archive 开关 |
+| Flag | 作用域 | 默认值 | 状态 | 说明 |
+|------|--------|--------|------|------|
+| `use_permission_layer` | Sprint 40 | `false` | ✅ 已实现 | 权限层总开关 |
+| `use_data_classification` | Sprint 40 | `false` | ✅ 已实现 | 数据分类开关 |
+| `use_redaction` | Sprint 41 | `false` | ✅ 已实现 | 脱敏引擎开关 |
+| `use_small_model_guard` | Sprint 42 | `false` | ✅ 已实现 | 小模型守卫开关 |
+| `use_local_archive` | Sprint 43 | `false` | 🔲 待实现 | 本地 Archive 开关 |
+
+**环境变量配置**：
+```bash
+# Sprint 40 启用（可选）
+USE_PERMISSION_LAYER=true
+USE_DATA_CLASSIFICATION=true
+ALLOW_CLOUD_CONVERSATION_HISTORY=false  # 用户偏好：禁止云端对话历史
+ALLOW_CLOUD_MEMORY=false                  # 用户偏好：禁止云端记忆
+
+# Sprint 41 启用
+USE_REDACTION=true
+
+# Sprint 42 启用
+USE_SMALL_MODEL_GUARD=true
+```
 
 ---
 

@@ -7,6 +7,11 @@
 // 3. 按 decision_type 路由：direct_answer / ask_clarification / delegate_to_slow / execute_task
 //
 // Phase 1：轻量接入，不改旧 orchestrator，双轨并行
+//
+// Phase 4.1 增强：Permission Layer 预留点
+// Phase 4.2 增强：Redaction Engine 集成
+// - 在数据暴露给云端模型之前，根据 fallbackAction 执行脱敏
+// - 使用 config.permission.redaction feature flag 控制
 
 import { v4 as uuid } from "uuid";
 import { config } from "../config.js";
@@ -23,6 +28,16 @@ import type {
 } from "../types/index.js";
 import { parseAndValidate } from "../orchestrator/decision-validator.js";
 import { taskPlanner } from "./task-planner.js";
+
+// Phase 4: Permission Layer + Redaction imports (lazy loaded to avoid circular deps)
+let phase4Module: typeof import("./phase4/index.js") | null = null;
+
+async function getPhase4() {
+  if (!phase4Module) {
+    phase4Module = await import("./phase4/index.js");
+  }
+  return phase4Module;
+}
 
 // ── Manager Prompt ────────────────────────────────────────────────────────────
 
@@ -305,6 +320,87 @@ async function routeByDecision(
     case "delegate_to_slow": {
       const command = decision.command as CommandPayload | undefined;
       const taskId = uuid();
+      let processedCommand = command;
+
+      // Phase 4.1 + 4.2: Permission Layer + Redaction Engine
+      // 目的：在数据暴露给云端模型之前，检查是否允许暴露，必要时执行脱敏
+      if (config.permission.enabled) {
+        try {
+          const pl = await getPhase4();
+          // 构建分类上下文：task_brief 是暴露给云端的核心数据
+          const classificationCtx = {
+            dataType: "task_archive" as const,
+            sensitivity: "internal" as const,
+            source: "system" as const,
+            hasPII: false,
+            ageHours: 0,
+          };
+          const classification = pl.DataClassifier.classify(command?.task_brief ?? "", classificationCtx);
+          const permissionCtx = {
+            sessionId: session_id,
+            userId: user_id,
+            requestedTier: classification.classification,
+            featureFlags: {
+              use_permission_layer: config.permission.enabled,
+              use_data_classification: config.permission.dataClassification,
+              use_redaction: config.permission.redaction,
+            },
+            userDataPreferences: config.permission.userDataPreferences,
+            targetModel: "cloud_72b" as const,
+          };
+          const permission = pl.PermissionChecker.fromClassification(classification.classification, permissionCtx);
+
+          console.log("[llm-native-router] Phase 4 Permission Check:", {
+            taskId,
+            dataType: "task_brief",
+            classification: classification.classification,
+            permissionAllowed: permission.allowed,
+            fallbackAction: permission.fallbackAction,
+          });
+
+          // Phase 4.2: 根据 fallbackAction 执行脱敏
+          if (permission.fallbackAction === "redact" && config.permission.redaction) {
+            const redactionEngine = pl.getRedactionEngine();
+            const redactionCtx = {
+              sessionId: session_id,
+              userId: user_id,
+              dataType: "task_archive" as const,
+              targetClassification: classification.classification,
+              enableAudit: true,
+            };
+
+            if (command) {
+              const redactedBrief = redactionEngine.redact(command.task_brief ?? "", redactionCtx);
+              const redactedWorkerHint = redactionEngine.redact(command.worker_hint ?? "", redactionCtx);
+
+              processedCommand = {
+                ...command,
+                task_brief: redactedBrief.content as string,
+                worker_hint: redactedWorkerHint.content as string,
+              };
+
+              console.log("[llm-native-router] Phase 4.2 Redaction Applied:", {
+                taskId,
+                briefStats: redactedBrief.stats,
+                workerHintStats: redactedWorkerHint.stats,
+              });
+            }
+          } else if (permission.fallbackAction === "reject" || !permission.allowed) {
+            // 拒绝暴露，回退到 direct_answer
+            return {
+              message: language === "zh"
+                ? "抱歉，这个问题涉及敏感信息，无法交给更专业的模型处理。"
+                : "Sorry, this request involves sensitive information and cannot be processed by the cloud model.",
+              decision,
+              routing_layer: "L0",
+              decision_type: "direct_answer",
+              raw_manager_output: raw,
+            };
+          }
+        } catch (e: any) {
+          console.warn("[llm-native-router] Permission layer check failed:", e.message);
+        }
+      }
 
       // Phase 3.0: 写入 TaskArchive
       try {
@@ -320,18 +416,18 @@ async function routeByDecision(
         console.warn("[llm-native-router] TaskArchive create failed:", e.message);
       }
 
-      // Phase 3.0: 写入 task_commands
+      // Phase 3.0: 写入 task_commands（使用脱敏后的 processedCommand）
       try {
         const { TaskCommandRepo } = await import("../db/task-archive-repo.js");
-        if (command) {
+        if (processedCommand) {
           await TaskCommandRepo.create({
             task_id: taskId,
             archive_id: taskId,
             user_id,
-            command_type: command.command_type,
-            worker_hint: command.worker_hint,
-            priority: command.priority ?? "normal",
-            payload: command,
+            command_type: processedCommand.command_type,
+            worker_hint: processedCommand.worker_hint,
+            priority: processedCommand.priority ?? "normal",
+            payload: processedCommand,
           });
         }
       } catch (e: any) {
@@ -355,6 +451,73 @@ async function routeByDecision(
     case "execute_task": {
       const command = decision.command as CommandPayload | undefined;
       const taskId = uuid();
+      let processedCommand = command;
+
+      // Phase 4.1 + 4.2: Permission Layer + Redaction Engine
+      if (config.permission.enabled) {
+        try {
+          const pl = await getPhase4();
+          const classificationCtx = {
+            dataType: "task_archive" as const,
+            sensitivity: "internal" as const,
+            source: "system" as const,
+            hasPII: false,
+            ageHours: 0,
+          };
+          const classification = pl.DataClassifier.classify(command?.task_brief ?? "", classificationCtx);
+          const permissionCtx = {
+            sessionId: session_id,
+            userId: user_id,
+            requestedTier: classification.classification,
+            featureFlags: {
+              use_permission_layer: config.permission.enabled,
+              use_data_classification: config.permission.dataClassification,
+              use_redaction: config.permission.redaction,
+            },
+            userDataPreferences: config.permission.userDataPreferences,
+            targetModel: "cloud_72b" as const,
+          };
+          const permission = pl.PermissionChecker.fromClassification(classification.classification, permissionCtx);
+
+          console.log("[llm-native-router] Phase 4 Permission Check (execute_task):", {
+            taskId,
+            dataType: "task_brief",
+            classification: classification.classification,
+            permissionAllowed: permission.allowed,
+            fallbackAction: permission.fallbackAction,
+          });
+
+          // Phase 4.2: 根据 fallbackAction 执行脱敏
+          if (permission.fallbackAction === "redact" && config.permission.redaction) {
+            const redactionEngine = pl.getRedactionEngine();
+            const redactionCtx = {
+              sessionId: session_id,
+              userId: user_id,
+              dataType: "task_archive" as const,
+              targetClassification: classification.classification,
+              enableAudit: true,
+            };
+
+            if (command) {
+              const redactedBrief = redactionEngine.redact(command.task_brief ?? "", redactionCtx);
+              const redactedWorkerHint = redactionEngine.redact(command.worker_hint ?? "", redactionCtx);
+
+              processedCommand = {
+                ...command,
+                task_brief: redactedBrief.content as string,
+                worker_hint: redactedWorkerHint.content as string,
+              };
+
+              console.log("[llm-native-router] Phase 4.2 Redaction Applied (execute_task):", {
+                taskId,
+                briefStats: redactedBrief.stats,
+              });
+            }
+          }
+        } catch (e: any) {
+          console.warn("[llm-native-router] Permission layer check failed:", e.message);
+        }
+      }
 
       // Step 1: 写入 TaskArchive（state: delegated，Worker 会改为 running）
       try {
@@ -372,19 +535,19 @@ async function routeByDecision(
         console.warn("[llm-native-router] TaskArchive create failed:", e.message);
       }
 
-      // Step 2: 写入 task_commands（execute_worker_loop 会拉取并执行）
+      // Step 2: 写入 task_commands（使用脱敏后的 processedCommand）
       try {
         const { TaskCommandRepo } = await import("../db/task-archive-repo.js");
-        if (command) {
+        if (processedCommand) {
           await TaskCommandRepo.create({
             task_id: taskId,
             archive_id: taskId,
             user_id,
-            command_type: command.command_type ?? "execute_plan",
-            worker_hint: command.worker_hint ?? "execute_worker",
-            priority: command.priority ?? "normal",
-            payload: command,
-            timeout_sec: command.timeout_sec,
+            command_type: processedCommand.command_type ?? "execute_plan",
+            worker_hint: processedCommand.worker_hint ?? "execute_worker",
+            priority: processedCommand.priority ?? "normal",
+            payload: processedCommand,
+            timeout_sec: processedCommand.timeout_sec,
           });
         }
       } catch (e: any) {
