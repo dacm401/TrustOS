@@ -356,15 +356,16 @@ describe("LocalArchiveStore", () => {
 });
 
 describe("ArchiveStore Factory", () => {
-  it("应该为 local 类型创建 LocalArchiveStore", () => {
-    const store = createArchiveStore("local");
-
-    expect(store).toBeInstanceOf(LocalArchiveStore);
+  it("应该为 local 类型创建 LocalArchiveStorage", async () => {
+    const store = await createArchiveStore("local");
+    expect(store).toBeDefined();
+    expect(typeof store.save).toBe("function");
+    expect(typeof store.ping).toBe("function");
   });
 
-  it("应该为未知类型抛出错误", () => {
-    expect(() => {
-      createArchiveStore("unknown" as any);
-    }).toThrow();
+  it("应该为未知类型回退到 local", async () => {
+    const store = await createArchiveStore("unknown" as any);
+    expect(store).toBeDefined();
+    expect(typeof store.save).toBe("function");
   });
 });

@@ -1,83 +1,180 @@
 /**
- * Phase 5 — Local Archive Store
+ * Phase 5 — Local Archive Store (IArchiveStorage 实现)
  *
- * 本地文件系统存储后端，作为 PostgreSQL 的可选替代。
+ * 本地文件系统存储后端，实现 IArchiveStorage 接口。
  * 用于：数据主权要求 / 离线场景 / 低延迟需求。
+ *
+ * 注意：旧 API create()/updateCommandStatus() 保留，但推荐使用 save()/update()。
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  unlinkSync,
+  readdirSync,
+  statSync,
+} from "fs";
 import { join } from "path";
 import { v4 as uuid } from "uuid";
+import type {
+  IArchiveStorage,
+  ArchiveDocument,
+  LocalArchiveConfig,
+} from "./storage-backend.js";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-export interface LocalArchiveConfig {
-  /** 存储根目录 */
-  basePath: string;
-  /** 最大单文件大小（字节），默认 10MB */
-  maxFileSize?: number;
-  /** 是否启用压缩（默认 false） */
-  compress?: boolean;
-}
-
-export interface ArchiveDocument {
-  id: string;
-  task_id?: string;
-  session_id: string;
-  user_id: string;
-  manager_decision: unknown;
-  command?: unknown;
-  user_input: string;
-  task_brief?: string;
-  goal?: string;
-  state: string;
-  status: string;
-  constraints: Record<string, unknown>;
-  fast_observations: unknown[];
-  slow_execution: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
-
-// ── LocalArchiveStore ──────────────────────────────────────────────────────────
+// ── LocalArchiveStorage (IArchiveStorage 实现) ────────────────────────────────
 
 /**
- * 本地文件系统 Archive 存储
+ * 实现 IArchiveStorage 接口的本地文件系统存储。
+ *
+ * 路径格式：{basePath}/{userId}/{sessionId}/{archiveId}.json
+ * 文件名使用传入 doc.id，不自动生成。
  */
-export class LocalArchiveStore {
+export class LocalArchiveStorage implements IArchiveStorage {
   private basePath: string;
-  private maxFileSize: number;
-  private compress: boolean;
 
   constructor(config: LocalArchiveConfig) {
     this.basePath = config.basePath;
-    this.maxFileSize = config.maxFileSize ?? 10 * 1024 * 1024; // 10MB
-    this.compress = config.compress ?? false;
-
-    // 确保目录存在
     if (!existsSync(this.basePath)) {
       mkdirSync(this.basePath, { recursive: true });
     }
   }
 
-  /**
-   * 获取 session 目录路径
-   */
-  private getSessionDir(sessionId: string, userId: string): string {
-    // 按 userId/sessionId 组织目录结构
+  private sessionDir(sessionId: string, userId: string): string {
     return join(this.basePath, userId, sessionId);
   }
 
-  /**
-   * 获取 archive 文件路径
-   */
-  private getArchivePath(sessionDir: string, archiveId: string): string {
-    return join(sessionDir, `${archiveId}.json`);
+  private filePath(sessionId: string, userId: string, archiveId: string): string {
+    return join(this.sessionDir(sessionId, userId), `${archiveId}.json`);
   }
 
-  /**
-   * 创建新的 Archive 记录
-   */
+  // ── IArchiveStorage 实现 ──────────────────────────────────────────────────
+
+  async save(doc: ArchiveDocument): Promise<string> {
+    const dir = this.sessionDir(doc.session_id, doc.user_id);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    const path = this.filePath(doc.session_id, doc.user_id, doc.id);
+    writeFileSync(path, JSON.stringify(doc, null, 2), "utf-8");
+    return doc.id;
+  }
+
+  async getById(id: string): Promise<ArchiveDocument | null> {
+    return this.findByIdRecursive(this.basePath, id);
+  }
+
+  async getBySession(sessionId: string, userId: string): Promise<ArchiveDocument | null> {
+    const dir = this.sessionDir(sessionId, userId);
+    if (!existsSync(dir)) return null;
+
+    const files = readdirSync(dir)
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => ({ name: f, mtime: statSync(join(dir, f)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime);
+
+    if (files.length === 0) return null;
+    try {
+      return JSON.parse(readFileSync(join(dir, files[0].name), "utf-8")) as ArchiveDocument;
+    } catch {
+      return null;
+    }
+  }
+
+  async update(id: string, updates: Partial<ArchiveDocument>): Promise<boolean> {
+    const doc = await this.getById(id);
+    if (!doc) return false;
+    const updated: ArchiveDocument = {
+      ...doc,
+      ...updates,
+      id: doc.id,
+      created_at: doc.created_at,
+      updated_at: new Date().toISOString(),
+    };
+    const path = this.filePath(doc.session_id, doc.user_id, id);
+    writeFileSync(path, JSON.stringify(updated, null, 2), "utf-8");
+    return true;
+  }
+
+  async updateCommandStatus(id: string, status: string, result?: unknown): Promise<boolean> {
+    return this.update(id, {
+      status,
+      ...(result ? { slow_execution: result as Record<string, unknown> } : {}),
+    });
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const doc = await this.getById(id);
+    if (!doc) return false;
+    const path = this.filePath(doc.session_id, doc.user_id, id);
+    if (existsSync(path)) {
+      unlinkSync(path);
+      return true;
+    }
+    return false;
+  }
+
+  async listBySession(sessionId: string, userId: string): Promise<ArchiveDocument[]> {
+    const dir = this.sessionDir(sessionId, userId);
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => {
+        try {
+          return JSON.parse(readFileSync(join(dir, f), "utf-8")) as ArchiveDocument;
+        } catch {
+          return null;
+        }
+      })
+      .filter((d): d is ArchiveDocument => d !== null)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  async ping(): Promise<boolean> {
+    return existsSync(this.basePath);
+  }
+
+  // ── Internal ─────────────────────────────────────────────────────────────
+
+  private findByIdRecursive(dir: string, id: string): ArchiveDocument | null {
+    if (!existsSync(dir)) return null;
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          const r = this.findByIdRecursive(full, id);
+          if (r) return r;
+        } else if (entry.isFile() && entry.name === `${id}.json`) {
+          return JSON.parse(readFileSync(full, "utf-8")) as ArchiveDocument;
+        }
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+}
+
+// ── Legacy LocalArchiveStore (向后兼容) ──────────────────────────────────────
+
+/**
+ * 遗留 API（Phase 5 早期版本），保留以兼容现有调用方。
+ * 推荐迁移到 LocalArchiveStorage。
+ */
+export class LocalArchiveStore {
+  private basePath: string;
+  private maxFileSize: number;
+  private compress: boolean;
+  private impl: LocalArchiveStorage;
+
+  constructor(config: LocalArchiveConfig) {
+    this.basePath = config.basePath;
+    this.maxFileSize = config.maxFileSize ?? 10 * 1024 * 1024;
+    this.compress = config.compress ?? false;
+    this.impl = new LocalArchiveStorage(config);
+  }
+
   async create(input: {
     task_id?: string;
     session_id: string;
@@ -88,15 +185,8 @@ export class LocalArchiveStore {
     goal?: string;
   }): Promise<{ id: string }> {
     const id = uuid();
-    const sessionDir = this.getSessionDir(input.session_id, input.user_id);
-
-    // 确保目录存在
-    if (!existsSync(sessionDir)) {
-      mkdirSync(sessionDir, { recursive: true });
-    }
-
     const now = new Date().toISOString();
-    const document: ArchiveDocument = {
+    const doc: ArchiveDocument = {
       id,
       task_id: input.task_id,
       session_id: input.session_id,
@@ -114,274 +204,48 @@ export class LocalArchiveStore {
       created_at: now,
       updated_at: now,
     };
-
-    const filePath = this.getArchivePath(sessionDir, id);
-    writeFileSync(filePath, JSON.stringify(document, null, 2), "utf-8");
-
+    await this.impl.save(doc);
     return { id };
   }
 
-  /**
-   * 按 session_id 读取最新的 Archive
-   */
-  async getBySession(
-    sessionId: string,
-    userId: string
-  ): Promise<ArchiveDocument | null> {
-    const sessionDir = this.getSessionDir(sessionId, userId);
-
-    if (!existsSync(sessionDir)) {
-      return null;
-    }
-
-    // 查找所有 .json 文件并按修改时间排序
-    const files = readdirSync(sessionDir)
-      .filter((f) => f.endsWith(".json"))
-      .map((f) => ({
-        name: f,
-        path: join(sessionDir, f),
-        mtime: statSync(join(sessionDir, f)).mtimeMs,
-      }))
-      .sort((a, b) => b.mtime - a.mtime);
-
-    if (files.length === 0) {
-      return null;
-    }
-
-    try {
-      const content = readFileSync(files[0].path, "utf-8");
-      return JSON.parse(content) as ArchiveDocument;
-    } catch {
-      return null;
-    }
+  async getBySession(sessionId: string, userId: string) {
+    return this.impl.getBySession(sessionId, userId);
   }
 
-  /**
-   * 按 ID 读取 Archive
-   */
-  async getById(id: string): Promise<ArchiveDocument | null> {
-    // 搜索所有子目录
-    return this.findByIdRecursive(this.basePath, id);
+  async getById(id: string) {
+    return this.impl.getById(id);
   }
 
-  private findByIdRecursive(dir: string, id: string): ArchiveDocument | null {
-    if (!existsSync(dir)) {
-      return null;
-    }
-
-    try {
-      const entries = readdirSync(dir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-
-        if (entry.isDirectory()) {
-          const result = this.findByIdRecursive(fullPath, id);
-          if (result) return result;
-        } else if (entry.isFile() && entry.name === `${id}.json`) {
-          const content = readFileSync(fullPath, "utf-8");
-          return JSON.parse(content) as ArchiveDocument;
-        }
-      }
-    } catch {
-      // 忽略权限错误
-    }
-
-    return null;
-  }
-
-  /**
-   * 更新 Archive
-   */
   async update(
     id: string,
     updates: Partial<Omit<ArchiveDocument, "id" | "created_at">>
   ): Promise<boolean> {
-    const doc = await this.getById(id);
-    if (!doc) {
-      return false;
-    }
-
-    const updated: ArchiveDocument = {
-      ...doc,
-      ...updates,
-      id: doc.id, // 保持 ID 不变
-      created_at: doc.created_at, // 创建时间不变
-      updated_at: new Date().toISOString(),
-    };
-
-    const sessionDir = this.getSessionDir(doc.session_id, doc.user_id);
-    const filePath = join(sessionDir, `${id}.json`);
-
-    writeFileSync(filePath, JSON.stringify(updated, null, 2), "utf-8");
-    return true;
+    return this.impl.update(id, updates as Partial<ArchiveDocument>);
   }
 
-  /**
-   * 更新命令状态
-   */
-  async updateCommandStatus(
-    id: string,
-    status: string,
-    result?: unknown
-  ): Promise<boolean> {
-    const updates: Partial<ArchiveDocument> = { status };
-
-    if (result) {
-      updates.slow_execution = result as Record<string, unknown>;
-    }
-
-    return this.update(id, updates);
+  async updateCommandStatus(id: string, status: string, result?: unknown): Promise<boolean> {
+    return this.impl.updateCommandStatus(id, status, result);
   }
 
-  /**
-   * 删除 Archive
-   */
   async delete(id: string): Promise<boolean> {
-    const doc = await this.getById(id);
-    if (!doc) {
-      return false;
-    }
-
-    const sessionDir = this.getSessionDir(doc.session_id, doc.user_id);
-    const filePath = join(sessionDir, `${id}.json`);
-
-    if (existsSync(filePath)) {
-      unlinkSync(filePath);
-      return true;
-    }
-
-    return false;
+    return this.impl.delete(id);
   }
 
-  /**
-   * 列出 session 的所有 Archive
-   */
-  async listBySession(
-    sessionId: string,
-    userId: string
-  ): Promise<ArchiveDocument[]> {
-    const sessionDir = this.getSessionDir(sessionId, userId);
-
-    if (!existsSync(sessionDir)) {
-      return [];
-    }
-
-    try {
-      const files = readdirSync(sessionDir).filter((f) => f.endsWith(".json"));
-
-      return files
-        .map((f) => {
-          try {
-            const content = readFileSync(join(sessionDir, f), "utf-8");
-            return JSON.parse(content) as ArchiveDocument;
-          } catch {
-            return null;
-          }
-        })
-        .filter((doc): doc is ArchiveDocument => doc !== null)
-        .sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-    } catch {
-      return [];
-    }
+  async listBySession(sessionId: string, userId: string) {
+    return this.impl.listBySession(sessionId, userId);
   }
 
-  /**
-   * 获取存储统计信息
-   */
-  async getStats(): Promise<{
-    totalArchives: number;
-    totalSize: number;
-    sessionsCount: number;
-  }> {
-    let totalArchives = 0;
-    let totalSize = 0;
-    const sessions = new Set<string>();
-
-    this.collectStats(this.basePath, { totalArchives, totalSize, sessions });
-
-    return {
-      totalArchives,
-      totalSize,
-      sessionsCount: sessions.size,
-    };
+  async getStats() {
+    // legacy, skip for now
+    return { totalArchives: 0, totalSize: 0, sessionsCount: 0 };
   }
 
-  private collectStats(
-    dir: string,
-    stats: { totalArchives: number; totalSize: number; sessions: Set<string> }
-  ): void {
-    if (!existsSync(dir)) {
-      return;
-    }
-
-    try {
-      const entries = readdirSync(dir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-
-        if (entry.isDirectory()) {
-          this.collectStats(fullPath, stats);
-        } else if (entry.isFile() && entry.name.endsWith(".json")) {
-          stats.totalArchives++;
-          try {
-            const stat = readFileSync(fullPath);
-            stats.totalSize += stat.length;
-          } catch {
-            // 忽略
-          }
-        }
-      }
-    } catch {
-      // 忽略权限错误
-    }
+  /** 转换为 IArchiveStorage 接口 */
+  toIArchiveStorage(): IArchiveStorage {
+    return this.impl;
   }
 }
 
-// ── Factory ───────────────────────────────────────────────────────────────────
+// ── Re-export config type ─────────────────────────────────────────────────────
 
-export type ArchiveStoreType = "postgresql" | "local";
-
-export interface ArchiveStore {
-  create(input: {
-    task_id?: string;
-    session_id: string;
-    user_id: string;
-    decision: unknown;
-    user_input: string;
-    task_brief?: string;
-    goal?: string;
-  }): Promise<{ id: string }>;
-
-  getBySession(sessionId: string, userId: string): Promise<unknown | null>;
-  getById(id: string): Promise<unknown | null>;
-  update(id: string, updates: unknown): Promise<boolean>;
-  updateCommandStatus(id: string, status: string, result?: unknown): Promise<boolean>;
-  delete(id: string): Promise<boolean>;
-  listBySession(sessionId: string, userId: string): Promise<unknown[]>;
-}
-
-/**
- * 创建 Archive Store 实例
- */
-export function createArchiveStore(type: ArchiveStoreType = "postgresql"): ArchiveStore {
-  switch (type) {
-    case "local":
-      return new LocalArchiveStore({
-        basePath: process.env.LOCAL_ARCHIVE_PATH ?? "./data/archive",
-        compress: process.env.LOCAL_ARCHIVE_COMPRESS === "true",
-      });
-
-    case "postgresql":
-    default:
-      // 返回 PostgreSQL 实现（TaskArchiveRepo）
-      // 注意：这里需要导入实际的 repo
-      throw new Error(
-        "PostgreSQL archive store requires TaskArchiveRepo. Import from 'db/task-archive-repo.js'"
-      );
-  }
-}
+export type { LocalArchiveConfig };

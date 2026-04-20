@@ -23,6 +23,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.0",
+    "@aws-sdk/client-s3": "^3.1032.0",
+    "@aws-sdk/s3-request-presigner": "^3.1032.0",
     "@hono/node-server": "^1.11.0",
     "eventsource-parser": "^1.1.0",
     "hono": "^4.4.0",
