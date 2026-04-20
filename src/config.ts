@@ -12,11 +12,23 @@ export const config = {
   qualityGateEnabled: process.env.QUALITY_GATE_ENABLED !== "false",
   fallbackEnabled: process.env.FALLBACK_ENABLED !== "false",
 
+  // Sprint 48: Auth v1 — JWT Configuration
+  // secret: MUST be set in production (min 32 chars recommended)
+  // users: format "user:pass,user2:pass2" (parsed at startup)
+  jwt: {
+    secret: process.env.JWT_SECRET || "",
+    // expiry in seconds (default: 24h)
+    expiresIn: parseInt(process.env.JWT_EXPIRES_IN || String(24 * 60 * 60)),
+  },
+
   // C3a: Server Identity Context
   // allowDevFallback: when true, query.user_id is accepted in dev mode.
   // Production deployments must set this to false and provide X-User-Id header.
   identity: {
     allowDevFallback: process.env.ALLOW_DEV_FALLBACK === "true",
+    // Sprint 48: When true, JWT Bearer token is accepted as authentication.
+    // Falls back to X-User-Id / query.user_id if JWT is not present.
+    jwtEnabled: process.env.JWT_ENABLED !== "false",
   },
 
   tokenBudget: {

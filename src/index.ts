@@ -10,6 +10,8 @@ import { memoryRouter } from "./api/memory.js";
 import { evidenceRouter } from "./api/evidence.js";
 import { healthRouter } from "./api/health.js";
 import { archiveRouter } from "./api/archive.js";
+// Sprint 48: Auth v1 — JWT token endpoint (public, no identity middleware)
+import { authRouter } from "./api/auth.js";
 // Phase 3.0: 启动后台 Worker 轮询循环
 import { startSlowWorker } from "./services/phase3/slow-worker-loop.js";
 import { startExecuteWorker } from "./services/phase3/execute-worker-loop.js";
@@ -22,6 +24,8 @@ app.use("/api/*", identityMiddleware);
 app.use("/v1/*", identityMiddleware);
 // H1: Runtime Health Dashboard — public, no identity middleware
 app.route("/health", healthRouter);
+// Sprint 48: Auth — public, no identity middleware (it's the login endpoint)
+app.route("/auth", authRouter);
 app.route("/api", chatRouter);
 app.route("/api", dashboardRouter);
 app.route("/v1/tasks", taskRouter);
