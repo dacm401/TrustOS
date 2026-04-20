@@ -73,10 +73,16 @@ archiveRouter.get("/v1/archive/tasks", async (c) => {
   const sessionId = c.req.query("session_id");
   if (!sessionId) return c.json({ error: "session_id query param is required" }, 400);
 
+  // Sprint 48 Archive E2E: 必须按 userId 过滤，防止跨用户数据泄露
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+
   const limit = Math.min(parseInt(c.req.query("limit") || "10"), 100);
   const entries = await TaskArchiveRepo.getBySession(sessionId, limit);
 
-  return c.json({ entries, count: entries.length });
+  // 额外保险：过滤到当前用户的记录
+  const filtered = entries.filter((e) => (e as any).user_id === userId);
+  return c.json({ entries: filtered, count: filtered.length });
 });
 
 // ── 追加 Fast 观察 ───────────────────────────────────────────────────────────

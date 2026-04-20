@@ -221,19 +221,24 @@ chatRouter.post("/chat", async (c) => {
                 routing_layer: llmNativeResult.routing_layer,
               })}\n\n`);
 
-              // pollArchiveAndYield 会推送 worker_progress / worker_completed
+              // pollArchiveAndYield 会推送 worker_progress / worker_completed / manager_synthesized
+              // Archive E2E 修复：保留原始事件的所有字段，只覆盖 routing_layer
               for await (const event of pollArchiveAndYield(taskId, lang)) {
                 const payload = {
-                  type: event.type,
+                  ...event,
                   routing_layer: event.routing_layer ?? llmNativeResult.routing_layer,
-                  stream: event.stream,
                 };
                 await s.write(`data: ${JSON.stringify(payload)}\n\n`);
               }
             }
 
-            // done
-            await s.write(`data: ${JSON.stringify({ type: "done", routing_layer: llmNativeResult.routing_layer })}\n\n`);
+            // done: 带上 archive_id（前端去 /v1/archive/tasks/:id 拉完整结果）和 routing_layer
+            await s.write(`data: ${JSON.stringify({
+              type: "done",
+              routing_layer: llmNativeResult.routing_layer,
+              archive_id: llmNativeResult.archive_id,
+              task_id: taskId,
+            })}\n\n`);
           } catch (e: any) {
             console.error("[stream-llm] SSE error:", e.message);
             await s.write(`data: ${JSON.stringify({ type: "error", stream: e.message })}\n\n`);
@@ -663,16 +668,17 @@ chatRouter.post("/chat", async (c) => {
         if (orchResult.delegation) {
           try {
             for await (const event of pollArchiveAndYield(orchResult.delegation.task_id, features.language as "zh" | "en")) {
-              // pollArchiveAndYield 的事件已含 routing_layer（L2）
-              const payload = { type: event.type, stream: event.stream, routing_layer: event.routing_layer ?? "L2" };
+              // Archive E2E 修复：保留所有事件字段
+              const payload = { ...event, routing_layer: event.routing_layer ?? "L2" };
               await s.write(`data: ${JSON.stringify(payload)}\n\n`);
             }
           } catch (e: any) {
             console.error("[stream] pollArchiveAndYield error:", e.message);
             await s.write(`data: ${JSON.stringify({ type: "error", stream: "轮询出错", routing_layer: "L2" })}\n\n`);
           }
-          // SSE done 事件（对齐 Phase 3.0：done 是纯终止信号，无 stream 字段）
-          await s.write(`data: ${JSON.stringify({ type: "done", routing_layer: "L2" })}\n\n`);
+          // Archive E2E 修复：done 事件带上 archive_id
+          const orchArchiveId = orchResult.delegation?.task_id;
+          await s.write(`data: ${JSON.stringify({ type: "done", routing_layer: "L2", archive_id: orchArchiveId, task_id: orchArchiveId })}\n\n`);
         } else {
           // Step 3: Fast 直接回复 → 流式输出（复用原有 streaming 逻辑）
           const memories = config.memory.enabled
