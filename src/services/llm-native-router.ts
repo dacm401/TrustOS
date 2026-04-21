@@ -26,7 +26,9 @@ import type {
   CommandPayload,
   ExecutionPlan,
   WorkerHint,
+  DecisionFeatures,
 } from "../types/index.js";
+import { DECISION_TO_LAYER } from "../types/index.js";
 import { parseAndValidate } from "../orchestrator/decision-validator.js";
 import { taskPlanner } from "./task-planner.js";
 
@@ -40,118 +42,197 @@ async function getPhase4() {
   return phase4Module;
 }
 
+// ── Gating: Gated Delegation v2 ───────────────────────────────────────────────
+
+import type { DecisionFeatures, ManagerDecisionType } from "../types/index.js";
+import { calculateSystemConfidence, getSelectedAction } from "./gating/system-confidence.js";
+import { calibrateWithPolicy } from "./gating/policy-calibrator.js";
+import { shouldRerank, ruleBasedRerank } from "./gating/delegation-reranker.js";
+import { DEFAULT_GATING_CONFIG } from "./gating/gating-config.js";
+import type { CalibratedDecision } from "./gating/policy-calibrator.js";
+import type { RerankResult } from "./gating/delegation-reranker.js";
+
+export interface GatedDelegationContext {
+  llmScores: Record<ManagerDecisionType, number>;
+  llmConfidenceHint: number;
+  features: DecisionFeatures;
+  systemConfidence: number;
+  finalAction: ManagerDecisionType;
+  policyOverrides: import("../types/index.js").PolicyOverride[];
+  rerankResult?: RerankResult;
+  /** 最终用于路由的 action（可能经过 rerank） */
+  routedAction: ManagerDecisionType;
+}
+
+/**
+ * Gated Delegation 完整流程：G1 → G2 → G3
+ *
+ * @param llmScores        LLM 输出的各动作原始分数
+ * @param llmConfidenceHint LLM 自报置信度
+ * @param features         LLM 输出的结构化特征
+ * @returns GatedDelegationContext（含所有中间结果，供 trace/debug/benchmark 使用）
+ */
+export function runGatedDelegation(
+  llmScores: Record<ManagerDecisionType, number>,
+  llmConfidenceHint: number,
+  features: DecisionFeatures
+): GatedDelegationContext {
+  // G1: 计算 system_confidence
+  const systemConfidence = calculateSystemConfidence(
+    llmScores,
+    llmConfidenceHint,
+    features,
+    DEFAULT_GATING_CONFIG
+  );
+
+  // G2: Policy 校准
+  const calibrated: CalibratedDecision = calibrateWithPolicy(
+    llmScores,
+    features,
+    DEFAULT_GATING_CONFIG
+  );
+
+  // G3: 判断是否需要 rerank
+  let rerankResult: RerankResult | undefined;
+  let routedAction = calibrated.finalAction;
+
+  if (shouldRerank(calibrated.adjustedScores, systemConfidence, calibrated.finalAction, DEFAULT_GATING_CONFIG)) {
+    rerankResult = ruleBasedRerank(
+      calibrated.adjustedScores,
+      features,
+      calibrated.finalAction
+    );
+    routedAction = rerankResult.finalAction;
+  }
+
+  return {
+    llmScores,
+    llmConfidenceHint,
+    features,
+    systemConfidence,
+    finalAction: calibrated.finalAction,
+    policyOverrides: calibrated.policyOverrides,
+    rerankResult,
+    routedAction,
+  };
+}
+
 // ── Manager Prompt ────────────────────────────────────────────────────────────
 
 function buildManagerSystemPrompt(lang: "zh" | "en"): string {
   // 中文版 prompt
   const zhPrompt = `你是 SmartRouter Pro 的 Manager（管理模型）。
 
-理解用户请求后，决定最优处理路径，严格按以下 JSON Schema 输出。
+理解用户请求后，对四个动作分别打分（0.0~1.0），然后输出完整决策 JSON。
 
-【四种决策类型 — 必须严格使用以下 JSON 格式】
+【四种动作】
+- direct_answer: 直接回答（最低成本，用于闲聊/简单问答/打招呼）
+- ask_clarification: 请求澄清（需要用户补充关键信息）
+- delegate_to_slow: 委托慢模型（深度分析/多步推理/知识截止日期外内容）
+- execute_task: 执行任务（需要工具调用/代码执行/多步操作）
 
-1. direct_answer（直接回答）
+【打分原则】
+- 每个动作独立打分（0.0~1.0），分数反映"该动作是否是最优选择"
+- 分数不是"该动作是否可能"，而是"相对其他动作是否最优"
+- direct_answer 和 ask_clarification 成本较低，可以较低阈值通过
+- delegate_to_slow 和 execute_task 成本较高（token/latency/风险），需要更高分数才值得
+- ask_clarification 不是零成本——它会打断用户、增加对话轮次
+
+【决策特征】
+- missing_info: 请求是否缺少关键信息（目标/范围/格式不明确）
+- needs_long_reasoning: 是否需要长链推理或多步分析
+- needs_external_tool: 是否需要外部工具（web_search/http_request/代码执行）
+- high_risk_action: 是否涉及高风险操作（金融决策/医疗建议/安全相关）
+- query_too_vague: 请求是否过于模糊，无法直接处理
+- requires_multi_step: 是否需要多步骤操作或跨文件处理
+
+【输出格式】（必须严格使用此 JSON Schema）
+
 {
-  "schema_version": "manager_decision_v1",
-  "decision_type": "direct_answer",
-  "direct_response": { "content": "你的回复内容" },
-  "reason": "为什么直接回答",
-  "confidence": 1.0
+  "schema_version": "manager_decision_v2",
+  "scores": {
+    "direct_answer": 0.0~1.0,
+    "ask_clarification": 0.0~1.0,
+    "delegate_to_slow": 0.0~1.0,
+    "execute_task": 0.0~1.0
+  },
+  "confidence_hint": 0.0~1.0,
+  "features": {
+    "missing_info": boolean,
+    "needs_long_reasoning": boolean,
+    "needs_external_tool": boolean,
+    "high_risk_action": boolean,
+    "query_too_vague": boolean,
+    "requires_multi_step": boolean
+  },
+  "rationale": "一句话决策理由",
+  "decision_type": "四个动作之一（与最高分对应）",
+  "direct_response": { "content": "当 decision_type=direct_answer 时的回复内容" },
+  "clarification": { "question_text": "当 decision_type=ask_clarification 时的澄清问题" },
+  "command": { "task_brief": "当 decision_type=delegate/execute 时的任务摘要", "constraints": ["约束1"] }
 }
-
-2. ask_clarification（请求澄清）
-{
-  "schema_version": "manager_decision_v1",
-  "decision_type": "ask_clarification",
-  "clarification": { "question_text": "你的问题", "options": [{ "label": "选项A" }] },
-  "reason": "为什么需要澄清",
-  "confidence": 1.0
-}
-
-3. delegate_to_slow（委托慢模型）
-{
-  "schema_version": "manager_decision_v1",
-  "decision_type": "delegate_to_slow",
-  "command": { "task_brief": "压缩后的任务摘要", "constraints": ["约束1"] },
-  "reason": "为什么委托慢模型",
-  "confidence": 1.0
-}
-
-4. execute_task（执行任务）
-{
-  "schema_version": "manager_decision_v1",
-  "decision_type": "execute_task",
-  "command": { "goal": "任务目标描述" },
-  "reason": "为什么需要执行任务",
-  "confidence": 1.0
-}
-
-【决策原则】
-- direct_answer: 闲聊/打招呼/情绪表达/简单问答，不需要外部数据
-- ask_clarification: 请求模糊、缺少关键信息（目标/范围/格式不明确）
-- delegate_to_slow: 深度分析/多步推理/复杂推理/知识截止日期外的内容
-- execute_task: 需要工具调用/代码执行/搜索/多步操作
-- 能直接答就不委托，委托时 task_brief 压缩到最小必要信息
 
 【输出规则】
 - 只输出 JSON 对象，不输出其他文字
 - JSON 用代码块包裹：\`\`\`json ... \`\`\`
-- 必须包含 schema_version / decision_type / reason / confidence`;
+- 必须包含所有字段`;
 
   // 英文版 prompt
   const enPrompt = `You are SmartRouter Pro's Manager model.
 
-Understand the user's request, decide the optimal next step, and output strictly following the JSON Schema below.
+After understanding the user's request, score each of the four actions (0.0~1.0), then output the complete decision JSON.
 
-【Four Decision Types — EXACT JSON format required】
+【Four Actions】
+- direct_answer: Direct reply (lowest cost, for chat/simple Q&A/greetings)
+- ask_clarification: Request clarification (needs user to provide key info)
+- delegate_to_slow: Delegate to slow model (deep analysis/multi-step reasoning/knowledge cutoff)
+- execute_task: Execute task (needs tool calling/code execution/multi-step operations)
 
-1. direct_answer
+【Scoring Principles】
+- Score each action independently (0.0~1.0), reflecting "is this the optimal choice"
+- Score reflects "relative optimal" not "is this possible"
+- direct_answer and ask_clarification have lower cost, can pass with lower thresholds
+- delegate_to_slow and execute_task have higher cost (token/latency/risk), need higher scores
+- ask_clarification is NOT zero-cost — it interrupts the user and increases conversation turns
+
+【Decision Features】
+- missing_info: Is key information missing (goal/scope/format unclear)
+- needs_long_reasoning: Does it need long-chain reasoning or multi-step analysis
+- needs_external_tool: Does it need external tools (web_search/http_request/code execution)
+- high_risk_action: Does it involve high-risk operations (financial/medical/security)
+- query_too_vague: Is the request too vague to handle directly
+- requires_multi_step: Does it need multi-step operations or cross-file handling
+
+【Output Format】（must use this exact JSON Schema）
+
 {
-  "schema_version": "manager_decision_v1",
-  "decision_type": "direct_answer",
-  "direct_response": { "content": "Your reply content" },
-  "reason": "Why direct answer",
-  "confidence": 1.0
+  "schema_version": "manager_decision_v2",
+  "scores": {
+    "direct_answer": 0.0~1.0,
+    "ask_clarification": 0.0~1.0,
+    "delegate_to_slow": 0.0~1.0,
+    "execute_task": 0.0~1.0
+  },
+  "confidence_hint": 0.0~1.0,
+  "features": {
+    "missing_info": boolean,
+    "needs_long_reasoning": boolean,
+    "needs_external_tool": boolean,
+    "high_risk_action": boolean,
+    "query_too_vague": boolean,
+    "requires_multi_step": boolean
+  },
+  "rationale": "One-sentence decision reason",
+  "decision_type": "direct_answer|ask_clarification|delegate_to_slow|execute_task",
+  "direct_response": { "content": "Reply content when decision_type=direct_answer" },
+  "clarification": { "question_text": "Clarifying question when decision_type=ask_clarification" },
+  "command": { "task_brief": "Task summary when decision_type=delegate/execute", "constraints": ["constraint1"] }
 }
-
-2. ask_clarification
-{
-  "schema_version": "manager_decision_v1",
-  "decision_type": "ask_clarification",
-  "clarification": { "question_text": "Your question here", "options": [{ "label": "Option A" }] },
-  "reason": "Why clarification is needed",
-  "confidence": 1.0
-}
-
-3. delegate_to_slow
-{
-  "schema_version": "manager_decision_v1",
-  "decision_type": "delegate_to_slow",
-  "command": { "task_brief": "Compressed task summary", "constraints": ["constraint1"] },
-  "reason": "Why delegate to slow model",
-  "confidence": 1.0
-}
-
-4. execute_task
-{
-  "schema_version": "manager_decision_v1",
-  "decision_type": "execute_task",
-  "command": { "goal": "Task goal description" },
-  "reason": "Why execute task",
-  "confidence": 1.0
-}
-
-【Decision Rules】
-- direct_answer: chat/greeting/emotional/simple Q&A, no external data needed
-- ask_clarification: ambiguous request, missing key info (goal/scope/format unclear)
-- delegate_to_slow: deep analysis/multi-step reasoning/complex reasoning/knowledge cutoff exceeded
-- execute_task: requires tool calling/code execution/search/multi-step operations
-- Prefer direct_answer when possible; compress task_brief to minimum when delegating
 
 【Output Rules】
 - Output JSON ONLY, no other text
 - Wrap JSON in code block: \`\`\`json ... \`\`\`
-- Must include: schema_version / decision_type / reason / confidence`;
+- All fields are required`;
 
   return lang === "zh" ? zhPrompt : enPrompt;
 }
@@ -168,6 +249,8 @@ export interface LLMNativeRouterInput {
 }
 
 export interface LLMNativeRouterResult {
+  /** Gated Delegation 上下文（含 G1/G2/G3 全部中间结果） */
+  gating?: GatedDelegationContext;
   /** 最终返回给用户的文本 */
   message: string;
   /** ManagerDecision（供 SSE 推送） */
@@ -200,11 +283,16 @@ export async function routeWithManagerDecision(
   // Step 1: 调用 Fast 模型，传递 Manager Prompt
   const managerOutput = await callManagerModel({ message, history, language, reqApiKey });
 
-  // Step 2: 解析 JSON（Phase 0 使用正则解析）
-  const decision = parseAndValidate(managerOutput);
+  // Step 2: 解析 G1 多动作打分格式（manager_decision_v2）
+  const gatedResult = parseGatedDecision(managerOutput);
 
   // Step 3: 不合法 → fallback，返回 L0 direct_answer
-  if (!decision) {
+  if (!gatedResult) {
+    // 尝试旧 v1 格式作为 backward compatibility fallback
+    const decision = parseAndValidate(managerOutput);
+    if (decision) {
+      return routeByDecision(decision, { message, user_id, session_id, language, reqApiKey, raw: managerOutput });
+    }
     console.warn("[llm-native-router] ManagerDecision parse failed, fallback to direct_answer");
     return {
       message: managerOutput.trim() || (language === "zh" ? "好的，让我看看。" : "Got it, let me check."),
@@ -215,8 +303,8 @@ export async function routeWithManagerDecision(
     };
   }
 
-  // Step 4: 按 decision_type 路由
-  return routeByDecision(decision, { message, user_id, session_id, language, reqApiKey, raw: managerOutput });
+  // Step 4: 按 Gated Delegation 最终结果路由
+  return routeByGatedDecision(gatedResult, { message, user_id, session_id, language, reqApiKey, raw: managerOutput });
 }
 
 // ── Fast Manager 调用 ─────────────────────────────────────────────────────────
@@ -255,6 +343,106 @@ async function callManagerModel(input: {
     console.error("[llm-native-router] Manager model call failed:", e.message);
     throw e;
   }
+}
+
+// ── Gated Delegation: 解析 v2 格式 ───────────────────────────────────────────
+
+function parseGatedDecision(text: string): GatedDelegationContext | null {
+  try {
+    const match =
+      text.match(/```json\s*([\s\S]*?)\s*```/)?.[1] ??
+      text.match(/```\s*([\s\S]*?)\s*```/)?.[1] ??
+      text.match(/(\{[\s\S]*\})/)?.[1];
+
+    if (!match) return null;
+    const raw = JSON.parse(match.trim());
+
+    // 必须为 v2 格式
+    if (raw.schema_version !== "manager_decision_v2") return null;
+
+    const scores: Record<ManagerDecisionType, number> = {
+      direct_answer: raw.scores?.direct_answer ?? 0,
+      ask_clarification: raw.scores?.ask_clarification ?? 0,
+      delegate_to_slow: raw.scores?.delegate_to_slow ?? 0,
+      execute_task: raw.scores?.execute_task ?? 0,
+    };
+
+    const features: DecisionFeatures = {
+      missing_info: Boolean(raw.features?.missing_info),
+      needs_long_reasoning: Boolean(raw.features?.needs_long_reasoning),
+      needs_external_tool: Boolean(raw.features?.needs_external_tool),
+      high_risk_action: Boolean(raw.features?.high_risk_action),
+      query_too_vague: Boolean(raw.features?.query_too_vague),
+      requires_multi_step: Boolean(raw.features?.requires_multi_step),
+    };
+
+    const llmConfidenceHint = typeof raw.confidence_hint === "number"
+      ? Math.max(0, Math.min(1, raw.confidence_hint))
+      : 0.5;
+
+    return runGatedDelegation(scores, llmConfidenceHint, features);
+  } catch (e) {
+    console.warn("[parseGatedDecision] failed:", (e as Error).message);
+    return null;
+  }
+}
+
+// ── Gated Delegation: 按 Gated 结果路由 ──────────────────────────────────────
+
+interface GatedRouteContext {
+  message: string;
+  user_id: string;
+  session_id: string;
+  language: "zh" | "en";
+  reqApiKey?: string;
+  raw: string;
+}
+
+async function routeByGatedDecision(
+  gated: GatedDelegationContext,
+  ctx: GatedRouteContext
+): Promise<LLMNativeRouterResult> {
+  const { message, user_id, session_id, language, reqApiKey, raw } = ctx;
+
+  // 构建向后兼容的 V1 ManagerDecision（用于 SSE/Archive/旧逻辑）
+  const decision: ManagerDecision = {
+    schema_version: "manager_decision_v1",
+    decision_type: gated.routedAction,
+    routing_layer: DECISION_TO_LAYER[gated.routedAction],
+    reason: `Gated: ${gated.routedAction} (G1 score=${gated.llmScores[gated.routedAction]?.toFixed(2)}, G2 adjusted, system_conf=${gated.systemConfidence.toFixed(2)})`,
+    confidence: gated.systemConfidence,
+    needs_archive: gated.routedAction !== "direct_answer",
+    direct_response: gated.routedAction === "direct_answer"
+      ? { content: raw.direct_response?.content ?? (language === "zh" ? "好的。" : "Got it.") }
+      : undefined,
+    clarification: gated.routedAction === "ask_clarification"
+      ? { question_text: raw.clarification?.question_text ?? (language === "zh" ? "能再具体一点吗？" : "Could you be more specific?"), clarification_reason: gated.features.query_too_vague ? "请求模糊" : "" }
+      : undefined,
+    command: (gated.routedAction === "delegate_to_slow" || gated.routedAction === "execute_task")
+      ? {
+          command_type: gated.routedAction === "execute_task" ? "execute_plan" : "delegate_analysis",
+          task_type: "analysis",
+          task_brief: raw.command?.task_brief ?? message.substring(0, 200),
+          goal: raw.command?.task_brief ?? message,
+          constraints: Array.isArray(raw.command?.constraints) ? raw.command.constraints : [],
+        }
+      : undefined,
+  };
+
+  // Gated Delegation 日志（console.debug 级别，不阻塞主流程）
+  console.log("[llm-native-router] Gated Delegation:", {
+    llmScores: gated.llmScores,
+    llmConfidenceHint: gated.llmConfidenceHint,
+    systemConfidence: gated.systemConfidence.toFixed(3),
+    routedAction: gated.routedAction,
+    reranked: gated.rerankResult?.reranked ?? false,
+    rerankReason: gated.rerankResult?.reason,
+    policyOverrides: gated.policyOverrides.length,
+    features: gated.features,
+  });
+
+  // 按最终路由动作分发
+  return routeByDecision(decision, ctx);
 }
 
 // ── 决策路由 ─────────────────────────────────────────────────────────────────

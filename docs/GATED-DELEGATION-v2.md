@@ -1,6 +1,6 @@
 # Gated Delegation Architecture v2 — Technical Design
 
-> 版本：v0.2 Confirmed | 日期：2026-04-21 | 状态：✅ 方向确认，待 Sprint 50 执行
+> 版本：v0.3 Confirmed | 日期：2026-04-21 | 状态：✅ Sprint 50 开发中（2026-04-21 完成 P1/P1.5/P2/P3）
 
 ---
 

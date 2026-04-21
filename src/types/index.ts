@@ -567,6 +567,81 @@ export interface ManagerDecision {
   command?: CommandPayload;
 }
 
+// ── Gating: Decision Features (G1) ────────────────────────────────────────────
+
+/**
+ * DecisionFeatures — 结构化特征标签，供 system_confidence 计算和 Policy Gate 使用。
+ * 由 Manager LLM 在 G1 阶段输出。
+ */
+export interface DecisionFeatures {
+  /** 请求缺少关键信息（目标/范围/格式不明确） */
+  missing_info: boolean;
+  /** 需要长链推理或多步分析 */
+  needs_long_reasoning: boolean;
+  /** 需要外部工具（web_search/http_request/代码执行）*/
+  needs_external_tool: boolean;
+  /** 涉及高风险操作（金融/医疗/安全） */
+  high_risk_action: boolean;
+  /** 请求过于模糊，无法直接处理 */
+  query_too_vague: boolean;
+  /** 需要多步骤操作或跨文件处理 */
+  requires_multi_step: boolean;
+}
+
+// ── Gating: Policy Override (G2) ───────────────────────────────────────────────
+
+/**
+ * PolicyOverride — G2 Policy-Calibrated Gate 对某个动作的修正记录。
+ */
+export interface PolicyOverride {
+  /** 规则名称 */
+  rule: string;
+  /** 修正类型 */
+  action: "penalize" | "block" | "boost" | "force";
+  /** 被修正的动作 */
+  target: ManagerDecisionType;
+  /** 修正前分数 */
+  original_score: number;
+  /** 修正后分数 */
+  adjusted_score: number;
+  /** 修正原因 */
+  reason: string;
+}
+
+// ── Gating: GatingConfig ───────────────────────────────────────────────────────
+
+/**
+ * GatingConfig — G2 Policy Gate 的可配置参数。
+ * 所有阈值/权重可通过 config.ts 覆盖，不写死在代码里。
+ */
+export interface GatingConfig {
+  /** 各动作基础阈值（低于阈值则该动作不可选） */
+  thresholds: {
+    direct_answer: number;
+    ask_clarification: number;
+    delegate_to_slow: number;
+    execute_task: number;
+  };
+  /** Clarification 体验成本惩罚权重（降低其 effective score）*/
+  clarification_cost_weight: number;
+  /** Rerank 触发阈值 */
+  rerank: {
+    /** top1 - top2 差值小于此值时触发 rerank */
+    top_gap_threshold: number;
+    /** system_confidence 低于此值时触发 rerank */
+    confidence_threshold: number;
+    /** 高成本动作在此 confidence 以下触发 rerank */
+    high_cost_confidence_floor: number;
+  };
+  /** 成本惩罚系数 */
+  cost_penalty: {
+    /** 每 1000 token 额外惩罚系数 */
+    delegate_token_penalty: number;
+    /** 每 10s latency 额外惩罚系数 */
+    latency_penalty: number;
+  };
+}
+
 /** 决策类型枚举（Phase 0 精简版，4 种） */
 export type ManagerDecisionType =
   | "direct_answer"
