@@ -125,6 +125,25 @@ export const config = {
   },
 };
 
+// ── Sprint 51 CFG-SEC: JWT secret startup validation ────────────────────────
+const isProduction = process.env.NODE_ENV === "production";
+const MIN_JWT_SECRET_LENGTH = 32;
+
+if (config.jwt.secret.length < MIN_JWT_SECRET_LENGTH) {
+  if (isProduction) {
+    throw new Error(
+      `[CFG-SEC] JWT_SECRET must be at least ${MIN_JWT_SECRET_LENGTH} characters in production. ` +
+      `Current length: ${config.jwt.secret.length}. ` +
+      `Set a strong random secret via: export JWT_SECRET=$(openssl rand -base64 48)`
+    );
+  } else {
+    console.warn(
+      `[CFG-SEC] WARNING: JWT_SECRET is not set or too short (<${MIN_JWT_SECRET_LENGTH} chars). ` +
+      `Using insecure fallback. DO NOT use in production.`
+    );
+  }
+}
+
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   // OpenAI 官方
   "gpt-4o-mini": { model: "gpt-4o-mini", input_per_1k: 0.00015, output_per_1k: 0.0006 },
