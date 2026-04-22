@@ -368,3 +368,69 @@ CREATE INDEX IF NOT EXISTS idx_tae_actor ON task_archive_events(actor, created_a
 
 COMMIT;
 
+-- ── Migration 012: G4 Delegation Learning Loop ──────────────────────────────────
+-- Gated Delegation v2 事实表：G1(系统置信度) → G2(Policy校准) → G3(Rerank) → 执行结果
+-- 用途：离线分析、benchmark 改进、用户层面行为学习
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS delegation_logs (
+  -- PK
+  id                VARCHAR(36) PRIMARY KEY,
+
+  -- 决策上下文
+  user_id           VARCHAR(64) NOT NULL,
+  session_id        VARCHAR(64) NOT NULL,
+  turn_id           INTEGER     NOT NULL DEFAULT 0,
+  task_id           VARCHAR(64),
+
+  -- Pipeline 版本（用于回溯不同版本的 gate 行为）
+  routing_version   VARCHAR(20) NOT NULL DEFAULT 'v2',
+
+  -- G0: LLM 原始输出
+  llm_scores        JSONB NOT NULL,
+  -- { direct_answer, ask_clarification, delegate_to_slow, execute_task }
+  llm_confidence    REAL  NOT NULL,
+
+  -- G1: System Confidence
+  system_confidence  REAL  NOT NULL,
+
+  -- G2: Policy Calibration
+  calibrated_scores  JSONB NOT NULL,
+  -- { direct_answer, ask_clarification, delegate_to_slow, execute_task }
+  policy_overrides   JSONB NOT NULL DEFAULT '[]',
+  -- [{ rule, action, target, original_score, adjusted_score, reason }]
+  g2_final_action    VARCHAR(30),
+
+  -- G3: Rerank
+  did_rerank         BOOLEAN NOT NULL DEFAULT FALSE,
+  rerank_gap         REAL,
+  rerank_rules       JSONB   NOT NULL DEFAULT '[]',
+  g3_final_action    VARCHAR(30),
+
+  -- 最终路由决策
+  routed_action      VARCHAR(30) NOT NULL,
+  routing_reason     TEXT,
+
+  -- 执行结果（异步回写，可为 NULL 表示尚未执行完）
+  execution_status   VARCHAR(20),   -- pending | success | failed | timeout
+  execution_correct  BOOLEAN,
+  error_message      TEXT,
+  model_used         VARCHAR(100),
+  latency_ms         INTEGER,
+  cost_usd           DECIMAL(10, 6),
+
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  executed_at        TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_dl_user_time     ON delegation_logs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dl_session      ON delegation_logs(session_id, turn_id DESC);
+CREATE INDEX IF NOT EXISTS idx_dl_routed_action ON delegation_logs(routed_action, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dl_execution    ON delegation_logs(execution_status) WHERE execution_status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_dl_g2_final      ON delegation_logs(g2_final_action, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dl_g3_final      ON delegation_logs(g3_final_action, created_at DESC) WHERE g3_final_action IS NOT NULL;
+
+COMMIT;
+
+
+

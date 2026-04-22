@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { query } from "./connection.js";
-import type { DecisionRecord, BehavioralMemory, IdentityMemory, GrowthProfile, Task, TaskListItem, TaskSummary, TaskTrace, MemoryEntry, MemoryEntryInput, MemoryEntryUpdate, ExecutionResultRecord, ExecutionResultInput, Evidence, EvidenceInput } from "../types/index.js";
+import type { DecisionRecord, BehavioralMemory, IdentityMemory, GrowthProfile, Task, TaskListItem, TaskSummary, TaskTrace, MemoryEntry, MemoryEntryInput, MemoryEntryUpdate, ExecutionResultRecord, ExecutionResultInput, Evidence, EvidenceInput, DelegationLog, DelegationLogInput, DelegationLogExecutionUpdate } from "../types/index.js";
 import { GROWTH_LEVELS } from "../config.js";
 import { getEmbedding } from "../services/embedding.js";
 
@@ -1231,5 +1231,263 @@ export const EvidenceRepo = {
       [userId, limit]
     );
     return result.rows.map(mapEvidenceRow);
+  },
+};
+
+// ── G4: Delegation Learning Loop ────────────────────────────────────────────────
+
+function mapDelegationLogRow(row: any): DelegationLog {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    session_id: row.session_id,
+    turn_id: row.turn_id,
+    task_id: row.task_id,
+    routing_version: row.routing_version,
+    llm_scores: row.llm_scores,
+    llm_confidence: row.llm_confidence,
+    system_confidence: row.system_confidence,
+    calibrated_scores: row.calibrated_scores,
+    policy_overrides: row.policy_overrides,
+    g2_final_action: row.g2_final_action,
+    did_rerank: row.did_rerank,
+    rerank_gap: row.rerank_gap,
+    rerank_rules: row.rerank_rules,
+    g3_final_action: row.g3_final_action,
+    routed_action: row.routed_action,
+    routing_reason: row.routing_reason,
+    execution_status: row.execution_status,
+    execution_correct: row.execution_correct,
+    error_message: row.error_message,
+    model_used: row.model_used,
+    latency_ms: row.latency_ms,
+    cost_usd: row.cost_usd ? Number(row.cost_usd) : undefined,
+    created_at: row.created_at,
+    executed_at: row.executed_at,
+  };
+}
+
+export const DelegationLogRepo = {
+  /**
+   * 写入一条委托决策记录（G4 日志 pipeline 的核心方法）。
+   * 执行结果字段在异步执行完成后由 updateExecution() 回写。
+   */
+  async save(d: DelegationLogInput): Promise<DelegationLog> {
+    const id = uuid();
+    await query(
+      `INSERT INTO delegation_logs (
+        id, user_id, session_id, turn_id, task_id, routing_version,
+        llm_scores, llm_confidence,
+        system_confidence,
+        calibrated_scores, policy_overrides, g2_final_action,
+        did_rerank, rerank_gap, rerank_rules, g3_final_action,
+        routed_action, routing_reason
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,
+        $7,$8,
+        $9,
+        $10,$11,$12,
+        $13,$14,$15,$16,
+        $17,$18
+      )`,
+      [
+        id,
+        d.user_id,
+        d.session_id,
+        d.turn_id,
+        d.task_id ?? null,
+        d.routing_version ?? "v2",
+        JSON.stringify(d.llm_scores),
+        d.llm_confidence,
+        d.system_confidence,
+        JSON.stringify(d.calibrated_scores),
+        JSON.stringify(d.policy_overrides),
+        d.g2_final_action,
+        d.did_rerank,
+        d.rerank_gap ?? null,
+        JSON.stringify(d.rerank_rules),
+        d.g3_final_action ?? null,
+        d.routed_action,
+        d.routing_reason ?? null,
+      ]
+    );
+
+    const result = await query(`SELECT * FROM delegation_logs WHERE id=$1`, [id]);
+    return mapDelegationLogRow(result.rows[0]);
+  },
+
+  /**
+   * 回写执行结果（fire-and-forget，由执行完成后的 callback 调用）。
+   */
+  async updateExecution(id: string, update: DelegationLogExecutionUpdate): Promise<void> {
+    await query(
+      `UPDATE delegation_logs SET
+        execution_status = $1,
+        execution_correct = $2,
+        error_message = $3,
+        model_used = $4,
+        latency_ms = $5,
+        cost_usd = $6,
+        executed_at = NOW()
+       WHERE id = $7`,
+      [
+        update.execution_status,
+        update.execution_correct ?? null,
+        update.error_message ?? null,
+        update.model_used ?? null,
+        update.latency_ms ?? null,
+        update.cost_usd ?? null,
+        id,
+      ]
+    );
+  },
+
+  /**
+   * 按 user_id 分页查询（供离线分析 dashboard 使用）。
+   */
+  async listByUser(userId: string, limit = 100, offset = 0): Promise<DelegationLog[]> {
+    const result = await query(
+      `SELECT * FROM delegation_logs
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [userId, limit, offset]
+    );
+    return result.rows.map(mapDelegationLogRow);
+  },
+
+  /**
+   * 查询 session 内所有 turn（供 conversation replay 使用）。
+   */
+  async listBySession(sessionId: string): Promise<DelegationLog[]> {
+    const result = await query(
+      `SELECT * FROM delegation_logs
+       WHERE session_id = $1
+       ORDER BY turn_id ASC`,
+      [sessionId]
+    );
+    return result.rows.map(mapDelegationLogRow);
+  },
+
+  /**
+   * 查询指定路由动作的统计（供 benchmark 分析使用）。
+   * 支持按 routed_action / g2_final_action / g3_final_action 筛选。
+   */
+  async getActionStats(
+    userId: string,
+    field: "routed_action" | "g2_final_action" | "g3_final_action",
+    since?: Date
+  ): Promise<Record<string, number>> {
+    const sinceClause = since
+      ? `AND created_at >= '${since.toISOString()}'`
+      : "";
+    const result = await query(
+      `SELECT ${field}, COUNT(*)::int as count
+       FROM delegation_logs
+       WHERE user_id = $1 ${sinceClause}
+       GROUP BY ${field}
+       ORDER BY count DESC`,
+      [userId]
+    );
+    return Object.fromEntries(result.rows.map((r) => [r[field], r.count]));
+  },
+
+  /**
+   * 查询 G3 rerank 触发率和纠正率（供 benchmark 评估 G3 价值）。
+   */
+  async getRerankStats(userId: string): Promise<{
+    total: number;
+    rerank_count: number;
+    rerank_rate: number;
+    corrected_count: number;
+    correction_rate: number;
+  }> {
+    const result = await query(
+      `SELECT
+        COUNT(*)::int as total,
+        COUNT(*) FILTER (WHERE did_rerank = true)::int as rerank_count,
+        COUNT(*) FILTER (WHERE did_rerank = true AND g2_final_action != g3_final_action)::int as corrected_count
+       FROM delegation_logs
+       WHERE user_id = $1 AND execution_status IS NOT NULL`,
+      [userId]
+    );
+    const row = result.rows[0];
+    return {
+      total: row.total,
+      rerank_count: row.rerank_count,
+      rerank_rate: row.total > 0 ? row.rerank_count / row.total : 0,
+      corrected_count: row.corrected_count,
+      correction_rate: row.rerank_count > 0 ? row.corrected_count / row.rerank_count : 0,
+    };
+  },
+
+  /**
+   * 查询 benchmark 核心指标（供自动化 benchmark 脚本调用）。
+   * 返回值可直接被 benchmark runner 消费。
+   */
+  async getBenchmarkMetrics(userId: string): Promise<{
+    total_decisions: number;
+    action_distribution: Record<string, number>;
+    execution_success_rate: number;
+    avg_latency_ms: number;
+    avg_cost_usd: number;
+    rerank_stats: { rate: number; correction_rate: number };
+    routing_agreement_rate: number;  // G2 → G3 一致率（越高说明 rerank 越少）
+  }> {
+    const result = await query(
+      `WITH exec AS (
+        SELECT
+          COUNT(*)::int as total,
+          COUNT(*) FILTER (WHERE execution_status = 'success')::int as success_count,
+          AVG(latency_ms)::int as avg_latency,
+          AVG(cost_usd)::float as avg_cost
+        FROM delegation_logs
+        WHERE user_id = $1 AND execution_status IS NOT NULL
+      ),
+      action AS (
+        SELECT routed_action, COUNT(*)::int as cnt
+        FROM delegation_logs WHERE user_id = $1
+        GROUP BY routed_action
+      ),
+      rerank AS (
+        SELECT
+          COUNT(*) FILTER (WHERE did_rerank = true)::int as rerank_count,
+          COUNT(*) FILTER (WHERE did_rerank = true AND g2_final_action = g3_final_action)::int as agreed_count
+        FROM delegation_logs WHERE user_id = $1
+      )
+      SELECT
+        exec.total,
+        exec.success_count,
+        exec.avg_latency,
+        exec.avg_cost,
+        exec.success_count::float / NULLIF(exec.total, 0) as success_rate,
+        rerank.rerank_count,
+        rerank.agreed_count,
+        rerank.rerank_count::float / NULLIF(exec.total, 0) as rerank_rate,
+        (rerank.rerank_count - rerank.agreed_count)::float / NULLIF(rerank.rerank_count, 0) as correction_rate,
+        rerank.agreed_count::float / NULLIF(rerank.rerank_count, 0) as agreement_rate
+      FROM exec, rerank`,
+      [userId]
+    );
+    const row = result.rows[0];
+
+    const actionResult = await query(
+      `SELECT routed_action, COUNT(*)::int as cnt
+       FROM delegation_logs WHERE user_id = $1 GROUP BY routed_action`,
+      [userId]
+    );
+
+    return {
+      total_decisions: row.total ?? 0,
+      action_distribution: Object.fromEntries(actionResult.rows.map((r) => [r.routed_action, r.cnt])),
+      execution_success_rate: row.success_rate ?? 0,
+      avg_latency_ms: row.avg_latency ?? 0,
+      avg_cost_usd: row.avg_cost ?? 0,
+      rerank_stats: {
+        rate: row.rerank_rate ?? 0,
+        correction_rate: row.correction_rate ?? 0,
+      },
+      routing_agreement_rate: row.agreement_rate ?? 1,
+    };
   },
 };

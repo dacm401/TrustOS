@@ -700,6 +700,90 @@ export interface KnowledgeBoundaryContext {
   now?: string;
 }
 
+// ── G4: Delegation Learning Loop ────────────────────────────────────────────────
+
+/**
+ * DelegationLog — Gated Delegation v2 的完整决策事实表。
+ *
+ * 记录每个委托决策的完整生命周期：
+ * G0(LLM原始输出) → G1(系统置信度) → G2(Policy校准) → G3(Rerank) → 执行结果
+ *
+ * 用于：离线分析、benchmark 改进、用户层面行为学习。
+ * 注意：执行结果字段在请求完成前为 NULL，通过 async writeback 填充。
+ */
+export interface DelegationLog {
+  id: string;
+  user_id: string;
+  session_id: string;
+  turn_id: number;
+  task_id?: string;
+  routing_version: string;
+
+  // G0: LLM 原始输出
+  llm_scores: Record<ManagerDecisionType, number>;
+  llm_confidence: number;
+
+  // G1: System Confidence
+  system_confidence: number;
+
+  // G2: Policy Calibration
+  calibrated_scores: Record<ManagerDecisionType, number>;
+  policy_overrides: PolicyOverride[];
+  g2_final_action: ManagerDecisionType;
+
+  // G3: Rerank
+  did_rerank: boolean;
+  rerank_gap?: number;
+  rerank_rules: string[];
+  g3_final_action?: ManagerDecisionType;
+
+  // 最终路由决策
+  routed_action: ManagerDecisionType;
+  routing_reason?: string;
+
+  // 执行结果（异步回写）
+  execution_status?: "pending" | "success" | "failed" | "timeout";
+  execution_correct?: boolean;
+  error_message?: string;
+  model_used?: string;
+  latency_ms?: number;
+  cost_usd?: number;
+
+  created_at: string;
+  executed_at?: string;
+}
+
+/** DelegationLog 写入输入（不含 generated 字段） */
+export interface DelegationLogInput {
+  user_id: string;
+  session_id: string;
+  turn_id: number;
+  task_id?: string;
+  routing_version?: string;
+  llm_scores: Record<ManagerDecisionType, number>;
+  llm_confidence: number;
+  system_confidence: number;
+  calibrated_scores: Record<ManagerDecisionType, number>;
+  policy_overrides: PolicyOverride[];
+  g2_final_action: ManagerDecisionType;
+  did_rerank: boolean;
+  rerank_gap?: number;
+  rerank_rules: string[];
+  g3_final_action?: ManagerDecisionType;
+  routed_action: ManagerDecisionType;
+  routing_reason?: string;
+}
+
+/** DelegationLog 执行结果回写 */
+export interface DelegationLogExecutionUpdate {
+  execution_status: "success" | "failed" | "timeout";
+  execution_correct?: boolean;
+  error_message?: string;
+  model_used?: string;
+  latency_ms?: number;
+  cost_usd?: number;
+}
+
 /** 决策类型枚举（Phase 0 精简版，4 种） */
 export type ManagerDecisionType =
   | "direct_answer"
