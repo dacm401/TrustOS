@@ -287,6 +287,8 @@ export interface LLMNativeRouterResult {
   archive_id?: string;
   /** Phase 3.0: 创建的 command_id（用于 SSE worker_started 事件） */
   command_id?: string;
+  /** G4: delegation_logs 表的主键 ID（用于异步回写 execution 结果） */
+  delegation_log_id?: string;
 }
 
 // ── 主入口 ───────────────────────────────────────────────────────────────────
@@ -325,6 +327,7 @@ export async function routeWithManagerDecision(
       routing_layer: "L0",
       decision_type: null,
       raw_manager_output: managerOutput,
+      delegation_log_id: undefined,
     };
   }
 
@@ -480,7 +483,10 @@ async function routeByGatedDecision(
 
   // G4: 委托决策日志（fire-and-forget，不阻塞主流程）
   // G1→G2→G3→路由的完整事实写入 delegation_logs，用于离线分析和 benchmark 改进
+  // 生成 UUID 用于异步回写 execution 结果（G4-C 的最后一环）
+  const delegation_log_id = uuid();
   DelegationLogRepo.save({
+    id: delegation_log_id,
     user_id: user_id,
     session_id: session_id,
     turn_id: turn_id,
@@ -517,8 +523,8 @@ async function routeByGatedDecision(
     })) ?? [],
   });
 
-  // 按最终路由动作分发
-  return routeByDecision(decision, { ...ctx, raw: rawOutput });
+  // 按最终路由动作分发，携带 delegation_log_id 供 SSE 异步回写使用
+  return routeByDecision(decision, { ...ctx, raw: rawOutput, delegation_log_id });
 }
 
 // ── 决策路由 ─────────────────────────────────────────────────────────────────
@@ -530,13 +536,15 @@ interface RouteContext {
   language: "zh" | "en";
   reqApiKey?: string;
   raw: string;
+  /** G4: delegation_logs 主键 ID（用于异步回写 execution 结果） */
+  delegation_log_id?: string;
 }
 
 async function routeByDecision(
   decision: ManagerDecision,
   ctx: RouteContext
 ): Promise<LLMNativeRouterResult> {
-  const { message, user_id, session_id, language, reqApiKey, raw } = ctx;
+  const { message, user_id, session_id, language, reqApiKey, raw, delegation_log_id } = ctx;
 
   switch (decision.decision_type) {
     case "direct_answer": {
@@ -548,6 +556,7 @@ async function routeByDecision(
         routing_layer: "L0",
         decision_type: "direct_answer",
         raw_manager_output: raw,
+        delegation_log_id,
       };
     }
 
@@ -592,6 +601,7 @@ async function routeByDecision(
         clarifying: cq,
         archive_id: clarifyingTaskId,
         raw_manager_output: raw,
+        delegation_log_id,
       };
     }
 
@@ -673,6 +683,7 @@ async function routeByDecision(
               routing_layer: "L0",
               decision_type: "direct_answer",
               raw_manager_output: raw,
+              delegation_log_id,
             };
           }
         } catch (e: any) {
@@ -744,6 +755,7 @@ async function routeByDecision(
         raw_manager_output: raw,
         archive_id: archiveRecord?.id ?? taskId,
         command_id: commandRecord?.id,
+        delegation_log_id,
       };
     }
 
@@ -904,6 +916,7 @@ async function routeByDecision(
         archive_id: archiveRecord2?.id ?? taskId,
         command_id: commandRecord2?.id,
         execution_plan,
+        delegation_log_id,
       };
     }
 
@@ -915,6 +928,7 @@ async function routeByDecision(
         routing_layer: "L0",
         decision_type: null,
         raw_manager_output: raw,
+        delegation_log_id,
       };
     }
   }

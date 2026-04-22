@@ -755,6 +755,8 @@ export interface DelegationLog {
 
 /** DelegationLog 写入输入（不含 generated 字段） */
 export interface DelegationLogInput {
+  /** 可选：外部指定 UUID（用于 G4-C 异步回写，传入后 save() 使用该 ID 而非重新生成） */
+  id?: string;
   user_id: string;
   session_id: string;
   turn_id: number;

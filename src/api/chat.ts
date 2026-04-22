@@ -222,9 +222,10 @@ chatRouter.post("/chat", async (c) => {
                 routing_layer: llmNativeResult.routing_layer,
               })}\n\n`);
 
-              // pollArchiveAndYield 会推送 worker_progress / worker_completed / manager_synthesized
-              // Archive E2E 修复：保留原始事件的所有字段，只覆盖 routing_layer
-              for await (const event of pollArchiveAndYield(taskId, lang)) {
+            // pollArchiveAndYield 会推送 worker_progress / worker_completed / manager_synthesized
+            // Archive E2E 修复：保留原始事件的所有字段，只覆盖 routing_layer
+            // G4: delegation_log_id 传给 pollArchiveAndYield，用于异步回写 execution 结果
+            for await (const event of pollArchiveAndYield(taskId, lang, llmNativeResult.delegation_log_id)) {
                 const payload = {
                   ...event,
                   routing_layer: event.routing_layer ?? llmNativeResult.routing_layer,

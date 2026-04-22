@@ -1273,7 +1273,7 @@ export const DelegationLogRepo = {
    * 执行结果字段在异步执行完成后由 updateExecution() 回写。
    */
   async save(d: DelegationLogInput): Promise<DelegationLog> {
-    const id = uuid();
+    const id = d.id ?? uuid();
     await query(
       `INSERT INTO delegation_logs (
         id, user_id, session_id, turn_id, task_id, routing_version,

@@ -19,7 +19,7 @@ import type { ChatMessage } from "../types/index.js";
 import { callModelFull } from "../models/model-gateway.js";
 import { callOpenAIWithOptions } from "../models/providers/openai.js";
 import type { ModelResponse } from "../models/providers/base-provider.js";
-import { TaskRepo, MemoryEntryRepo, DelegationArchiveRepo } from "../db/repositories.js";
+import { TaskRepo, MemoryEntryRepo, DelegationArchiveRepo, DelegationLogRepo } from "../db/repositories.js";
 import { TaskArchiveRepo } from "../db/task-archive-repo.js";
 import { config } from "../config.js";
 import { runRetrievalPipeline, buildCategoryAwareMemoryText } from "./memory-retrieval.js";
@@ -737,10 +737,12 @@ export interface SSEEvent {
 /**
  * 轮询 TaskArchive，感知状态变化，推送 SSE 事件
  * 嵌入用户体验安抚消息（30s/60s/120s 节点）
+ * @param delegation_log_id G4: delegation_logs 主键 ID，用于异步回写 execution 结果
  */
 export async function* pollArchiveAndYield(
   taskId: string,
-  lang: "zh" | "en"
+  lang: "zh" | "en",
+  delegation_log_id?: string
 ): AsyncGenerator<SSEEvent> {
   // 自适应轮询间隔：任务初期频繁检查，后期降低频率
   // - < 10s：2s（快速感知完成）
@@ -830,6 +832,42 @@ export async function* pollArchiveAndYield(
           summary: workerResult.substring(0, 200),
           routing_layer: "L2",
         };
+
+        // G4: 回写 delegation_logs execution 结果（fire-and-forget，不阻断 SSE 流）
+        // 读取 task_worker_results 获取 cost/latency 数据
+        if (delegation_log_id) {
+          let cost_usd: number | null = null;
+          let latency_ms: number | null = null;
+
+          try {
+            const { TaskWorkerResultRepo } = await import("../db/task-archive-repo.js");
+            const workerResultRecord = await TaskWorkerResultRepo.getByCommandId(taskId);
+            if (workerResultRecord) {
+              cost_usd = workerResultRecord.cost_usd;
+              if (workerResultRecord.started_at && workerResultRecord.completed_at) {
+                latency_ms = new Date(workerResultRecord.completed_at).getTime()
+                  - new Date(workerResultRecord.started_at).getTime();
+              }
+            }
+          } catch (e: any) {
+            // 静默吞错，不阻断 SSE 流
+            console.warn("[pollArchiveAndYield] getByCommandId failed:", e.message);
+          }
+
+          // slow_execution.started_at 回退补算 latency（task_worker_results 未写入时兜底）
+          if (latency_ms === null && execution.started_at) {
+            const startedMs = new Date(execution.started_at as string).getTime();
+            latency_ms = startedMs > 0 ? Date.now() - startedMs : null;
+          }
+
+          DelegationLogRepo.updateExecution(delegation_log_id, {
+            execution_status: "completed",
+            execution_correct: null,
+            model_used: (execution.worker_role as string) ?? "slow_worker",
+            latency_ms,
+            cost_usd,
+          }).catch((e) => console.warn("[delegation-log] updateExecution failed:", e.message));
+        }
 
         // Phase 3.0: Manager Synthesis — Manager 读取 Worker 结果，合成最终输出
         let synthesizedContent = workerResult;
