@@ -263,7 +263,7 @@ Then stop outputting and wait for processing.`;
 /**
  * 从 Fast 模型输出中解析【SLOW_MODEL_REQUEST】命令
  */
-function parseSlowModelCommand(text: string): SlowModelCommand | null {
+export function parseSlowModelCommand(text: string): SlowModelCommand | null {
   let jsonStr: string | null = null;
 
   // 格式 1：代码块内的 JSON
@@ -304,7 +304,7 @@ function parseSlowModelCommand(text: string): SlowModelCommand | null {
 }
 
 /** Phase 1.5: 从 Fast 模型输出中解析【CLARIFYING_REQUEST】 */
-function parseClarifyQuestion(text: string): ClarifyQuestion | null {
+export function parseClarifyQuestion(text: string): ClarifyQuestion | null {
   let jsonStr: string | null = null;
 
   // 格式1：包含在【CLARIFYING_REQUEST】标记中
@@ -861,11 +861,11 @@ export async function* pollArchiveAndYield(
           }
 
           DelegationLogRepo.updateExecution(delegation_log_id, {
-            execution_status: "completed",
-            execution_correct: null,
+            execution_status: "success",
+            execution_correct: undefined,
             model_used: (execution.worker_role as string) ?? "slow_worker",
-            latency_ms,
-            cost_usd,
+            latency_ms: latency_ms ?? undefined,
+            cost_usd: cost_usd ?? undefined,
           }).catch((e) => console.warn("[delegation-log] updateExecution failed:", e.message));
         }
 
