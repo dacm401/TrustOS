@@ -454,7 +454,7 @@ async function routeByGatedDecision(
   gated: GatedDelegationContext,
   ctx: GatedRouteContext
 ): Promise<LLMNativeRouterResult> {
-  const { message, user_id, session_id, language, reqApiKey, rawOutput, v2Decision } = ctx;
+  const { message, user_id, session_id, turn_id, task_id, language, reqApiKey, rawOutput, v2Decision } = ctx;
 
   // 构建向后兼容的 V1 ManagerDecision（用于 SSE/Archive/旧逻辑）
   const decision: ManagerDecision = {
@@ -933,3 +933,9 @@ async function routeByDecision(
     }
   }
 }
+
+// ── Test-only exports（仅供单元测试访问内部函数） ────────────────────────────────
+
+/** @internal — 仅供测试使用 */
+export { tryParseV2Decision, parseGatedDecision };
+

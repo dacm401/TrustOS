@@ -73,7 +73,9 @@ export function ruleBasedRerank(
   }
 
   // 规则 2：delegate 和 direct_answer 接近，且问题简短明确 → direct_answer
+  // 注意：如果 selectedAction 是 execute_task 且有明确工具需求，由规则 3 接管，此处不拦截
   if (
+    selectedAction !== "execute_task" &&
     !features.missing_info &&
     !features.needs_long_reasoning &&
     Math.abs(scores.delegate_to_slow - scores.direct_answer) < 0.1
