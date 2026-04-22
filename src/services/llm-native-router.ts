@@ -31,6 +31,7 @@ import type {
 import { DECISION_TO_LAYER } from "../types/index.js";
 import { parseAndValidate } from "../orchestrator/decision-validator.js";
 import { taskPlanner } from "./task-planner.js";
+import { DelegationLogRepo } from "../db/repositories.js";
 
 // Phase 4: Permission Layer + Redaction imports (lazy loaded to avoid circular deps)
 let phase4Module: typeof import("./phase4/index.js") | null = null;
@@ -59,6 +60,8 @@ export interface GatedDelegationContext {
   llmConfidenceHint: number;
   features: DecisionFeatures;
   systemConfidence: number;
+  /** G2: Policy 校准后的各动作分数 */
+  calibratedScores: Record<ManagerDecisionType, number>;
   finalAction: ManagerDecisionType;
   policyOverrides: import("../types/index.js").PolicyOverride[];
   rerankResult?: RerankResult;
@@ -118,6 +121,7 @@ export function runGatedDelegation(
     llmConfidenceHint,
     features,
     systemConfidence,
+    calibratedScores: calibrated.adjustedScores,
     finalAction: calibrated.finalAction,
     policyOverrides: calibrated.policyOverrides,
     rerankResult,
@@ -253,6 +257,8 @@ export interface LLMNativeRouterInput {
   message: string;
   user_id: string;
   session_id: string;
+  /** 当前 session 内请求序号（用于 delegation_logs.turn_id） */
+  turn_id: number;
   history: ChatMessage[];
   language: "zh" | "en";
   reqApiKey?: string;
@@ -288,7 +294,7 @@ export interface LLMNativeRouterResult {
 export async function routeWithManagerDecision(
   input: LLMNativeRouterInput
 ): Promise<LLMNativeRouterResult> {
-  const { message, user_id, session_id, history, language, reqApiKey } = input;
+  const { message, user_id, session_id, turn_id, history, language, reqApiKey } = input;
 
   // Step 1: 调用 Fast 模型，传递 Manager Prompt
   const managerOutput = await callManagerModel({ message, history, language, reqApiKey });
@@ -324,7 +330,7 @@ export async function routeWithManagerDecision(
 
   // Step 4: 按 Gated Delegation 最终结果路由（KB signals 已在 gatedResult.knowledgeBoundarySignals 中）
   const v2Decision = tryParseV2Decision(managerOutput);
-  return routeByGatedDecision(gatedResult, { message, user_id, session_id, language, reqApiKey, rawOutput: managerOutput, v2Decision });
+  return routeByGatedDecision(gatedResult, { message, user_id, session_id, turn_id, language, reqApiKey, rawOutput: managerOutput, v2Decision });
 }
 
 // ── Fast Manager 调用 ─────────────────────────────────────────────────────────
@@ -431,6 +437,8 @@ interface GatedRouteContext {
   message: string;
   user_id: string;
   session_id: string;
+  turn_id: number;
+  task_id?: string;
   language: "zh" | "en";
   reqApiKey?: string;
   /** 原始字符串（用于 raw_manager_output） */
@@ -469,6 +477,27 @@ async function routeByGatedDecision(
         }
       : undefined,
   };
+
+  // G4: 委托决策日志（fire-and-forget，不阻塞主流程）
+  // G1→G2→G3→路由的完整事实写入 delegation_logs，用于离线分析和 benchmark 改进
+  DelegationLogRepo.save({
+    user_id: user_id,
+    session_id: session_id,
+    turn_id: turn_id,
+    task_id: task_id,
+    llm_scores: gated.llmScores,
+    llm_confidence: gated.llmConfidenceHint,
+    system_confidence: gated.systemConfidence,
+    calibrated_scores: gated.calibratedScores,
+    policy_overrides: gated.policyOverrides,
+    g2_final_action: gated.finalAction,
+    did_rerank: Boolean(gated.rerankResult),
+    rerank_gap: gated.rerankResult?.gap,
+    rerank_rules: gated.rerankResult?.appliedRules ?? [],
+    g3_final_action: gated.rerankResult ? gated.routedAction : undefined,
+    routed_action: gated.routedAction,
+    routing_reason: `Gated: ${gated.routedAction} (sys_conf=${gated.systemConfidence.toFixed(3)})`,
+  }).catch((e) => console.warn("[delegation-log] write failed:", e.message));
 
   // Gated Delegation 日志（console.debug 级别，不阻塞主流程）
   console.log("[llm-native-router] Gated Delegation:", {
