@@ -1,6 +1,18 @@
 # PROJECT_STATUS.md — SmartRouter Pro 交付状态
 
-> 版本：v1.1.0 | 日期：2026-04-21 | 状态：✅ Phase C COMPLETE
+> 版本：v1.1.1 | 日期：2026-04-22 | 状态：✅ Phase D Sprint 50 COMPLETE
+
+## 完整 Roadmap
+详见 `ROADMAP.md`（本文档仅记录当前状态）
+
+### Phase D: Gated Delegation v2 完成度
+
+| 层 | 名称 | 状态 | Sprint |
+|----|------|------|--------|
+| G1 | Action Score Head | ✅ DONE | Sprint 50 |
+| G2 | Policy-Calibrated Gate | ✅ DONE | Sprint 50 |
+| G3 | Rerank-on-Uncertainty | ✅ DONE | Sprint 50 |
+| G4 | Delegation Learning Loop | ⏳ TODO | Sprint 51→ |
 
 ---
 
@@ -176,17 +188,20 @@ npm run build --prefix frontend
 | **Sprint 44** | **LLM-Native Routing Benchmark（B2）Baseline 建立** | **🔄** |
 | **Sprint 48** | **Phase 3.0 补完 + E2E 验证 + Auth v1** | **✅** |
 | **Sprint 49** | **P1 Benchmark CI / P2 Intent 调优 / P3 前端 JWT Auth** | **✅** |
+| **Sprint 50** | **Gated Delegation v2: G1/G2/G3 + E2E 测试 + TS 修复** | **✅** |
 | **v1.1.0** | **Phase C 封板 - Evidence Layer / Memory UI 完成 / 版本升级** | **✅** |
+| **v1.1.1** | **Phase D Sprint 50 收口 - Gated Delegation v2 测试覆盖完成** | **✅** |
 
 ---
 
-## 下一步（Phase C 可选项）
+## 下一步（详见 ROADMAP.md）
 
 | 优先级 | 卡片 | 描述 | 状态 |
 |--------|------|------|------|
-| P1 | ~~C3（Server Identity Context）治理~~ | ~~Token/session 系统，完整 auth~~ | ✅ Sprint 49 P3 |
-| P2 | ~~Evidence Layer 6 完整性~~ | ~~http_request/manual evidence 来源~~ | ✅ v1.1.0 |
-| P3 | ~~Benchmark CI Job~~ | ~~在 GitHub Actions 中加入 benchmark~~ | ✅ Sprint 49 P1 |
-| P4 | ~~Memory UI 面板~~ | ~~前端 Memory 管理界面~~ | ✅ v1.1.0 |
-| P5 | Intent 准确率持续优化 | LLM-Native Routing 替代规则路由 | 待定 |
-| P5 | Intent 准确率持续优化 | LLM-Native Routing 替代规则路由 | 待定 |
+| **P0** | ~~Phase 1.5 Clarifying 流程~~ | ~~task_brief JSONB + ClarifyQuestion 状态机~~ | ✅ G1/G2/G3 已覆盖 |
+| **P0** | ~~Phase 1.5 Slow 只读 Prompt~~ | ~~task_brief 字段落地~~ | ✅ G1 已覆盖 |
+| **P0** | **Sprint 51 G4** | `delegation_logs` 事实表 + 日志写入 pipeline | ⏳ Sprint 51 |
+| P1 | Memory/Evidence 效果增强 | intent-aware boost + retrieveEvidenceForContext | 依赖 G4 数据 |
+| P2 | SSE done 双路推送 + stream 字段 | SSEEvent 类型扩展 | Sprint 52+ |
+| P3 | Phase 2.0 Layer 2 全量上线 | Benchmark 扩测 + router 微调 | Sprint 52+ |
+| P5 | Intent 准确率持续优化 | LLM-Native Routing 97%→99% | 远期待定 |
