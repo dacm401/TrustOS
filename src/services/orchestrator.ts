@@ -563,8 +563,13 @@ export async function orchestrator(input: OrchestratorInput): Promise<Orchestrat
       reqApiKey,
     }).catch((e) => console.error("[orchestrator] Slow model trigger failed:", e.message));
 
+    // 7B 模型有时会先输出一段文字再输出 JSON，忽略垃圾文字，用干净确认语
+    const delegationReply = language === "zh"
+      ? "让我深入分析一下这个问题，请稍候～"
+      : "Let me analyze this in depth, please wait...";
+
     return {
-      fast_reply: reply,
+      fast_reply: delegationReply,
       delegation: { task_id: taskId, status: "triggered" },
       routing_info: { delegated: true },
     };
