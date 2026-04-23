@@ -258,6 +258,93 @@ First say 1-2 natural sentences (e.g. "Let me think about this"), then output si
 Then stop outputting and wait for processing.`;
 }
 
+// ── Fast 模型回复清洗 ─────────────────────────────────────────────────────────
+
+/**
+ * cleanFastReply: 清洗 7B 模型的原始输出
+ * 处理三类问题：
+ * 1. 【CLARIFYING_REQUEST】/【SLOW_MODEL_REQUEST】JSON 残留
+ * 2. 重复句子（7B 有时会把同一句话输出两遍）
+ * 3. 乱码字符（UTF-8 截断产生的不可见/控制字符）
+ */
+export function cleanFastReply(text: string): string {
+  if (!text) return text;
+
+  let cleaned = text;
+
+  // Step 1: 去掉 【SLOW_MODEL_REQUEST】...【/SLOW_MODEL_REQUEST】 整块（全角/尖括号/大小写混合）
+  cleaned = cleaned.replace(/【SLOW[_\s]MODEL[_\s]REQUEST】[\s\S]*?【\/SLOW[_\s]MODEL[_\s]REQUEST】/gi, "");
+  cleaned = cleaned.replace(/<SLOW[_\s]MODEL[_\s]REQUEST>[\s\S]*?<\/SLOW[_\s]MODEL[_\s]REQUEST>/gi, "");
+  // 无闭合标签：【SLOW_MODEL_REQUEST】后面跟 JSON
+  cleaned = cleaned.replace(/【SLOW[_\s]model[_\s]REQUEST】[\s\S]*?(\{[\s\S]*?\}|\n\n)/gi, "");
+  // 兜底：任意形式的 SLOW*REQUEST 标签行
+  cleaned = cleaned.replace(/【[^】]*(?:slow|model|request)[^】]*】[\s\S]*?(\{[\s\S]*?\}|$)/gi, (m) => {
+    // 只替换包含 JSON 的部分，防止误删正常文字
+    if (m.includes('{') && m.includes('"action"')) return "";
+    if (m.includes('{') && m.includes('"task"')) return "";
+    return m;
+  });
+
+  // Step 2: 去掉 【CLARIFYING_REQUEST】...【/CLARIFYING_REQUEST】 整块
+  cleaned = cleaned.replace(/【CLARIFYING[_\s]REQUEST】[\s\S]*?【\/CLARIFYING[_\s]REQUEST】/gi, "");
+  cleaned = cleaned.replace(/<CLARIFYING[_\s]REQUEST>[\s\S]*?<\/CLARIFYING[_\s]REQUEST>/gi, "");
+  cleaned = cleaned.replace(/【CLARIFYING[_\s]REQUEST】[\s\S]*?(\{[\s\S]*?\}|\n\n)/gi, "");
+  cleaned = cleaned.replace(/<CLARIFYING[_\s]REQUEST>[\s\S]*?(\{[\s\S]*?\}|\n\n)/gi, "");
+  // 残留标签本身（无内容）
+  cleaned = cleaned.replace(/【[^】]*(?:clarifying|request)[^】]*】/gi, "");
+  cleaned = cleaned.replace(/<\/?(SLOW_MODEL_REQUEST|CLARIFYING_REQUEST)>/gi, "");
+
+  // Step 3: 去掉残留的裸 JSON 命令行（以 {"action": 或 {"question_text": 开头的行）
+  cleaned = cleaned.replace(/^\s*\{[^{}]*"action"[\s\S]*?\}\s*$/gm, "");
+  cleaned = cleaned.replace(/^\s*\{"question_text"[\s\S]*?\}\s*$/gm, "");
+  // 同时清理内联 JSON（含 "action" 或 "question_text" 的 JSON 块，不管是否独行）
+  cleaned = cleaned.replace(/\{[^{}]*"action"[^{}]*\}/g, "");
+  cleaned = cleaned.replace(/\{[^{}]*"question_text"[^{}]*\}/g, "");
+
+  // Step 4: 去掉所有 <tools>...</tools> 块（某些模型会把 tool schema 原文输出）
+  cleaned = cleaned.replace(/<tools>[\s\S]*?<\/tools>/gi, "");
+
+  // Step 5: 去掉孤立的 JSON-like 行（以 { 开头、包含 " 和 : 的单行，且不是正常句子）
+  cleaned = cleaned.replace(/^\s*\{[^{}]{10,}\}\s*$/gm, "");
+  // 也清理包含大量重复空格/引号的长字符串（7B 乱码特征：" " " " " " " " " " " "...）
+  cleaned = cleaned.replace(/(?:" " ){3,}/g, "");
+  cleaned = cleaned.replace(/(?:\" ){5,}/g, "");
+
+  // Step 6: 去掉乱码字符（C0/C1 控制字符，保留 \n \r \t）
+  // eslint-disable-next-line no-control-regex
+  cleaned = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+
+  // Step 7: 去重复句子（7B 有时把同一句输出两遍，连在一起）
+  // 策略：把文本拆成句子，相邻相同/高度相似的句子只保留一个
+  const sentences = cleaned.split(/([。？！；\n]+)/);
+  const deduplicated: string[] = [];
+  let lastSentence = "";
+  for (let i = 0; i < sentences.length; i++) {
+    const s = sentences[i];
+    const stripped = s.trim();
+    if (!stripped) {
+      deduplicated.push(s);
+      continue;
+    }
+    // 相邻句子若相同或包含关系，跳过重复的那个
+    if (stripped !== lastSentence && !lastSentence.includes(stripped) && !stripped.includes(lastSentence)) {
+      deduplicated.push(s);
+      lastSentence = stripped;
+    } else if (stripped === lastSentence) {
+      // 纯重复，跳过
+    } else {
+      deduplicated.push(s);
+      lastSentence = stripped;
+    }
+  }
+  cleaned = deduplicated.join("");
+
+  // Step 8: 收尾——去掉首尾多余空白
+  cleaned = cleaned.trim();
+
+  return cleaned;
+}
+
 // ── Slow 模型升级命令解析 ─────────────────────────────────────────────────────
 
 /**
@@ -401,27 +488,23 @@ async function callFastModelWithTools(
     if (content) {
       const clarifyQ = parseClarifyQuestion(content);
       if (clarifyQ) {
-        const prefix = content
-          .replace(/【CLARIFYING_REQUEST】[\s\S]*?【\/CLARIFYING_REQUEST】/, "")
-          .trim();
+        // 7B 模型前缀文字不可靠，用固定确认语代替（避免乱码/JSON 残留泄露给用户）
         return {
-          reply: prefix || (lang === "zh" ? "我需要确认一下..." : "Let me clarify..."),
+          reply: lang === "zh" ? "我需要确认一下..." : "Let me clarify...",
           clarifyQuestion: clarifyQ,
         };
       }
       // 情况 3：检查慢模型升级请求
       const command = parseSlowModelCommand(content);
       if (command) {
-        const prefix = content
-          .replace(/【SLOW_MODEL_REQUEST】[\s\S]*?【\/SLOW_MODEL_REQUEST】/, "")
-          .trim();
+        // 7B 模型前缀文字不可靠，用固定确认语代替
         return {
-          reply: prefix || (lang === "zh" ? "让我想想..." : "Let me think..."),
+          reply: lang === "zh" ? "让我想想..." : "Let me think...",
           command,
         };
       }
-      // 情况 4：普通回复
-      return { reply: content };
+      // 情况 4：普通回复 — 统一清洗后返回
+      return { reply: cleanFastReply(content) };
     }
 
     return { reply: "" };
