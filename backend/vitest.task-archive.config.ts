@@ -17,24 +17,27 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    pool: "forks",
-    // Only run our mock-based tests — no DB setup needed
+    // Use threads pool with single-thread-per-worker (matches vitest.repo.config.ts)
+    pool: "threads",
+    poolOptions: {
+      threads: {
+        minThreads: 1,
+        maxThreads: 1,
+        singleThread: true,
+      },
+    },
     include: [
       "tests/repos/**/*.test.ts",
       "tests/services/**/*.test.ts",
     ],
     exclude: [
-      // Skip the existing repo integration tests (they need the real DB)
       "tests/repositories/**",
       "tests/api/**",
       "tests/features/**",
     ],
     env: {
       NODE_PATH: resolve("node_modules"),
-      // No DATABASE_URL needed — all DB access is mocked
     },
-    // NO setupFiles — no DB connection needed
-    // NO globalTeardown
     testTimeout: 30_000,
   },
 });
