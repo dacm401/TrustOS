@@ -397,6 +397,8 @@ async function callFastModelWithTools(
   managerDecision?: ManagerDecision | null;
   /** Phase 1.5: 旧格式兼容（来自 parseClarifyQuestion） */
   clarifyQuestion?: ClarifyQuestion;
+  /** Phase 2 兼容：旧【SLOW_MODEL_REQUEST】格式（来自 parseSlowModelCommand） */
+  command?: SlowModelCommand;
 }> {
   const MAX_TOOL_ROUNDS = 5;
   let currentMessages = [...messages];
@@ -522,6 +524,7 @@ async function callFastModelWithTools(
           .trim();
         return {
           reply: prefix || (lang === "zh" ? "让我想想..." : "Let me think..."),
+          command,
         };
       }
 
@@ -656,9 +659,9 @@ export async function orchestrator(input: OrchestratorInput): Promise<Orchestrat
       await TaskArchiveRepo.create({
         task_id: taskId,
         session_id,
-        command,
+        command: effectiveCommand,
         user_input: message,
-        constraints: command.constraints,
+        constraints: effectiveCommand!.constraints,
       });
     } catch (e: any) {
       console.warn("[orchestrator] TaskArchive create failed:", e.message);
@@ -669,7 +672,7 @@ export async function orchestrator(input: OrchestratorInput): Promise<Orchestrat
     triggerSlowModelBackground({
       taskId,
       message,
-      command,
+      command: effectiveCommand!,
       user_id,
       session_id,
       reqApiKey,

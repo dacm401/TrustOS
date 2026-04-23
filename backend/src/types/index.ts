@@ -141,6 +141,23 @@ export interface ChatResponse {
     task_id: string;
     status: "triggered";
   };
+  /**
+   * Phase 2: ManagerDecision — present when orchestrator returns a structured decision.
+   * Used by the client to display routing reasoning.
+   */
+  manager_decision?: ManagerDecision | null;
+  /**
+   * Phase 1.5: Clarifying question — present when Fast requests user clarification.
+   */
+  clarifying?: ClarifyQuestion;
+}
+
+/** Phase 1.5: Clarifying question (Fast → Frontend) */
+export interface ClarifyQuestion {
+  question_id: string;
+  question_text: string;
+  options?: string[];
+  context: string;
 }
 
 export interface IdentityMemory {
@@ -571,4 +588,56 @@ export interface ExecutionResultInput {
   tool_count: number;
   duration_ms?: number;
   reason: string;
+}
+
+// ── TaskArchive Repos（LLM-Native Routing — Phase 2）──────────────────────────
+
+/** TaskCommand — command 子表（从 task_archives.command JSONB 提取） */
+export interface TaskCommand {
+  id: string;
+  archive_id: string;
+  action: "research" | "analysis" | "code" | "creative" | "comparison";
+  task: string;
+  constraints: string[];
+  query_keys: string[];
+  relevant_facts?: string[];
+  user_preference_summary?: string;
+  priority?: "high" | "normal" | "low";
+  max_execution_time_ms?: number;
+  created_at: string;
+}
+
+/** TaskWorkerResult — worker result 子表（从 task_archives.slow_execution JSONB 提取） */
+export interface TaskWorkerResult {
+  id: string;
+  archive_id: string;
+  result: string | null;
+  errors: string[];
+  deviations: string[];
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+/** TaskArchiveEvent — 事件日志子表（独立表） */
+export type TaskArchiveEventType =
+  | "info"
+  | "manager_decision"
+  | "archive_written"
+  | "worker_started"
+  | "worker_completed"
+  | "manager_synthesized";
+
+export interface TaskArchiveEvent {
+  id: string;
+  archive_id: string;
+  event_type: TaskArchiveEventType;
+  event_data: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface TaskArchiveEventInput {
+  archive_id: string;
+  event_type: TaskArchiveEventType;
+  event_data: Record<string, unknown>;
 }

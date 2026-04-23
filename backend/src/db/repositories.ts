@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { query } from "./connection.js";
-import type { DecisionRecord, BehavioralMemory, IdentityMemory, GrowthProfile, Task, TaskListItem, TaskSummary, TaskTrace, MemoryEntry, MemoryEntryInput, MemoryEntryUpdate, ExecutionResultRecord, ExecutionResultInput, Evidence, EvidenceInput } from "../types/index.js";
+import type { DecisionRecord, BehavioralMemory, IdentityMemory, GrowthProfile, Task, TaskListItem, TaskSummary, TaskTrace, MemoryEntry, MemoryEntryInput, MemoryEntryUpdate, ExecutionResultRecord, ExecutionResultInput, Evidence, EvidenceInput, TaskCommand, TaskWorkerResult, TaskArchiveEvent, TaskArchiveEventInput, TaskArchiveEventType } from "../types/index.js";
 import { GROWTH_LEVELS } from "../config.js";
 import { getEmbedding } from "../services/embedding.js";
 
@@ -1219,3 +1219,115 @@ export const EvidenceRepo = {
     return result.rows.map(mapEvidenceRow);
   },
 };
+
+// ── TaskCommandRepo — command 子表（从 task_archives.command JSONB 读写）──────
+
+export const TaskCommandRepo = {
+  async create(command: TaskCommand): Promise<string> {
+    // task_archives.command 已是 JSONB，直接从 archive 读取；此处提供独立接口用于写入独立 command 表
+    // 当前实现：写入 delegation_archive（已有 command 字段），或直接通过 TaskArchiveRepo 操作
+    // Phase 2 保留接口，后续可拆分到独立 task_archive_commands 表
+    return command.id;
+  },
+
+  /**
+   * 从 task_archives 主表读取 command JSONB
+   */
+  async findByArchiveId(archiveId: string): Promise<TaskCommand | null> {
+    const result = await query(
+      `SELECT id, session_id, command, created_at
+       FROM task_archives WHERE id=$1`,
+      [archiveId]
+    );
+    if (result.rows.length === 0) return null;
+    const r = result.rows[0];
+    const cmd = r.command;
+    if (!cmd || !cmd.action || !cmd.task) return null;
+    return {
+      id: r.id,
+      archive_id: r.id,
+      action: cmd.action,
+      task: cmd.task,
+      constraints: cmd.constraints ?? [],
+      query_keys: cmd.query_keys ?? [],
+      relevant_facts: cmd.relevant_facts,
+      user_preference_summary: cmd.user_preference_summary,
+      priority: cmd.priority,
+      max_execution_time_ms: cmd.max_execution_time_ms,
+      created_at: new Date(r.created_at).toISOString(),
+    };
+  },
+};
+
+// ── TaskWorkerResultRepo — worker result 子表（从 task_archives.slow_execution JSONB 读写）─
+
+export const TaskWorkerResultRepo = {
+  /**
+   * 写入 slow_execution JSONB（通过 TaskArchiveRepo.writeExecution 已处理）
+   * 此接口提供独立读取能力
+   */
+  async findByArchiveId(archiveId: string): Promise<TaskWorkerResult | null> {
+    const result = await query(
+      `SELECT id, slow_execution, updated_at
+       FROM task_archives WHERE id=$1`,
+      [archiveId]
+    );
+    if (result.rows.length === 0) return null;
+    const r = result.rows[0];
+    const exec = r.slow_execution ?? {};
+    return {
+      id: r.id,
+      archive_id: r.id,
+      result: exec.result ?? null,
+      errors: exec.errors ?? [],
+      deviations: exec.deviations ?? [],
+      started_at: exec.started_at ?? null,
+      completed_at: new Date(r.updated_at).toISOString(),
+      created_at: new Date(r.updated_at).toISOString(),
+    };
+  },
+};
+
+// ── TaskArchiveEventRepo — 事件日志子表（独立表）───────────────────────────────
+
+export const TaskArchiveEventRepo = {
+  async create(event: TaskArchiveEventInput): Promise<string> {
+    const id = uuid();
+    await query(
+      `INSERT INTO task_archive_events (id, archive_id, event_type, event_data)
+       VALUES ($1, $2, $3, $4)`,
+      [id, event.archive_id, event.event_type, JSON.stringify(event.event_data)]
+    );
+    return id;
+  },
+
+  async findByArchiveId(archiveId: string): Promise<TaskArchiveEvent[]> {
+    const result = await query(
+      `SELECT * FROM task_archive_events
+       WHERE archive_id=$1
+       ORDER BY created_at ASC`,
+      [archiveId]
+    );
+    return result.rows.map(mapTaskArchiveEventRow);
+  },
+
+  async findByArchiveIdAndType(archiveId: string, eventType: TaskArchiveEventType): Promise<TaskArchiveEvent[]> {
+    const result = await query(
+      `SELECT * FROM task_archive_events
+       WHERE archive_id=$1 AND event_type=$2
+       ORDER BY created_at ASC`,
+      [archiveId, eventType]
+    );
+    return result.rows.map(mapTaskArchiveEventRow);
+  },
+};
+
+function mapTaskArchiveEventRow(r: any): TaskArchiveEvent {
+  return {
+    id: r.id,
+    archive_id: r.archive_id,
+    event_type: r.event_type as TaskArchiveEventType,
+    event_data: typeof r.event_data === "string" ? JSON.parse(r.event_data) : (r.event_data ?? {}),
+    created_at: new Date(r.created_at).toISOString(),
+  };
+}

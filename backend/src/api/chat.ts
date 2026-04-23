@@ -35,6 +35,9 @@ import { getContextUserId } from "../middleware/identity.js";
 import { orchestrator, getDelegationResult, pollArchiveAndYield, evaluateRouting } from "../services/orchestrator.js";
 // O-007: 安抚功能 — 检测 pending 任务
 import { DelegationArchiveRepo } from "../db/repositories.js";
+// Phase 2: TaskArchive Event Repo + ManagerDecision types
+import { TaskArchiveEventRepo } from "../db/repositories.js";
+import type { ManagerDecision, ManagerAction } from "../types/index.js";
 
 const chatRouter = new Hono();
 
@@ -154,6 +157,160 @@ chatRouter.post("/chat", async (c) => {
         pendingTaskMessage,     // O-007: pending 任务信息
       });
 
+      // ── Phase 2: ManagerDecision 路由 ──────────────────────────────────────────
+      // 当 orchestrator 返回 manager_decision 时，按 action 分支处理
+      const md = orchResult.manager_decision;
+
+      // 1. action=execute_task → 触发 TaskPlanner + ExecutionLoop（execute 模式）
+      if (md?.action === "execute_task") {
+        const taskId = uuid();
+        const title = (body.message ?? "").substring(0, 100);
+
+        // Create task record
+        await TaskRepo.create({
+          id: taskId,
+          user_id: userId,
+          session_id: sessionId,
+          title,
+          mode: "execute",
+          complexity: md.execution?.complexity ?? "medium",
+          risk: "low",
+          goal: md.execution?.goal ?? body.message ?? "",
+          status: "responding",
+        }).catch((e) => console.error("[chat] manager_decision execute_task: failed to create task:", e));
+
+        // 写入 task_archive_events（manager_decision 事件）
+        if (orchResult.delegation?.task_id) {
+          TaskArchiveEventRepo.create({
+            archive_id: orchResult.delegation.task_id,
+            event_type: "manager_decision",
+            event_data: { action: md.action, reasoning: md.reasoning, confidence: md.confidence },
+          }).catch((e: any) => console.warn("[chat] manager_decision event write failed:", e.message));
+        }
+
+        // Memory retrieval for planner context
+        let memoryEntriesUsed: string[] = [];
+        if (config.memory.enabled) {
+          const mems = await MemoryEntryRepo.getTopForUser(userId, config.memory.maxEntriesToInject);
+          memoryEntriesUsed = mems.map((m) => m.id);
+        }
+
+        // Step 1: Planning
+        const plan = await taskPlanner.plan({
+          taskId,
+          goal: md.execution?.goal ?? body.message ?? "",
+          userId,
+          sessionId,
+          model: effectiveSlowModel,
+          executionResultContext: "",
+        });
+
+        // Step 2: Execute
+        const loopResult = await executionLoop.run(plan, {
+          taskId,
+          userId,
+          sessionId,
+          model: effectiveSlowModel,
+          maxSteps: md.execution?.max_steps ?? 10,
+          maxToolCalls: 20,
+        });
+
+        // 写入 manager_synthesized 事件（如果 archive_id 存在）
+        if (orchResult.delegation?.task_id) {
+          TaskArchiveEventRepo.create({
+            archive_id: orchResult.delegation.task_id,
+            event_type: "manager_synthesized",
+            event_data: {
+              final_content: loopResult.finalContent,
+              reason: loopResult.reason,
+              completed_steps: loopResult.completedSteps,
+              tool_calls_executed: loopResult.toolCallsExecuted,
+            },
+          }).catch((e: any) => console.warn("[chat] manager_synthesized event write failed:", e.message));
+        }
+
+        // ER-003: Persist execution result
+        const persistableReasons = ["completed", "step_cap", "tool_cap", "no_progress"];
+        if (persistableReasons.includes(loopResult.reason)) {
+          const stepsSummary: ExecutionStepsSummary = {
+            totalSteps: plan.steps.length,
+            completedSteps: loopResult.completedSteps,
+            toolCallsExecuted: loopResult.toolCallsExecuted,
+            steps: plan.steps.map((s, i) => ({
+              index: i,
+              title: s.title,
+              type: s.type,
+              status: s.status as "pending" | "in_progress" | "completed" | "failed",
+              tool_name: s.tool_name,
+              error: s.error,
+            })),
+          };
+          ExecutionResultRepo.save({
+            task_id: taskId,
+            user_id: userId,
+            session_id: sessionId,
+            final_content: loopResult.finalContent,
+            steps_summary: stepsSummary,
+            memory_entries_used: memoryEntriesUsed,
+            model_used: effectiveSlowModel,
+            tool_count: loopResult.toolCallsExecuted,
+            duration_ms: Date.now() - startTime,
+            reason: loopResult.reason,
+          }).catch((e) => console.error("[chat] execute_task: failed to persist execution result:", e));
+        }
+
+        return c.json({ message: loopResult.finalContent, task_id: taskId });
+      }
+
+      // ── 2. action=delegate_to_slow → 写入 task_archive_events + delegation_archive ──
+      if (md?.action === "delegate_to_slow" && orchResult.delegation) {
+        const archiveId = orchResult.delegation.task_id;
+
+        // 写入 manager_decision 事件
+        TaskArchiveEventRepo.create({
+          archive_id: archiveId,
+          event_type: "manager_decision",
+          event_data: {
+            action: md.action,
+            reasoning: md.reasoning,
+            confidence: md.confidence,
+            delegation: md.delegation,
+          },
+        }).catch((e: any) => console.warn("[chat] manager_decision event write failed:", e.message));
+
+        // 写入 archive_written 事件（command 已写入 task_archives）
+        const cmd = md.delegation;
+        TaskArchiveEventRepo.create({
+          archive_id: archiveId,
+          event_type: "archive_written",
+          event_data: {
+            command_action: cmd?.action,
+            task_preview: cmd?.task?.substring(0, 100),
+          },
+        }).catch((e: any) => console.warn("[chat] archive_written event write failed:", e.message));
+
+        // 写入 delegation_archive（兼容 hasPending 查询）
+        try {
+          await DelegationArchiveRepo.create({
+            task_id: archiveId,
+            user_id: userId,
+            session_id: sessionId,
+            original_message: body.message ?? "",
+            delegation_prompt: JSON.stringify(cmd ?? {}),
+            slow_result: undefined,
+          });
+        } catch (e: any) {
+          console.warn("[chat] delegation_archive create failed:", e.message);
+          // 不阻止正常流程
+        }
+      }
+
+      // ── 3. action=ask_clarification → 返回 clarifying 字段（已在 orchResult 中设置）─────
+      // 无需额外处理，response 构建时会包含 clarifying
+
+      // ── 4. action=direct_answer → 直接返回 fast_reply（默认行为，无需额外处理）──────────
+      // ── End Phase 2 ManagerDecision 路由 ─────────────────────────────────────────
+
       // 实际路由结果：有委托 → slow，否则 → fast
       const orchSelectedRole: "fast" | "slow" = orchResult.delegation ? "slow" : "fast";
       const orchSelectedModel = orchSelectedRole === "slow" ? config.slowModel : config.fastModel;
@@ -205,10 +362,12 @@ chatRouter.post("/chat", async (c) => {
           routing: {
             router_version: "orchestrator_v0.4",
             scores: orchSelectedRole === "slow" ? { fast: 0.0, slow: 1.0 } : { fast: 1.0, slow: 0 },
-            confidence: 1.0,
+            confidence: md?.confidence ?? 1.0,
             selected_model: orchSelectedModel,
             selected_role: orchSelectedRole,
-            selection_reason: orchSelectedRole === "slow" ? "orchestrator delegated to slow model" : "orchestrator direct reply",
+            selection_reason: md
+              ? `manager_decision(${md.action}): ${md.reasoning}`
+              : orchSelectedRole === "slow" ? "orchestrator delegated to slow model" : "orchestrator direct reply",
             fallback_model: orchSelectedRole === "slow" ? config.fastModel : config.slowModel,
           },
           context: {
@@ -235,6 +394,10 @@ chatRouter.post("/chat", async (c) => {
         delegation: orchResult.delegation
           ? { task_id: orchResult.delegation.task_id, status: "triggered" }
           : undefined,
+        // Phase 2: 携带 manager_decision 供前端展示路由决策
+        manager_decision: md ?? undefined,
+        // Phase 2: 携带 clarifying 供前端展示澄清问题
+        clarifying: orchResult.clarifying ?? undefined,
       };
 
       return c.json(response);
@@ -423,28 +586,79 @@ chatRouter.post("/chat", async (c) => {
       c.header("X-Accel-Buffering", "no");
 
       return stream(c, async (s) => {
+        // ── Phase 2: SSE — manager_decision 事件 ────────────────────────────────
+        const md = orchResult.manager_decision;
+        if (md) {
+          await s.write(`data: ${JSON.stringify({
+            type: "manager_decision",
+            stream: "",
+            action: md.action,
+            reasoning: md.reasoning,
+            confidence: md.confidence,
+          })}\n\n`).catch(() => { /* client disconnected */ });
+        }
+
         // Step 1: 立即推送 fast_reply（安抚消息或 Fast 直接回复）
         if (orchResult.fast_reply) {
-          await s.write(`data: ${JSON.stringify({ type: "fast_reply", stream: orchResult.fast_reply })}\n\n`);
+          await s.write(`data: ${JSON.stringify({ type: "fast_reply", stream: orchResult.fast_reply })}\n\n`).catch(() => { /* client disconnected */ });
         }
 
         // Phase 1.5: Clarifying 流程 → 推送澄清问题给前端
         if (orchResult.clarifying) {
-          await s.write(`data: ${JSON.stringify({ type: "clarifying", stream: orchResult.clarifying.question_text, options: orchResult.clarifying.options, question_id: orchResult.clarifying.question_id })}\n\n`);
+          await s.write(`data: ${JSON.stringify({ type: "clarifying", stream: orchResult.clarifying.question_text, options: orchResult.clarifying.options, question_id: orchResult.clarifying.question_id })}\n\n`).catch(() => { /* client disconnected */ });
         }
 
         // Step 2: 如果有委托，启动轮询 loop 推送结果
         if (orchResult.delegation) {
+          // ── Phase 2: SSE — archive_written 事件 ─────────────────────────────
+          if (md?.action === "delegate_to_slow") {
+            TaskArchiveEventRepo.create({
+              archive_id: orchResult.delegation.task_id,
+              event_type: "archive_written",
+              event_data: {
+                command_action: md.delegation?.action,
+                task_preview: md.delegation?.task?.substring(0, 100),
+              },
+            }).catch((e: any) => console.warn("[stream] archive_written event write failed:", e.message));
+
+            // ── Phase 2: SSE — worker_started 事件 ─────────────────────────────
+            await s.write(`data: ${JSON.stringify({
+              type: "worker_started",
+              stream: "",
+              archive_id: orchResult.delegation.task_id,
+              action: md.delegation?.action,
+            })}\n\n`).catch(() => { /* client disconnected */ });
+          }
+
           try {
             for await (const event of pollArchiveAndYield(orchResult.delegation.task_id, features.language as "zh" | "en")) {
-              await s.write(`data: ${JSON.stringify({ type: event.type, stream: event.stream })}\n\n`);
+              // ── Phase 2: SSE — worker_completed 事件 ─────────────────────────
+              if (event.type === "result" && orchResult.delegation) {
+                // Write worker_completed event
+                TaskArchiveEventRepo.create({
+                  archive_id: orchResult.delegation.task_id,
+                  event_type: "worker_completed",
+                  event_data: {
+                    result_preview: typeof event.stream === "string" ? event.stream.substring(0, 200) : "",
+                  },
+                }).catch((e: any) => console.warn("[stream] worker_completed event write failed:", e.message));
+
+                // ── Phase 2: SSE — manager_synthesized 事件 ──────────────────
+                await s.write(`data: ${JSON.stringify({
+                  type: "manager_synthesized",
+                  stream: "",
+                  archive_id: orchResult.delegation.task_id,
+                  result_preview: typeof event.stream === "string" ? event.stream.substring(0, 200) : "",
+                })}\n\n`).catch(() => { /* client disconnected */ });
+              }
+              await s.write(`data: ${JSON.stringify({ type: event.type, stream: event.stream })}\n\n`).catch(() => { /* client disconnected */ });
             }
           } catch (e: any) {
             console.error("[stream] pollArchiveAndYield error:", e.message);
-            await s.write(`data: ${JSON.stringify({ type: "error", stream: "轮询出错" })}\n\n`);
+            await s.write(`data: ${JSON.stringify({ type: "error", stream: "轮询出错" })}\n\n`).catch(() => { /* client disconnected */ });
           }
           // SSE done 事件
-          await s.write(`data: ${JSON.stringify({ type: "done", stream: "[delegation_complete]" })}\n\n`);
+          await s.write(`data: ${JSON.stringify({ type: "done", stream: "[delegation_complete]" })}\n\n`).catch(() => { /* client disconnected */ });
         } else {
           // Step 3: Fast 直接回复 → 流式输出（复用原有 streaming 逻辑）
           const memories = config.memory.enabled

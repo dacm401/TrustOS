@@ -291,3 +291,18 @@ CREATE INDEX IF NOT EXISTS idx_ta_status ON task_archives(status) WHERE status !
 CREATE INDEX IF NOT EXISTS idx_ta_command ON task_archives USING GIN (command);
 CREATE INDEX IF NOT EXISTS idx_ta_task_brief ON task_archives USING GIN (task_brief);
 CREATE INDEX IF NOT EXISTS idx_ta_state ON task_archives(state);
+
+-- LLM-Native Routing: Task Archive Events（事件日志子表）
+-- 记录每个 task_archive 的完整生命周期事件，供 SSE 推送和审计使用
+CREATE TABLE IF NOT EXISTS task_archive_events (
+  id              VARCHAR(36) PRIMARY KEY,
+  archive_id      VARCHAR(36) NOT NULL,
+  event_type      VARCHAR(40) NOT NULL DEFAULT 'info',
+  -- info | manager_decision | archive_written | worker_started | worker_completed | manager_synthesized
+  event_data      JSONB DEFAULT '{}',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tae_archive ON task_archive_events(archive_id);
+CREATE INDEX IF NOT EXISTS idx_tae_type ON task_archive_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_tae_time ON task_archive_events(created_at);
