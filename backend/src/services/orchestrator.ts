@@ -24,6 +24,7 @@ import { config } from "../config.js";
 import { runRetrievalPipeline, buildCategoryAwareMemoryText } from "./memory-retrieval.js";
 import { FAST_MODEL_TOOLS } from "./fast-model-tools.js";
 import { toolExecutor } from "../tools/executor.js";
+import { buildWorkerPrompt } from "./prompt-assembler.js";
 
 // ── 类型定义 ──────────────────────────────────────────────────────────────────
 
@@ -291,7 +292,8 @@ function parseManagerDecision(text: string): ManagerDecision | null {
   let jsonStr: string | null = null;
 
   // 格式 1：单行 JSON（ManagerDecision 新格式）
-  const jsonLineMatch = text.match(/(\{[\s\S]*?\})/);
+  // 使用贪婪匹配 \{[\s\S]*\} 从第一个 { 到该行最后一个 }（支持嵌套 JSON）
+  const jsonLineMatch = text.match(/(\{[\s\S]*\})/);
   if (jsonLineMatch) {
     try {
       const parsed = JSON.parse(jsonLineMatch[1]);
@@ -305,7 +307,7 @@ function parseManagerDecision(text: string): ManagerDecision | null {
 
   // 格式 2：包含在【SLOW_MODEL_REQUEST】标记中（旧格式，兼容）
   if (!jsonStr) {
-    const tagMatch = text.match(/【SLOW_MODEL_REQUEST】\s*(\{[\s\S]*?\})\s*【\/SLOW_MODEL_REQUEST】/);
+    const tagMatch = text.match(/【SLOW_MODEL_REQUEST】\s*(\{[\s\S]*\})\s*【\/SLOW_MODEL_REQUEST】/);
     if (tagMatch) { jsonStr = tagMatch[1]; }
   }
 
@@ -321,14 +323,15 @@ function parseManagerDecision(text: string): ManagerDecision | null {
   // ── 必填字段校验 ──────────────────────────────────────────
   if (parsed.version !== "v1") return null;
   if (!VALID_ACTIONS.includes(parsed.action as ManagerAction)) return null;
-  if (typeof parsed.confidence !== "number" || parsed.confidence < 0 || parsed.confidence > 1) return null;
+  if (typeof parsed.confidence !== "number") return null;
+  const clampedConfidence = Math.max(0, Math.min(1, parsed.confidence));
   if (typeof parsed.reasoning !== "string") return null;
 
   const action = parsed.action as ManagerAction;
   const result: ManagerDecision = {
     version: "v1",
     action,
-    confidence: parsed.confidence as number,
+    confidence: clampedConfidence,
     reasoning: parsed.reasoning as string,
   };
 
@@ -386,7 +389,8 @@ function parseManagerDecision(text: string): ManagerDecision | null {
 
 // ── Fast 模型工具调用循环 ────────────────────────────────────────────────────
 
-async function callFastModelWithTools(
+// 导出供测试使用（生产代码不直接引用）
+export async function callFastModelWithTools(
   messages: ChatMessage[],
   lang: "zh" | "en",
   reqApiKey?: string
@@ -402,6 +406,7 @@ async function callFastModelWithTools(
 }> {
   const MAX_TOOL_ROUNDS = 5;
   let currentMessages = [...messages];
+  let toolUsed: string | undefined;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     let response: ModelResponse;
@@ -424,6 +429,7 @@ async function callFastModelWithTools(
 
       for (const tc of tool_calls) {
         const toolName = tc.function.name;
+        toolUsed = toolName; // 记录第一个 tool 名称
         let args: Record<string, unknown> = {};
         try { args = JSON.parse(tc.function.arguments); } catch { /* ignore */ }
 
@@ -469,6 +475,7 @@ async function callFastModelWithTools(
             reply: replyPrefix || (lang === "zh" ? "我需要确认一下..." : "Let me clarify..."),
             managerDecision: decision,
             clarifyQuestion: clarifyQ,
+            toolUsed,
           };
         }
 
@@ -486,6 +493,7 @@ async function callFastModelWithTools(
           return {
             reply: replyPrefix || (lang === "zh" ? "让我想想..." : "Let me think..."),
             managerDecision: decision,
+            toolUsed,
           };
         }
 
@@ -501,6 +509,7 @@ async function callFastModelWithTools(
         return {
           reply: replyPrefix || content,
           managerDecision: decision,
+          toolUsed,
         };
       }
 
@@ -513,6 +522,7 @@ async function callFastModelWithTools(
         return {
           reply: prefix || (lang === "zh" ? "我需要确认一下..." : "Let me clarify..."),
           clarifyQuestion: clarifyQ,
+          toolUsed,
         };
       }
 
@@ -525,18 +535,19 @@ async function callFastModelWithTools(
         return {
           reply: prefix || (lang === "zh" ? "让我想想..." : "Let me think..."),
           command,
+          toolUsed,
         };
       }
 
       // 情况 3：普通回复（既不是 ManagerDecision 也不是旧格式）
-      return { reply: content };
+      return { reply: content, toolUsed };
     }
 
-    return { reply: "" };
+    return { reply: "", toolUsed };
   }
 
   // 超过最大轮次
-  return { reply: currentMessages[currentMessages.length - 1]?.content || "" };
+  return { reply: currentMessages[currentMessages.length - 1]?.content || "", toolUsed };
 }
 
 // ── Orchestrator 主函数 ───────────────────────────────────────────────────────
@@ -718,33 +729,39 @@ async function triggerSlowModelBackground(input: SlowModelBackgroundInput): Prom
       const lines = recentArchives.map(
         (a) => `[历史任务] ${a.original_message}\n[结果摘要] ${a.slow_result?.substring(0, 200) ?? "(无结果)"}`
       );
-      archiveContext = `\n【相关历史背景】\n${lines.join("\n\n")}`;
+      archiveContext = lines.join("\n\n");
     }
 
-    // Step 3: 构造 Phase 1.5 Task Brief（只读，不含历史对话）
-    const taskBrief = {
-      task_type: command.action,
-      instruction: command.task,
-      constraints: command.constraints,
-      output_format: "markdown",
-      relevant_facts: command.relevant_facts || [],
-      user_preference_summary: command.user_preference_summary || "",
-      priority: command.priority || "normal",
-      max_execution_time_ms: command.max_execution_time_ms || 60000,
-    };
-    const taskCard = "【任务卡片 — Phase 1.5 只读模式】\n" +
-      "你是执行者。任务信息在上面的任务卡片中。\n" +
-      "【重要】不要读取任何外部历史对话，只使用任务卡片中的信息。\n" +
-      "如果需要了解用户偏好，使用 user_preference_summary 字段。\n" +
-      "如果需要相关事实，使用 relevant_facts 字段。\n\n" +
-      "【任务卡片】\n" + JSON.stringify(taskBrief, null, 2) + "\n\n" +
-      "【输出约束】\n" + command.constraints.map((c) => "- " + c).join("\n") +
-      (archiveContext ? "\n\n【相关历史背景】（仅作参考，不要复制）\n" + archiveContext : "");
+    // Step 3: 获取 TaskArchive.fast_observations（relevant_facts 为空时的 fallback）
+    const taskArchive = await TaskArchiveRepo.getById(taskId);
+    const relevantFacts: string[] = command.relevant_facts ?? [];
+    const fastObsFacts = (taskArchive?.fast_observations ?? [])
+      .map((o) => o.observation)
+      .filter((f): f is string => typeof f === "string" && f.length > 0);
+    // relevant_facts 为空时从 fast_observations 提取，否则以 delegation 为准
+    const effectiveFacts = relevantFacts.length > 0 ? relevantFacts : fastObsFacts;
 
-    // Step 4: 慢模型执行（独立对话，无历史累积）
+    // Step 4: 检测语言
+    const chineseChars = message.match(/[\u4e00-\u9fff]/g);
+    const lang = (chineseChars && chineseChars.length > message.length * 0.1) ? "zh" : "en";
+
+    // Step 5: 构造 Worker Prompt（使用 buildWorkerPrompt）
+    const workerPrompt = buildWorkerPrompt({
+      taskType: command.action,
+      task: command.task,
+      constraints: command.constraints,
+      relevantFacts: effectiveFacts,
+      userPreferenceSummary: command.user_preference_summary,
+      priority: command.priority,
+      maxExecutionTimeMs: command.max_execution_time_ms,
+      archiveContext: archiveContext || undefined,
+      lang,
+    });
+
+    // Step 6: 慢模型执行（独立对话，无历史累积）
     const slowModel = config.slowModel;
     const slowMessages: ChatMessage[] = [
-      { role: "system", content: taskCard },
+      { role: "system", content: workerPrompt },
       { role: "user", content: message },
     ];
 
@@ -774,7 +791,7 @@ async function triggerSlowModelBackground(input: SlowModelBackgroundInput): Prom
       user_id,
       session_id,
       original_message: message,
-      delegation_prompt: taskCard,
+      delegation_prompt: workerPrompt,
       slow_result: slowResult,
       processing_ms: totalMs,
     });

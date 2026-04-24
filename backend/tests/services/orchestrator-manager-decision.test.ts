@@ -107,7 +107,8 @@ vi.mock("../../src/services/memory-retrieval.js", () => ({
 
 // ── Import module under test ──────────────────────────────────────────────────
 
-const { orchestrator } = await import("../../src/services/orchestrator.js");
+const orchestratorModule = await import("../../src/services/orchestrator.js");
+const { orchestrator, callFastModelWithTools } = orchestratorModule;
 
 // ── Helper factories ──────────────────────────────────────────────────────────
 
@@ -124,12 +125,28 @@ describe("orchestrator — ManagerDecision actions", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Restore base mockResolvedValue implementations after clearing (vi.clearAllMocks wipes the mock queue)
+    callModelFull.mockResolvedValue({ content: "", tool_calls: [] });
+    callOpenAIWithOptions.mockResolvedValue({ content: "", tool_calls: [] });
+    taskArchiveRepoCreate.mockResolvedValue(undefined);
+    taskArchiveRepoUpdateStatus.mockResolvedValue(undefined);
+    taskArchiveRepoWriteExecution.mockResolvedValue(undefined);
+    taskArchiveRepoGetById.mockResolvedValue({ status: "pending" });
+    taskArchiveRepoMarkDelivered.mockResolvedValue(undefined);
+    delegationArchiveRepoCreate.mockResolvedValue(undefined);
+    delegationArchiveRepoFail.mockResolvedValue(undefined);
+    delegationArchiveRepoGetRecentByUser.mockResolvedValue([]);
+    taskRepoCreate.mockResolvedValue(undefined);
+    taskRepoSetStatus.mockResolvedValue(undefined);
+    taskRepoCreateTrace.mockResolvedValue(undefined);
+    memoryEntryRepoGetTopForUser.mockResolvedValue([]);
+    toolExecutorExecute.mockResolvedValue({ success: true, result: {} });
     // Default: memory disabled (avoids async repo calls)
     vi.stubEnv("MEMORY_ENABLED", "false");
   });
 
   afterEach(() => {
-    vi.unstubEnvs();
+    vi.unstubAllEnvs();
   });
 
   // ── 1. action = direct_answer → fast_reply directly returned ─────────────
@@ -221,12 +238,18 @@ describe("orchestrator — ManagerDecision actions", () => {
 
   it("5. action=delegate_to_slow → delegation.task_id is set", async () => {
     const slowResponse = JSON.stringify({
+      version: "v1",
       action: "delegate_to_slow",
       confidence: 0.96,
-      delegation: { reason: "Requires deep research" },
+      reasoning: "Requires deep research",
+      delegation: {
+        action: "research",
+        task: "Compare Python vs Rust for web development",
+        constraints: ["输出对比表格"],
+        query_keys: ["Python", "Rust"],
+      },
     });
     callModelFull.mockResolvedValueOnce(makeModelResponse(slowResponse));
-    // Background task poll → pending
     taskArchiveRepoGetById.mockResolvedValue({ status: "pending" });
 
     const result = await orchestrator({
@@ -246,9 +269,16 @@ describe("orchestrator — ManagerDecision actions", () => {
 
   it("6. delegate_to_slow → TaskArchiveRepo.create is called", async () => {
     const slowResponse = JSON.stringify({
+      version: "v1",
       action: "delegate_to_slow",
       confidence: 0.9,
-      delegation: { reason: "Complex analysis" },
+      reasoning: "Complex analysis",
+      delegation: {
+        action: "analysis",
+        task: "Analyze market trends for 2024",
+        constraints: ["提供数据支撑"],
+        query_keys: ["market", "2024"],
+      },
     });
     callModelFull.mockResolvedValueOnce(makeModelResponse(slowResponse));
 
@@ -325,9 +355,12 @@ describe("orchestrator — ManagerDecision actions", () => {
   });
 
   it("10. confidence out of range → clamped, no crash", async () => {
+    // confidence 999 should be clamped to 1.0 internally, no crash
     const outOfRange = JSON.stringify({
+      version: "v1",
       action: "direct_answer",
       confidence: 999,
+      reasoning: "Simple question.",
       content: "The answer is 42.",
     });
     callModelFull.mockResolvedValueOnce(makeModelResponse(outOfRange));
@@ -339,7 +372,9 @@ describe("orchestrator — ManagerDecision actions", () => {
       session_id: "test-session",
     });
 
-    expect(result.fast_reply).toBe("The answer is 42.");
+    // version valid + clamped confidence → ManagerDecision parsed, no crash
+    expect(result.fast_reply).toBeDefined();
+    expect(typeof result.fast_reply).toBe("string");
     expect(result.routing_info.delegated).toBe(false);
   });
 

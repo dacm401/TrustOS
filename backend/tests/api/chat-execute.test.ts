@@ -126,6 +126,15 @@ vi.mock("../../src/router/router.js", () => ({
       confidence: 0.8,
     },
   }),
+  getDefaultRouting: vi.fn().mockReturnValue({
+    router_version: "llm_native_v0.4",
+    scores: { fast: 0, slow: 0 },
+    confidence: 0,
+    selected_model: "",
+    selected_role: "fast",
+    selection_reason: "llm_native_routing",
+    fallback_model: "",
+  }),
 }));
 
 vi.mock("../../src/services/context-manager.js", () => ({
@@ -219,6 +228,20 @@ vi.mock("../../src/db/repositories.js", () => ({
   TaskRepo: mockTaskRepo,
   MemoryEntryRepo: mockMemoryEntryRepo,
   ExecutionResultRepo: mockExecutionResultRepo,
+  DelegationArchiveRepo: {
+    hasPending: vi.fn().mockResolvedValue(false),
+    getPendingBySession: vi.fn().mockResolvedValue([]),
+    create: vi.fn().mockResolvedValue(undefined),
+    getRecentByUser: vi.fn().mockResolvedValue([]),
+    fail: vi.fn().mockResolvedValue(undefined),
+  },
+  TaskArchiveRepo: {
+    create: vi.fn().mockResolvedValue(undefined),
+    updateStatus: vi.fn().mockResolvedValue(undefined),
+    getById: vi.fn().mockResolvedValue(null),
+    writeExecution: vi.fn().mockResolvedValue(undefined),
+    markDelivered: vi.fn().mockResolvedValue(undefined),
+  },
   EvidenceRepo: {
     create: vi.fn(), getById: vi.fn(),
     listByTask: vi.fn().mockResolvedValue([]), listByUser: vi.fn().mockResolvedValue([]),
@@ -257,12 +280,23 @@ async function POSTChat(body: Record<string, unknown>) {
 
 describe("POST /api/chat – execute mode", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Only clear mock call history, not implementations
+    mockPlan.mockClear();
+    mockLoopRun.mockClear();
+    mockTaskRepo.create.mockClear();
+    mockTaskRepo.createTrace.mockClear();
+    mockTaskRepo.updateExecution.mockClear();
+    mockTaskRepo.findActiveBySession.mockClear();
+    mockTaskRepo.getById.mockClear();
+    mockTaskRepo.setStatus.mockClear();
+    mockTaskRepo.list.mockClear();
+    mockMemoryEntryRepo.getTopForUser.mockClear();
+    mockExecutionResultRepo.listByUser.mockClear();
+    mockExecutionResultRepo.save.mockClear();
+    mockFormatExecutionResultsForPlanner.mockClear();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  // No afterEach - vi.restoreAllMocks can reset vi.fn() inside vi.mock
 
   // ── Happy path ──────────────────────────────────────────────────────────────
 

@@ -88,6 +88,27 @@ vi.mock("../../src/db/repositories", () => ({
     create: vi.fn(), getById: vi.fn(),
     listByTask: vi.fn(), listByUser: vi.fn(),
   },
+  DelegationArchiveRepo: {
+    hasPending: vi.fn().mockResolvedValue(false),
+    getPendingBySession: vi.fn().mockResolvedValue([]),
+    create: vi.fn().mockResolvedValue(undefined),
+    getRecentByUser: vi.fn().mockResolvedValue([]),
+    fail: vi.fn().mockResolvedValue(undefined),
+  },
+  TaskArchiveRepo: {
+    create: vi.fn().mockResolvedValue(undefined),
+    updateStatus: vi.fn().mockResolvedValue(undefined),
+    getById: vi.fn().mockResolvedValue(null),
+    writeExecution: vi.fn().mockResolvedValue(undefined),
+    markDelivered: vi.fn().mockResolvedValue(undefined),
+  },
+  ExecutionResultRepo: {
+    listByUser: vi.fn().mockResolvedValue([]),
+    save: vi.fn().mockResolvedValue(undefined),
+  },
+  MemoryEntryRepo: {
+    getTopForUser: vi.fn().mockResolvedValue([]),
+  },
 }));
 
 vi.mock("../../src/router/router.js", () => ({
@@ -113,6 +134,15 @@ vi.mock("../../src/router/router.js", () => ({
       selection_reason: "test",
       fallback_model: "gpt-4o",
     },
+  }),
+  getDefaultRouting: vi.fn().mockReturnValue({
+    router_version: "llm_native_v0.4",
+    scores: { fast: 0, slow: 0 },
+    confidence: 0,
+    selected_model: "",
+    selected_role: "fast",
+    selection_reason: "llm_native_routing",
+    fallback_model: "",
   }),
 }));
 

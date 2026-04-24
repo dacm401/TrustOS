@@ -159,6 +159,207 @@ function buildTaskSummarySection(
   return section;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2: Worker Prompt Separation
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { SlowModelCommand } from "./orchestrator.js";
+
+export interface WorkerPromptInput {
+  /** 任务类型（来自 ManagerDecision.delegation.action） */
+  taskType: SlowModelCommand["action"];
+  /** 核心任务描述（<100字） */
+  task: string;
+  /** 约束条件列表（来自 delegation.constraints） */
+  constraints: string[];
+  /** 相关事实列表（来自 delegation.relevant_facts，或从 TaskArchive.fast_observations 提取） */
+  relevantFacts: string[];
+  /** 用户偏好摘要（来自 delegation.user_preference_summary） */
+  userPreferenceSummary?: string;
+  /** 优先级 */
+  priority?: SlowModelCommand["priority"];
+  /** 最大执行时间（ms） */
+  maxExecutionTimeMs?: number;
+  /** 相关历史背景（从 DelegationArchiveRepo 提取，仅作参考） */
+  archiveContext?: string;
+  /** 语言 */
+  lang?: "zh" | "en";
+}
+
+/**
+ * buildWorkerPrompt — 给 Slow Worker 用的结构化 prompt
+ *
+ * 替代原来 triggerSlowModelBackground() 中硬编码的 taskCard 字符串。
+ * 传入：
+ * - task brief（来自 ManagerDecision.delegation.task）
+ * - constraints（来自 delegation.constraints）
+ * - relevant facts（来自 delegation.relevant_facts，或从 TaskArchive.fast_observations 提取）
+ * - user_preference_summary（来自 delegation.user_preference_summary）
+ */
+export function buildWorkerPrompt(input: WorkerPromptInput): string {
+  const {
+    taskType,
+    task,
+    constraints,
+    relevantFacts,
+    userPreferenceSummary,
+    priority,
+    maxExecutionTimeMs,
+    archiveContext,
+    lang = "zh",
+  } = input;
+
+  const t = (zh: string, en: string) => lang === "zh" ? zh : en;
+
+  // ── 角色定义 ────────────────────────────────────────────────────────────
+  const roleSection = t(
+    `【角色】你是执行者（Worker）。
+你的职责是高质量完成分配给你的任务，输出完整、可用的结果。`,
+    `[Role] You are the Worker.
+Your job is to complete the assigned task with high quality and deliver complete, usable results.`
+  );
+
+  // ── 任务卡片 ────────────────────────────────────────────────────────────
+  const taskCardLines: string[] = [
+    t("【任务卡片】", "[Task Card]"),
+    `- ${t("任务类型", "Task Type")}: ${taskType}`,
+    `- ${t("核心任务", "Core Task")}: ${task}`,
+    `- ${t("输出格式", "Output Format")}: Markdown`,
+  ];
+
+  if (priority) {
+    taskCardLines.push(`- ${t("优先级", "Priority")}: ${priority}`);
+  }
+  if (maxExecutionTimeMs) {
+    taskCardLines.push(`- ${t("最大执行时间", "Max Execution Time")}: ${Math.round(maxExecutionTimeMs / 1000)}${t("秒", "s")}`);
+  }
+
+  const taskCard = taskCardLines.join("\n");
+
+  // ── 约束条件 ────────────────────────────────────────────────────────────
+  const constraintsSection = constraints.length > 0
+    ? t(
+        `【输出约束】\n${constraints.map((c) => `- ${c}`).join("\n")}`,
+        `[Output Constraints]\n${constraints.map((c) => `- ${c}`).join("\n")}`
+      )
+    : "";
+
+  // ── 相关事实 ────────────────────────────────────────────────────────────
+  const factsSection = relevantFacts.length > 0
+    ? t(
+        `【相关事实】（已确认的事实，可直接使用）\n${relevantFacts.map((f) => `• ${f}`).join("\n")}`,
+        `[Relevant Facts] (confirmed facts, use directly)\n${relevantFacts.map((f) => `• ${f}`).join("\n")}`
+      )
+    : t(
+        `【相关事实】无（在执行过程中自行确认）`,
+        `[Relevant Facts] None (confirm during execution)`
+      );
+
+  // ── 用户偏好 ────────────────────────────────────────────────────────────
+  const preferenceSection = userPreferenceSummary
+    ? t(
+        `【用户偏好】\n${userPreferenceSummary}`,
+        `[User Preferences]\n${userPreferenceSummary}`
+      )
+    : t(
+        `【用户偏好】无特殊偏好，按通用最佳实践处理。`,
+        `[User Preferences] No special preferences. Follow general best practices.`
+      );
+
+  // ── 重要提示 ────────────────────────────────────────────────────────────
+  const importantNote = t(
+    `【重要】
+- 只使用任务卡片中的信息，不要读取任何外部历史对话
+- 如需了解用户偏好，使用上方 user_preference_summary
+- 如需了解相关事实，使用上方 relevant_facts
+- 输出完整结果，不要只输出摘要`,
+    `[Important]
+- Use only information from the task card above. Do not read external chat history.
+- To understand user preferences, use the user_preference_summary above.
+- To understand relevant facts, use the relevant_facts above.
+- Output complete results, not just summaries.`
+  );
+
+  // ── 组装 ────────────────────────────────────────────────────────────────
+  const parts: string[] = [roleSection, "", taskCard, "", constraintsSection, "", factsSection, "", preferenceSection, "", importantNote];
+  if (archiveContext) {
+    parts.push("", t("【相关历史背景】（仅作参考，不要复制）", "[Related History] (reference only, do not copy)"));
+    parts.push(archiveContext);
+  }
+
+  return parts.join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ManagerPromptInput {
+  /** 原始用户消息 */
+  userMessage: string;
+  /** 任务约束 */
+  constraints: string[];
+  /** 任务类型 */
+  taskType: SlowModelCommand["action"];
+  /** Worker 原始输出 */
+  workerResult: string;
+  /** 语言 */
+  lang?: "zh" | "en";
+}
+
+/**
+ * buildManagerPrompt — 给 Fast Manager 用的合成 prompt
+ *
+ * 用于在 Worker 输出返回给用户之前，对其进行人格化包装。
+ * Fast Manager 不会把 worker 输出直接透传给用户，而是用自然语言重述。
+ */
+export function buildManagerPrompt(input: ManagerPromptInput): string {
+  const { userMessage, constraints, taskType, workerResult, lang = "zh" } = input;
+
+  const t = (zh: string, en: string) => lang === "zh" ? zh : en;
+
+  return t(
+    `【你的职责】
+你是 SmartRouter Pro 的快模型助手（Manager）。
+Worker 已完成深度分析，现在需要你用自然、友好的语言将结果呈现给用户。
+
+【任务类型】${taskType}
+
+【用户原始请求】${userMessage}
+
+【Worker 分析结果】
+${workerResult}
+
+${constraints.length > 0 ? `【输出约束】\n${constraints.map((c) => `- ${c}`).join("\n")}` : ""}
+
+【你的任务】
+请用人性化的语言重述 Worker 的分析结果，直接呈现给用户。
+- 不要说"根据分析"、"根据 Worker 的结果"这类过渡语
+- 不要写"以下是分析结果："、"以下是详细报告："这类开场白
+- 直接切入重点，自然衔接
+- 保持口语化，有温度，但不要废话
+- 如果结果很长，优先呈现最有价值的部分，可以省略次要细节`,
+    `[Your Role]
+You are SmartRouter Pro's fast model assistant (Manager).
+The Worker has completed deep analysis. Your job is to present the results to the user in a natural, friendly way.
+
+【Task Type】${taskType}
+
+【User's Original Request】${userMessage}
+
+【Worker Analysis Result】
+${workerResult}
+
+${constraints.length > 0 ? `【Output Constraints】\n${constraints.map((c) => `- ${c}`).join("\n")}` : ""}
+
+【Your Task】
+Rephrase the Worker's analysis results in a humanized, conversational way.
+- Do not say "According to the analysis", "Based on the Worker results", etc.
+- Do not write "Here are the results:" or "Below is the detailed report:" as openers.
+- Get to the point naturally.
+- Keep it conversational and warm, but concise.
+- If results are lengthy, prioritize the most valuable parts and omit minor details.`
+  );
+}
+
 // ── Main Assembler ───────────────────────────────────────────────────────────
 
 export function assemblePrompt(input: PromptAssemblyInput): PromptAssemblyOutput {

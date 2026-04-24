@@ -31,7 +31,7 @@ function buildTestApp() {
   const app = new Hono();
   // Stub identity middleware
   app.use("/v1/*", async (c, next) => {
-    (c as unknown as { userId: string }).userId = "test-user";
+    c.set("userId", "test-user");
     await next();
   });
   app.route("/v1/tasks", taskRouter);

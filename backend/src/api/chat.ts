@@ -19,7 +19,7 @@ import { estimateCost } from "../models/token-counter.js";
 import { config } from "../config.js";
 import { TaskRepo } from "../db/repositories.js";
 import type { ChatMessage } from "../types/index.js";
-import { assemblePrompt } from "../services/prompt-assembler.js";
+import { assemblePrompt, buildManagerPrompt } from "../services/prompt-assembler.js";
 import type { PromptMode } from "../services/prompt-assembler.js";
 import { MemoryEntryRepo, ExecutionResultRepo } from "../db/repositories.js";
 import { runRetrievalPipeline, buildCategoryAwareMemoryText } from "../services/memory-retrieval.js";
@@ -634,22 +634,67 @@ chatRouter.post("/chat", async (c) => {
             for await (const event of pollArchiveAndYield(orchResult.delegation.task_id, features.language as "zh" | "en")) {
               // ── Phase 2: SSE — worker_completed 事件 ─────────────────────────
               if (event.type === "result" && orchResult.delegation) {
+                const rawWorkerResult = typeof event.stream === "string" ? event.stream : "";
+
                 // Write worker_completed event
                 TaskArchiveEventRepo.create({
                   archive_id: orchResult.delegation.task_id,
                   event_type: "worker_completed",
                   event_data: {
-                    result_preview: typeof event.stream === "string" ? event.stream.substring(0, 200) : "",
+                    result_preview: rawWorkerResult.substring(0, 200),
                   },
                 }).catch((e: any) => console.warn("[stream] worker_completed event write failed:", e.message));
 
-                // ── Phase 2: SSE — manager_synthesized 事件 ──────────────────
+                // ── Phase 2: Fast Manager 合成（Worker 输出不直接透传给用户）────
+                let synthesized = rawWorkerResult;
+                try {
+                  const managerPrompt = buildManagerPrompt({
+                    userMessage: body.message ?? "",
+                    constraints: (md?.delegation?.constraints ?? []),
+                    taskType: (md?.delegation?.action ?? "analysis") as any,
+                    workerResult: rawWorkerResult,
+                    lang: features.language as "zh" | "en",
+                  });
+
+                  const managerMessages: ChatMessage[] = [
+                    { role: "system", content: managerPrompt },
+                    { role: "user", content: body.message ?? "" },
+                  ];
+
+                  let managerOutput: string;
+                  if (reqApiKey) {
+                    const resp = await callOpenAIWithOptions(config.fastModel, managerMessages, reqApiKey, config.openaiBaseUrl || undefined);
+                    managerOutput = resp.content;
+                  } else {
+                    const resp = await callModelFull(config.fastModel, managerMessages);
+                    managerOutput = resp.content;
+                  }
+                  synthesized = managerOutput;
+                } catch (e: any) {
+                  // Manager 合成失败时降级为原始 worker 输出
+                  console.warn("[stream] Manager synthesis failed, falling back to raw result:", e.message);
+                }
+
+                // Write manager_synthesized event
+                TaskArchiveEventRepo.create({
+                  archive_id: orchResult.delegation.task_id,
+                  event_type: "manager_synthesized",
+                  event_data: {
+                    synthesized_preview: synthesized.substring(0, 200),
+                    raw_preview: rawWorkerResult.substring(0, 200),
+                  },
+                }).catch((e: any) => console.warn("[stream] manager_synthesized event write failed:", e.message));
+
+                // ── Phase 2: SSE — manager_synthesized 事件（合成后的内容）───────
                 await s.write(`data: ${JSON.stringify({
                   type: "manager_synthesized",
-                  stream: "",
+                  stream: synthesized,
                   archive_id: orchResult.delegation.task_id,
-                  result_preview: typeof event.stream === "string" ? event.stream.substring(0, 200) : "",
+                  result_preview: synthesized.substring(0, 200),
                 })}\n\n`).catch(() => { /* client disconnected */ });
+
+                // 继续处理后续事件（done 事件等），不再发送 raw result
+                continue;
               }
               await s.write(`data: ${JSON.stringify({ type: event.type, stream: event.stream })}\n\n`).catch(() => { /* client disconnected */ });
             }
