@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { config } from "./config.js";
 import { identityMiddleware } from "./middleware/identity.js";
+import { rateLimitMiddleware } from "./middleware/rate-limit.js";
 import { chatRouter } from "./api/chat.js";
 import { dashboardRouter } from "./api/dashboard.js";
 import { taskRouter } from "./api/tasks.js";
@@ -19,6 +20,9 @@ import { startExecuteWorker } from "./services/phase3/execute-worker-loop.js";
 const app = new Hono();
 
 app.use("/*", cors());
+// P2-2: Rate limiting — runs before identity so even unauthenticated callers are throttled
+app.use("/api/*", rateLimitMiddleware);
+app.use("/v1/*", rateLimitMiddleware);
 // C3a: mount identity middleware on all API routes
 app.use("/api/*", identityMiddleware);
 app.use("/v1/*", identityMiddleware);

@@ -9,135 +9,122 @@
  * If DB is unavailable, all tests fail with ECONNREFUSED — this is an
  * infrastructure issue, not a code issue.
  *
- * NOTE: withTestUser/withTestTask/initTestDb/closeTestDb are not yet
- * implemented in harness.ts. Tests are skipped until helpers are added.
+ * Infrastructure: tests/db/harness.ts → createTestTask()
  */
 import { TaskRepo } from "../../src/db/repositories.js";
-import { truncateTables } from "../db/harness.js";
+import { truncateTables, createTestTask } from "../db/harness.js";
 
 const USER_A = "task-resume-test-user-a";
+const USER_B = "task-resume-test-user-b";
 
-// Stubs — TBD: implement withTestUser/withTestTask in harness.ts first
+// withTestUser: thin wrapper for user-scoped tests (userId is arbitrary string, no FK needed)
 const withTestUser = async (fn: (id: string) => Promise<void>) => fn(USER_A);
-const withTestTask = async (opts: { userId: string; sessionId: string; status: string }) => ({ task_id: "stub-task-id" });
 
 beforeEach(async () => {
   await truncateTables();
 });
 
-// TBD: implement withTestUser/withTestTask in harness.ts first
-describe("TaskRepo.findActiveBySession (TBD)", () => {
-  it.skip(
+describe("TaskRepo.findActiveBySession", () => {
+  it(
     "returns the most recent non-terminal task for session+user",
     async () => {
-      await withTestUser(async (userId) => {
-        const sessionId = "test-session-resume-1";
+      const userId = USER_A;
+      const sessionId = "test-session-resume-1";
 
-        // Create a completed task (should NOT be returned)
-        await withTestTask({ userId, sessionId, status: "completed" });
+      // Create a completed task (should NOT be returned)
+      await createTestTask({ userId, sessionId, status: "completed" });
 
-        // Create a responding task (should be returned — most recent active)
-        await withTestTask({ userId, sessionId, status: "responding" });
+      // Create a responding task (should be returned — most recent active)
+      await createTestTask({ userId, sessionId, status: "responding" });
 
-        // Create another responding task (newer, should be returned instead)
-        const { TaskRepo } = await import("../../src/db/repositories.js");
-        const newerTask = await withTestTask({
-          userId,
-          sessionId,
-          status: "responding",
-        });
-
-        const result = await TaskRepo.findActiveBySession(sessionId, userId);
-
-        expect(result).not.toBeNull();
-        // Must be the most recently updated one
-        expect(result!.task_id).toBe(newerTask.task_id);
-        expect(result!.status).toBe("responding");
+      // Create another responding task (newer, should be returned instead)
+      const newerTask = await createTestTask({
+        userId,
+        sessionId,
+        status: "responding",
       });
+
+      const result = await TaskRepo.findActiveBySession(sessionId, userId);
+
+      expect(result).not.toBeNull();
+      // Must be the most recently updated one
+      expect(result!.task_id).toBe(newerTask.task_id);
+      expect(result!.status).toBe("responding");
     }
   );
 
-  it.skip(
+  it(
     "excludes completed, failed, and cancelled tasks",
     async () => {
-      await withTestUser(async (userId) => {
-        const sessionId = "test-session-resume-2";
+      const userId = USER_A;
+      const sessionId = "test-session-resume-2";
 
-        await withTestTask({ userId, sessionId, status: "completed" });
-        await withTestTask({ userId, sessionId, status: "failed" });
-        await withTestTask({ userId, sessionId, status: "cancelled" });
+      await createTestTask({ userId, sessionId, status: "completed" });
+      await createTestTask({ userId, sessionId, status: "failed" });
+      await createTestTask({ userId, sessionId, status: "cancelled" });
 
-        const { TaskRepo } = await import("../../src/db/repositories.js");
-        const result = await TaskRepo.findActiveBySession(sessionId, userId);
+      const result = await TaskRepo.findActiveBySession(sessionId, userId);
 
-        expect(result).toBeNull();
-      });
+      expect(result).toBeNull();
     }
   );
 
-  it.skip(
+  it(
     "returns null when no tasks exist for session",
     async () => {
-      await withTestUser(async (userId) => {
-        const { TaskRepo } = await import("../../src/db/repositories.js");
-        const result = await TaskRepo.findActiveBySession(
-          "non-existent-session",
-          userId
-        );
-        expect(result).toBeNull();
-      });
+      const userId = USER_A;
+      const result = await TaskRepo.findActiveBySession(
+        "non-existent-session",
+        userId
+      );
+      expect(result).toBeNull();
     }
   );
 
-  it.skip(
+  it(
     "only returns tasks belonging to the specified user",
     async () => {
-      await withTestUser(async (userA) => {
-        await withTestUser(async (userB) => {
-          const sessionId = "test-session-resume-3";
+      const userA = USER_A;
+      const userB = USER_B;
+      const sessionId = "test-session-resume-3";
 
-          // Task belonging to userA
-          await withTestTask({
-            userId: userA,
-            sessionId,
-            status: "responding",
-          });
-
-          // Task belonging to userB in same session (should NOT be returned for userA)
-          await withTestTask({
-            userId: userB,
-            sessionId,
-            status: "responding",
-          });
-
-          const { TaskRepo } = await import("../../src/db/repositories.js");
-          const result = await TaskRepo.findActiveBySession(sessionId, userA);
-
-          expect(result).not.toBeNull();
-          expect(result!.user_id).toBe(userA);
-        });
+      // Task belonging to userA
+      await createTestTask({
+        userId: userA,
+        sessionId,
+        status: "responding",
       });
+
+      // Task belonging to userB in same session (should NOT be returned for userA)
+      await createTestTask({
+        userId: userB,
+        sessionId,
+        status: "responding",
+      });
+
+      const result = await TaskRepo.findActiveBySession(sessionId, userA);
+
+      expect(result).not.toBeNull();
+      expect(result!.user_id).toBe(userA);
     }
   );
 
-  it.skip(
+  it(
     "returns the single active task when only one exists",
     async () => {
-      await withTestUser(async (userId) => {
-        const sessionId = "test-session-resume-4";
-        const task = await withTestTask({
-          userId,
-          sessionId,
-          status: "paused",
-        });
-
-        const { TaskRepo } = await import("../../src/db/repositories.js");
-        const result = await TaskRepo.findActiveBySession(sessionId, userId);
-
-        expect(result).not.toBeNull();
-        expect(result!.task_id).toBe(task.task_id);
-        expect(result!.status).toBe("paused");
+      const userId = USER_A;
+      const sessionId = "test-session-resume-4";
+      const task = await createTestTask({
+        userId,
+        sessionId,
+        status: "paused",
       });
+
+      const result = await TaskRepo.findActiveBySession(sessionId, userId);
+
+      expect(result).not.toBeNull();
+      expect(result!.task_id).toBe(task.task_id);
+      expect(result!.status).toBe("paused");
     }
   );
 });

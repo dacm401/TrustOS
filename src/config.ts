@@ -109,6 +109,16 @@ export const config = {
     httpMaxResponseBytes: parseInt(process.env.HTTP_MAX_RESPONSE_BYTES || "1048576"), // 1 MB
   },
 
+  // P2-2: Rate Limiting Middleware
+  // Opt-in: defaults to disabled until production limits are tuned.
+  rateLimit: {
+    enabled: process.env.RATE_LIMIT_ENABLED === "true",
+    // Sliding window size in milliseconds
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000"),
+    // Max requests per window per IP / userId
+    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "60"),
+  },
+
   // ── Phase 4: Local Trust Gateway ─────────────────────────────────────────────
   permission: {
     // Master switch for Permission Layer

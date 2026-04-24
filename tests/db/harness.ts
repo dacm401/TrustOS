@@ -196,6 +196,32 @@ export async function withTx<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * Create a test task via TaskRepo.create().
+ * userId/sessionId are arbitrary strings — no FK dependency on sessions table.
+ * Returns { task_id } to match the return shape expected by callers.
+ */
+export async function createTestTask(opts: {
+  userId: string;
+  sessionId: string;
+  status?: string;
+  title?: string;
+}): Promise<{ task_id: string }> {
+  const { TaskRepo } = await import("../../src/db/repositories.js");
+  const id = crypto.randomUUID();
+  await TaskRepo.create({
+    id,
+    user_id: opts.userId,
+    session_id: opts.sessionId,
+    title: opts.title ?? "Test Task",
+    mode: "direct",
+    complexity: "low",
+    risk: "low",
+    status: opts.status ?? "completed",
+  });
+  return { task_id: id };
+}
+
+/**
  * Run fn(client) inside BEGIN...ROLLBACK, passing the dedicated client to fn.
  * Only use this when fn explicitly routes all DB calls through `client`.
  * The app's ExecutionResultRepo will NOT use this client (it uses the shared pool).
