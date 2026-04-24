@@ -1,7 +1,7 @@
 # TrustOS — 信任操作系统
 
 > **不是让 AI 更聪明，是让 AI 的权限和可见信息匹配。**
-> 
+>
 > 云端模型只知道它该知道的。本地层负责记忆、权限和信任边界。
 
 ---
@@ -73,14 +73,18 @@ TrustOS 是一个**本地信任层 + 云端执行层**的混合 AI 架构。
 - [x] Task Archive 四张表（task_archives / commands / worker_results / events）
 - [x] 单元测试 14/14 通过
 
-### Phase 1 — ManagerDecision MVP
-- [ ] chat.ts 接入四种动作分支
-- [ ] SSE 新事件（manager_decision / worker_started / worker_completed）
-- [ ] 旧 router 保留 fallback
+### Phase 1 — ManagerDecision MVP ✅
+- [x] chat.ts 四路分支（direct / clarify / delegate / execute）
+- [x] SSE 新事件（manager_decision / archive_written / worker_started / completed / synthesized）
+- [x] delegation_archive 写入 + TaskArchive 集成
+- [x] 旧 router 保留 fallback
+- [x] 集成测试 41/41 通过
 
-### Phase 2 — Worker 化
-- [ ] Prompt Assembler 分层（Manager Prompt / Worker Prompt）
-- [ ] Slow Worker 不再读取全量 history
+### Phase 2 — Worker Prompt 分离 ✅
+- [x] `buildWorkerPrompt()` — Worker 只读 task brief / command / relevant facts
+- [x] `buildManagerPrompt()` — Manager 合成 Worker 输出，包装后给用户
+- [x] Slow Worker 不再读取全量 history
+- [x] 旧 `assemblePrompt()` 保留 fallback
 
 ### Phase 3 — Local Trust Gateway
 - [ ] 数据分级规范
