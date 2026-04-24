@@ -191,6 +191,8 @@ G1 输出后，用结构化规则做二次修正。**与 G1 同 Sprint 落地最
 | G3 reranker 方案 | 规则式 rerank + 可选极轻 judge prompt，不引入第二个复杂模型 |
 | G4 目标 | 决策事实表，分析和回放为第一目标，不以训练为第一目标 |
 | worker taxonomy | **不改**。保持现有 worker 类型，只升级 routing gate |
+| G1 delegate_to_slow 阈值 | **0.75**（2026-04-24 拍板，从 0.72 调高，更保守，减少不必要 slow 调用） |
+| Fast 委托意图表达 | **文本前缀**（如 `【委托意图】需要调用 slow 模型，因为...`），废弃 JSON schema，轻量化 |
 | clarification 成本 | **有显著体验成本**，不得作为默认低成本保守选项，必须计入 G2 成本模型 |
 
 ---
