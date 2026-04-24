@@ -11,7 +11,7 @@
  *   enabled        — master kill switch (default: false, opt-in)
  *   windowMs       — sliding window size in ms (default: 60 000 = 1 min)
  *   maxRequests    — max requests per window per key (default: 60)
- *   byUserId       — when true, authenticated userId is the key; falls back to IP
+ * Config env vars: RATE_LIMIT_ENABLED, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUESTS
  */
 
 import type { Context, Next } from "hono";
