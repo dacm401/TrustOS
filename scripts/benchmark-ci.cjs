@@ -44,6 +44,7 @@ const THRESHOLD_MODE    = getArg("--threshold-mode",    SUITE === "delegation" ?
 const THRESHOLD_INTENT  = getArg("--threshold-intent",  SUITE === "delegation" ? 20 : 70);
 const THRESHOLD_KB      = getArg("--threshold-kb",      80);
 const VERBOSE           = hasArg("--verbose");
+const BACKFILL_MODE     = hasArg("--backfill");   // G4: 导出 routing pairs JSON，供离线回填 routing_success 使用
 const isKbSuite         = SUITE === "kb" || SUITE === "unknown";
 const isDelegationSuite = SUITE === "delegation";
 
@@ -558,8 +559,65 @@ function runDelegationSuite() {
   process.exit(0);
 }
 
+// ── G4 Backfill 模式：导出 routing pairs JSON ────────────────────────────────────
+// 用法：node scripts/benchmark-ci.cjs --backfill
+// 输出：evaluation/results/routing-pairs-{date}.json
+// 然后运行：python scripts/backfill_routing_success.py
+function runBackfillMode() {
+  const { Pool } = require("pg");
+  const cases = loadSuite("delegation");
+
+  const pairs = cases.map((tc) => {
+    const prediction = ruleRouter(tc.input);
+    const kbSignal   = detectKbSignals(tc.input);
+    // mode → delegation action
+    const expectedAction = prediction.mode === "slow" ? "delegate_to_slow" : "direct_answer";
+    const matched = prediction.mode === tc.expected_mode;
+    return {
+      input:         tc.input,
+      expected_mode: tc.expected_mode,
+      expected_action: expectedAction,
+      actual_mode:   prediction.mode,
+      actual_action: expectedAction,
+      matched,
+      scenario:      tc.scenario || "unknown",
+      kb_signal:     kbSignal ? kbSignal.signal : null,
+    };
+  });
+
+  const matched  = pairs.filter(p => p.matched).length;
+  const total    = pairs.length;
+  const accuracy = total > 0 ? (matched / total * 100).toFixed(1) : "0.0";
+  const sessionId = `benchmark-${new Date().toISOString().split("T")[0]}`;
+
+  const output = {
+    generated_at: new Date().toISOString(),
+    mode: "delegation-benchmark-backfill",
+    session_id_prefix: sessionId,
+    summary: { total, matched, accuracy: `${accuracy}%` },
+    pairs,
+  };
+
+  const outDir  = path.join(__dirname, "..", "evaluation", "results");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outFile = path.join(outDir, `routing-pairs-${new Date().toISOString().split("T")[0]}.json`);
+  fs.writeFileSync(outFile, JSON.stringify(output, null, 2), "utf8");
+
+  console.log(`=== G4 Backfill Export ===`);
+  console.log(`用例数:  ${total}`);
+  console.log(`匹配率:  ${matched}/${total} = ${accuracy}%`);
+  console.log(`session_prefix: "${sessionId}"`);
+  console.log(`\n输出文件: ${outFile}`);
+  console.log(`\n下一步:  python scripts/backfill_routing_success.py --file "${outFile}"`);
+  console.log(`\n说明: 使用 --dry-run 先预览需要更新的记录:`);
+  console.log(`      python scripts/backfill_routing_success.py --file "${outFile}" --dry-run`);
+  process.exit(0);
+}
+
 // ── 调度器 ─────────────────────────────────────────────────────────────────────
-if (isKbSuite) {
+if (BACKFILL_MODE) {
+  runBackfillMode();
+} else if (isKbSuite) {
   runKbSuite();
 } else if (isDelegationSuite) {
   runDelegationSuite();

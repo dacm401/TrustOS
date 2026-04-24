@@ -749,6 +749,14 @@ export interface DelegationLog {
   latency_ms?: number;
   cost_usd?: number;
 
+  // G4: 四层成功标准（异步回填，不阻塞主流程）
+  // routing_success: manager 是否选对了动作（benchmark 离线分析后回填）
+  routing_success?: boolean;
+  // value_success: Worker 产出比 Fast 直答是否有增益（Fast/Slow 双跑对比分析后回填）
+  value_success?: "better" | "same" | "worse";
+  // user_success: 用户是否未追问/未改写（同 session 后续 turn 分析后回填）
+  user_success?: boolean;
+
   created_at: string;
   executed_at?: string;
 }
@@ -774,6 +782,11 @@ export interface DelegationLogInput {
   g3_final_action?: ManagerDecisionType;
   routed_action: ManagerDecisionType;
   routing_reason?: string;
+
+  // G4: 四层成功标准（异步回填，首次写入时为空）
+  routing_success?: boolean;
+  value_success?: "better" | "same" | "worse";
+  user_success?: boolean;
 }
 
 /** DelegationLog 执行结果回写 */
@@ -784,6 +797,10 @@ export interface DelegationLogExecutionUpdate {
   model_used?: string;
   latency_ms?: number;
   cost_usd?: number;
+  // G4: 四层成功标准（异步回填）
+  routing_success?: boolean;
+  value_success?: "better" | "same" | "worse";
+  user_success?: boolean;
 }
 
 /** 决策类型枚举（Phase 0 精简版，4 种） */

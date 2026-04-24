@@ -279,9 +279,38 @@ export async function* pollArchiveAndYield(
     }
 
     if (task.status === "failed") {
+      // G4: 回写 delegation_logs execution 结果（failed）
+      if (delegation_log_id) {
+        const exec = task.slow_execution as Record<string, unknown> | null;
+        const errors = (Array.isArray(exec?.errors) ? exec.errors : []) as string[];
+        DelegationLogRepo.updateExecution(delegation_log_id, {
+          execution_status: "failed",
+          error_message: errors[0] ?? "Unknown error",
+        }).catch((e) => console.warn("[delegation-log] updateExecution failed:", e.message));
+      }
       const exec = task.slow_execution as Record<string, unknown> | null;
       const errors = (Array.isArray(exec?.errors) ? exec.errors : []) as string[];
       yield { type: "error", stream: `任务执行失败: ${errors[0] ?? "Unknown error"}`, routing_layer: "L2" };
+      yield { type: "done", routing_layer: "L2" };
+      await TaskArchiveRepo.markDelivered(taskId).catch(() => {});
+      break;
+    }
+
+    // G4: 超时检测（超过 180s 未完成，标记为 timeout）
+    if (elapsed > 180_000 && (task.status === "running" || task.status === "pending")) {
+      if (delegation_log_id) {
+        DelegationLogRepo.updateExecution(delegation_log_id, {
+          execution_status: "timeout",
+          error_message: "Task execution exceeded 180s timeout",
+        }).catch((e) => console.warn("[delegation-log] updateExecution timeout failed:", e.message));
+      }
+      yield {
+        type: "error",
+        stream: lang === "zh"
+          ? "⏱ 任务执行超时（180s），请稍后重试或简化问题"
+          : "⏱ Task execution timed out (180s), please retry or simplify your request",
+        routing_layer: "L2",
+      };
       yield { type: "done", routing_layer: "L2" };
       await TaskArchiveRepo.markDelivered(taskId).catch(() => {});
       break;

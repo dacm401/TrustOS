@@ -1347,6 +1347,10 @@ function mapDelegationLogRow(row: any): DelegationLog {
     model_used: row.model_used,
     latency_ms: row.latency_ms,
     cost_usd: row.cost_usd ? Number(row.cost_usd) : undefined,
+    // G4: 四层成功标准（异步回填）
+    routing_success: row.routing_success,
+    value_success: row.value_success,
+    user_success: row.user_success,
     created_at: row.created_at,
     executed_at: row.executed_at,
   };
@@ -1366,14 +1370,16 @@ export const DelegationLogRepo = {
         system_confidence,
         calibrated_scores, policy_overrides, g2_final_action,
         did_rerank, rerank_gap, rerank_rules, g3_final_action,
-        routed_action, routing_reason
+        routed_action, routing_reason,
+        routing_success, value_success, user_success
       ) VALUES (
         $1,$2,$3,$4,$5,$6,
         $7,$8,
         $9,
         $10,$11,$12,
         $13,$14,$15,$16,
-        $17,$18
+        $17,$18,
+        $19,$20,$21
       )`,
       [
         id,
@@ -1394,6 +1400,10 @@ export const DelegationLogRepo = {
         d.g3_final_action ?? null,
         d.routed_action,
         d.routing_reason ?? null,
+        // G4: 四层成功标准，首次写入时均为 null（异步回填）
+        d.routing_success ?? null,
+        d.value_success ?? null,
+        d.user_success ?? null,
       ]
     );
 
@@ -1403,6 +1413,7 @@ export const DelegationLogRepo = {
 
   /**
    * 回写执行结果（fire-and-forget，由执行完成后的 callback 调用）。
+   * G4: 同时回填 routing_success / value_success / user_success（如果传入）。
    */
   async updateExecution(id: string, update: DelegationLogExecutionUpdate): Promise<void> {
     await query(
@@ -1413,7 +1424,10 @@ export const DelegationLogRepo = {
         model_used = $4,
         latency_ms = $5,
         cost_usd = $6,
-        executed_at = NOW()
+        executed_at = NOW(),
+        routing_success = $8,
+        value_success = $9,
+        user_success = $10
        WHERE id = $7`,
       [
         update.execution_status,
@@ -1423,6 +1437,9 @@ export const DelegationLogRepo = {
         update.latency_ms ?? null,
         update.cost_usd ?? null,
         id,
+        update.routing_success ?? null,
+        update.value_success ?? null,
+        update.user_success ?? null,
       ]
     );
   },
