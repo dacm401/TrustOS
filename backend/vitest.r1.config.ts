@@ -22,8 +22,10 @@ export default defineConfig({
       // ManagerDecision unit tests (R1 parallel track)
       "tests/services/manager-decision.test.ts",
       "tests/services/orchestrator-manager-decision.test.ts",
-      // TrustPolicy Engine unit tests (Phase 3 T3-1)
+      // TrustPolicy Engine unit tests (Phase 3)
       "tests/trust/policy-engine.test.ts",
+      "tests/trust/field-classification.test.ts",
+      "tests/trust/sanitizer.test.ts",
     ],
     // R1 tests run in isolation — no shared state
   },
