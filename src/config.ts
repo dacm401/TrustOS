@@ -2,7 +2,9 @@ import type { ModelPricing } from "./types/index.js";
 
 export const config = {
   port: parseInt(process.env.BACKEND_PORT || "3001"),
-  fastModel: process.env.FAST_MODEL || "gpt-4o-mini",
+  // Sprint 59: fastModel 改为 Qwen2.5-72B-Instruct
+  // Benchmark 结论：72B LLM 路由 80.0% > 离线规则 63.3%，明确优于规则
+  fastModel: process.env.FAST_MODEL || "Qwen/Qwen2.5-72B-Instruct",
   slowModel: process.env.SLOW_MODEL || "gpt-4o",
   compressorModel: process.env.COMPRESSOR_MODEL || "gpt-4o-mini",
   openaiApiKey: process.env.OPENAI_API_KEY || "",

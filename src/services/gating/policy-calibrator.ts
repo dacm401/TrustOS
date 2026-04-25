@@ -110,6 +110,28 @@ export function calibrateWithPolicy(
     }
   }
 
+  // 2b. Cross-session 兜底 AND 规则
+  // Sprint 58 benchmark: LLM 在 cross-session 场景仅 50%，而离线规则 75%，
+  // 根因：规则同时检查"继续/接着"关键词 AND "动作不是 slow"。
+  // LLM 输出 is_continuation=true 时，如果当前动作不是 slow，强制抬升 delegate_to_slow。
+  if (features.is_continuation) {
+    const currentAction = getSelectedAction(llmScores);
+    if (currentAction !== "delegate_to_slow" && currentAction !== "execute_task") {
+      const newDelegateScore = Math.min(1, scores.delegate_to_slow + 0.30);
+      if (newDelegateScore !== scores.delegate_to_slow) {
+        scores.delegate_to_slow = newDelegateScore;
+        policyOverrides.push({
+          rule: "cross-session-continuation-boost",
+          action: "boost",
+          target: "delegate_to_slow",
+          original_score: scores.delegate_to_slow,
+          adjusted_score: newDelegateScore,
+          reason: "is_continuation=true 且当前非 slow 动作，cross-session 任务需要历史上下文，抬升 delegate_to_slow",
+        });
+      }
+    }
+  }
+
   // 3. 应用硬编码规则（boost/penalize/block）
   for (const rule of HARD_POLICY_RULES) {
     if (!rule.condition(features)) continue;

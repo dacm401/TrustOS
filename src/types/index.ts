@@ -586,6 +586,8 @@ export interface DecisionFeatures {
   query_too_vague: boolean;
   /** 需要多步骤操作或跨文件处理 */
   requires_multi_step: boolean;
+  /** 引用了之前的对话或任务（继续/接着上次的/补充完整） */
+  is_continuation: boolean;
 }
 
 // ── Gating: Policy Override (G2) ───────────────────────────────────────────────

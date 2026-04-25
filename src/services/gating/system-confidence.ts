@@ -90,6 +90,12 @@ export function calculateSystemConfidence(
     confidence *= KB_DIRECT_ANSWER_PENALTY;
   }
 
+  // 9. Cross-session 兜底：is_continuation=true 且当前不是 slow/execute → 降置信
+  // 防止 LLM 将 continuation 误判为 fast 动作（这正是 benchmark 里 cross-session 失败的模式）
+  if (features.is_continuation && selectedAction !== "delegate_to_slow" && selectedAction !== "execute_task") {
+    confidence *= 0.80;
+  }
+
   return Math.max(0, Math.min(1, confidence));
 }
 

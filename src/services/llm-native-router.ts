@@ -159,6 +159,7 @@ function buildManagerSystemPrompt(lang: "zh" | "en"): string {
 - high_risk_action: 是否涉及高风险操作（金融决策/医疗建议/安全相关）
 - query_too_vague: 请求是否过于模糊，无法直接处理
 - requires_multi_step: 是否需要多步骤操作或跨文件处理
+- is_continuation: 请求是否引用了之前的对话或任务（如"继续""接着上次的""把之前的XX补充完整"）
 
 【输出格式】（必须严格使用此 JSON Schema）
 
@@ -216,6 +217,7 @@ After understanding the user's request, score each of the four actions (0.0~1.0)
 - high_risk_action: Does it involve high-risk operations (financial/medical/security)
 - query_too_vague: Is the request too vague to handle directly
 - requires_multi_step: Does it need multi-step operations or cross-file handling
+- is_continuation: Does the request reference a previous conversation or task (e.g. "continue", "continue from where we left off", "complete the code from before")
 
 【Output Format】（must use this exact JSON Schema）
 
@@ -234,7 +236,8 @@ After understanding the user's request, score each of the four actions (0.0~1.0)
     "needs_external_tool": boolean,
     "high_risk_action": boolean,
     "query_too_vague": boolean,
-    "requires_multi_step": boolean
+    "requires_multi_step": boolean,
+    "is_continuation": boolean
   },
   "rationale": "One-sentence decision reason",
   "decision_type": "direct_answer|ask_clarification|delegate_to_slow|execute_task",
@@ -420,6 +423,7 @@ function parseGatedDecision(
       high_risk_action: Boolean(raw.features?.high_risk_action),
       query_too_vague: Boolean(raw.features?.query_too_vague),
       requires_multi_step: Boolean(raw.features?.requires_multi_step),
+      is_continuation: Boolean(raw.features?.is_continuation),
     };
 
     const llmConfidenceHint = typeof raw.confidence_hint === "number"
