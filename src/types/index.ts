@@ -2038,3 +2038,69 @@ export const DEFAULT_GUARD_RULES: SmallModelGuardRule[] = [
     description: "检测可能的敏感数据泄露",
   },
 ];
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Sprint 62: Prompt Template System
+// ══════════════════════════════════════════════════════════════════════════════
+
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  description: string;
+  version: number;
+  content: PromptTemplateContent;
+  scope: "global" | "user_id" | "session_id";
+  is_active: boolean;
+  created_by: string;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PromptTemplateContent {
+  /** 核心规则列表 */
+  core_rules: string[];
+  /** 场景策略映射 */
+  mode_policy: Record<string, string>;
+  /** 决策 JSON Schema 描述 */
+  decision_schema: {
+    fields: string[];
+    format: "json" | "yaml";
+    example?: string;
+  };
+  /** 授权规则 */
+  authorization_rules: {
+    fast: string[];
+    slow: string[];
+  };
+  /** Hook 钩子映射 */
+  hooks?: Record<string, string>;
+  /** 变量定义 */
+  variable_definitions?: PromptVariable[];
+}
+
+export interface PromptVariable {
+  name: string;
+  source: "memory" | "context" | "session" | "user" | "computed";
+  description: string;
+  required?: boolean;
+}
+
+export interface PromptTemplateInput {
+  name: string;
+  description?: string;
+  content: PromptTemplateContent;
+  scope?: "global" | "user_id" | "session_id";
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface PromptTemplateUpdate {
+  name?: string;
+  description?: string;
+  content?: PromptTemplateContent;
+  is_active?: boolean;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}

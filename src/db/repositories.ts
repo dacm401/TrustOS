@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { query } from "./connection.js";
-import type { DecisionRecord, BehavioralMemory, IdentityMemory, GrowthProfile, Task, TaskListItem, TaskSummary, TaskTrace, MemoryEntry, MemoryEntryInput, MemoryEntryUpdate, ExecutionResultRecord, ExecutionResultInput, Evidence, EvidenceInput, DelegationLog, DelegationLogInput, DelegationLogExecutionUpdate } from "../types/index.js";
+import type { DecisionRecord, BehavioralMemory, IdentityMemory, GrowthProfile, Task, TaskListItem, TaskSummary, TaskTrace, MemoryEntry, MemoryEntryInput, MemoryEntryUpdate, ExecutionResultRecord, ExecutionResultInput, Evidence, EvidenceInput, DelegationLog, DelegationLogInput, DelegationLogExecutionUpdate, PromptTemplate, PromptTemplateInput, PromptTemplateUpdate } from "../types/index.js";
 import { GROWTH_LEVELS } from "../config.js";
 import { getEmbedding } from "../services/embedding.js";
 
@@ -1597,5 +1597,111 @@ export const DelegationLogRepo = {
       },
       routing_agreement_rate: row.agreement_rate ?? 1,
     };
+  },
+};
+
+// ── Sprint 62: Prompt Template Repository ────────────────────────────────────
+
+function mapPromptTemplateRow(r: any): PromptTemplate {
+  return {
+    id: r.id,
+    name: r.name,
+    description: r.description ?? "",
+    version: r.version,
+    content: typeof r.content === "string" ? JSON.parse(r.content) : r.content,
+    scope: r.scope,
+    is_active: r.is_active,
+    created_by: r.created_by ?? "system",
+    tags: r.tags ?? [],
+    metadata: r.metadata ?? {},
+    created_at: new Date(r.created_at).toISOString(),
+    updated_at: new Date(r.updated_at).toISOString(),
+  };
+}
+
+export const PromptTemplateRepo = {
+  async create(input: PromptTemplateInput & { created_by?: string }): Promise<PromptTemplate> {
+    const id = uuid();
+    const result = await query(
+      `INSERT INTO prompt_templates (id, name, description, version, content, scope, created_by, tags, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        id,
+        input.name,
+        input.description ?? "",
+        1,
+        JSON.stringify(input.content),
+        input.scope ?? "global",
+        input.created_by ?? "system",
+        input.tags ?? [],
+        JSON.stringify(input.metadata ?? {}),
+      ]
+    );
+    return mapPromptTemplateRow(result.rows[0]);
+  },
+
+  async getById(id: string): Promise<PromptTemplate | null> {
+    const result = await query(`SELECT * FROM prompt_templates WHERE id=$1`, [id]);
+    if (result.rows.length === 0) return null;
+    return mapPromptTemplateRow(result.rows[0]);
+  },
+
+  async update(id: string, update: PromptTemplateUpdate): Promise<PromptTemplate | null> {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+
+    if (update.name !== undefined) { fields.push(`name=$${idx++}`); values.push(update.name); }
+    if (update.description !== undefined) { fields.push(`description=$${idx++}`); values.push(update.description); }
+    if (update.content !== undefined) { fields.push(`content=$${idx++}`); values.push(JSON.stringify(update.content)); }
+    if (update.is_active !== undefined) { fields.push(`is_active=$${idx++}`); values.push(update.is_active); }
+    if (update.tags !== undefined) { fields.push(`tags=$${idx++}`); values.push(update.tags); }
+    if (update.metadata !== undefined) { fields.push(`metadata=$${idx++}`); values.push(JSON.stringify(update.metadata)); }
+
+    if (fields.length === 0) return this.getById(id);
+
+    fields.push(`updated_at=NOW()`);
+    if (update.content !== undefined) fields.push(`version=version+1`);
+
+    values.push(id);
+    const result = await query(
+      `UPDATE prompt_templates SET ${fields.join(", ")} WHERE id=$${idx} RETURNING *`,
+      values
+    );
+    if (result.rows.length === 0) return null;
+    return mapPromptTemplateRow(result.rows[0]);
+  },
+
+  async setActive(id: string): Promise<void> {
+    // 先关闭同 scope 下所有模板
+    const template = await this.getById(id);
+    if (!template) return;
+    await query(
+      `UPDATE prompt_templates SET is_active=FALSE WHERE scope=$1 AND is_active=TRUE`,
+      [template.scope]
+    );
+    await query(`UPDATE prompt_templates SET is_active=TRUE, updated_at=NOW() WHERE id=$1`, [id]);
+  },
+
+  async getActive(scope = "global"): Promise<PromptTemplate | null> {
+    const result = await query(
+      `SELECT * FROM prompt_templates WHERE scope=$1 AND is_active=TRUE LIMIT 1`,
+      [scope]
+    );
+    if (result.rows.length === 0) return null;
+    return mapPromptTemplateRow(result.rows[0]);
+  },
+
+  async list(scope?: string): Promise<PromptTemplate[]> {
+    const sql = scope
+      ? `SELECT * FROM prompt_templates WHERE scope=$1 ORDER BY is_active DESC, updated_at DESC`
+      : `SELECT * FROM prompt_templates ORDER BY is_active DESC, updated_at DESC`;
+    const result = await query(sql, scope ? [scope] : []);
+    return result.rows.map(mapPromptTemplateRow);
+  },
+
+  async delete(id: string): Promise<void> {
+    await query(`DELETE FROM prompt_templates WHERE id=$1`, [id]);
   },
 };

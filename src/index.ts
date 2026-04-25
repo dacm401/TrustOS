@@ -13,6 +13,8 @@ import { healthRouter } from "./api/health.js";
 import { archiveRouter } from "./api/archive.js";
 // Sprint 48: Auth v1 — JWT token endpoint (public, no identity middleware)
 import { authRouter } from "./api/auth.js";
+// Sprint 62: Prompt Templates API
+import { default as promptTemplatesRouter } from "./api/prompt-templates.js";
 // Phase 3.0: 启动后台 Worker 轮询循环
 import { startSlowWorker } from "./services/phase3/slow-worker-loop.js";
 import { startExecuteWorker } from "./services/phase3/execute-worker-loop.js";
@@ -36,6 +38,7 @@ app.route("/v1/tasks", taskRouter);
 app.route("/v1/memory", memoryRouter);
 app.route("/v1/evidence", evidenceRouter);
 app.route("/v1", archiveRouter);
+app.route("/v1/prompt-templates", promptTemplatesRouter);
 
 console.log(`
 ╔══════════════════════════════════════════╗
