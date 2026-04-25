@@ -27,6 +27,8 @@ export default function HomePage() {
   const [showSettings, setShowSettings] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  // UI-1: 追踪选中任务的运行状态（用于 TracePanel 轮询决策）
+  const [selectedTaskStatus, setSelectedTaskStatus] = useState<string | undefined>(undefined);
   const [workbenchTab, setWorkbenchTab] = useState<WorkbenchTab>("evidence");
   // userId derived from auth — falls back to username so backend can route by identity
   const userId = user?.username ?? "anonymous";
@@ -127,7 +129,10 @@ export default function HomePage() {
             >
               <TaskPanel
                 userId={userId}
-                onTaskSelect={setSelectedTaskId}
+                onTaskSelect={(taskId, status) => {
+                  setSelectedTaskId(taskId);
+                  setSelectedTaskStatus(status);
+                }}
                 selectedTaskId={selectedTaskId}
               />
             </div>
@@ -168,7 +173,7 @@ export default function HomePage() {
                   <EvidencePanel taskId={selectedTaskId} userId={userId} />
                 )}
                 {workbenchTab === "trace" && (
-                  <TracePanel taskId={selectedTaskId} userId={userId} />
+                  <TracePanel taskId={selectedTaskId} userId={userId} taskStatus={selectedTaskStatus} />
                 )}
                 {workbenchTab === "health" && <HealthPanel />}
                 {workbenchTab === "debug" && (

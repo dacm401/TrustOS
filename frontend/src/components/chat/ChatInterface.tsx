@@ -60,6 +60,8 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId, sessionId: p
 
   // Phase 3.0: SSE 委托生命周期状态追踪
   const [delegationStatus, setDelegationStatus] = useState<DelegationStatusItem[]>([]);
+  // UI-2: 标记委托流程已结束（不清空 status，只折叠显示）
+  const [delegationDone, setDelegationDone] = useState(false);
 
   // Use external sessionId if provided, otherwise generate once
   const [sessionId, setSessionIdInternal] = useState<string>(() => propSessionId ?? uuid());
@@ -192,7 +194,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId, sessionId: p
             ]);
           } else if (data.type === "done") {
             setStatusMsg(null);
-            setDelegationStatus([]); // Phase 3.0: 委托流程结束，清理状态
+            setDelegationDone(true); // UI-2: 不清空，标记完成状态，由 CSS 折叠
             if (data.task_id) onTaskIdChange?.(data.task_id);
             setMessages((prev) =>
               prev.map((m) =>
@@ -434,6 +436,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId, sessionId: p
     setClarifyQuestion(null);
     setStatusMsg(null);
     setDelegationStatus([]); // Phase 3.0: 清空旧委托状态
+    setDelegationDone(false); // UI-2: 重置完成状态
     const history = messages.map((m) => ({ role: m.role, content: m.content, decision_id: m.decision?.id }));
     sendStreaming(text, history).then((ok) => {
       if (!ok) {
@@ -524,30 +527,49 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId, sessionId: p
         )}
 
         {/* Phase 3.0: SSE 委托生命周期状态指示器 */}
+        {/* UI-2: delegationDone=true 时折叠显示（不清空，保留最终状态） */}
         {delegationStatus.length > 0 && (
-          <div className="mb-3 flex flex-col gap-1.5 animate-fade-in-up">
-            <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
-              ⚙️ 委托进度
-            </div>
-            {delegationStatus.map((item) => (
-              <div key={item.id} className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
-                style={{ backgroundColor: "var(--bg-elevated)", border: "1px solid var(--border-default)" }}>
-                <span className="flex-shrink-0 mt-0.5">{item.label.split(" ")[0]}</span>
-                <div className="flex-1 min-w-0">
-                  <div style={{ color: "var(--text-primary)" }} className="truncate">
-                    {item.label.replace(/^[^\s]+\s/, "")}
-                  </div>
-                  {item.detail && (
-                    <div className="truncate mt-0.5" style={{ color: "var(--text-muted)" }}>
-                      {item.detail}
-                    </div>
-                  )}
-                </div>
-                <span className="flex-shrink-0 text-[10px]" style={{ color: "var(--text-muted)" }}>
-                  {new Date(item.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}
-                </span>
+          <div className={`mb-3 flex flex-col gap-1.5 ${delegationDone ? "delegate-collapsed" : "animate-fade-in-up"}`}
+            style={{ maxHeight: delegationDone ? "60px" : "none", overflow: "hidden", transition: "max-height 0.4s ease" }}>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                ⚙️ 委托进度
+                {delegationDone && <span className="ml-1 text-[10px]" style={{ color: "var(--accent-green)" }}>已完成 ✓</span>}
               </div>
-            ))}
+            </div>
+            {!delegationDone ? (
+              // 活跃状态：完整显示所有步骤
+              delegationStatus.map((item) => (
+                <div key={item.id} className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs"
+                  style={{ backgroundColor: "var(--bg-elevated)", border: "1px solid var(--border-default)" }}>
+                  <span className="flex-shrink-0 mt-0.5">{item.label.split(" ")[0]}</span>
+                  <div className="flex-1 min-w-0">
+                    <div style={{ color: "var(--text-primary)" }} className="truncate">
+                      {item.label.replace(/^[^\s]+\s/, "")}
+                    </div>
+                    {item.detail && (
+                      <div className="truncate mt-0.5" style={{ color: "var(--text-muted)" }}>
+                        {item.detail}
+                      </div>
+                    )}
+                  </div>
+                  <span className="flex-shrink-0 text-[10px]" style={{ color: "var(--text-muted)" }}>
+                    {new Date(item.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}
+                  </span>
+                </div>
+              ))
+            ) : (
+              // UI-2: 完成后折叠：只显示最后一条 + 点击可展开（暂不展开，折叠即体验提升）
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs opacity-60"
+                style={{ backgroundColor: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}>
+                <span className="flex-shrink-0 mt-0.5">✅</span>
+                <div className="flex-1 min-w-0">
+                  <div style={{ color: "var(--text-secondary)" }}>
+                    委托流程已完成 ({delegationStatus.length} 步)
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

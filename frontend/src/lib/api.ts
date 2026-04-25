@@ -252,3 +252,63 @@ export async function fetchCostStats(userId: string): Promise<CostStats> {
   if (!res.ok) throw new Error(`加载成本统计失败 (${res.status})`);
   return res.json() as Promise<CostStats>;
 }
+
+// G4: Delegation logs API helpers
+export interface DelegationLog {
+  id: string;
+  routed_action: string;
+  routing_reason: string | null;
+  g2_final_action: string | null;
+  g3_final_action: string | null;
+  did_rerank: boolean;
+  llm_confidence: number;
+  system_confidence: number;
+  execution_status: string | null;
+  execution_correct: boolean | null;
+  routing_success: boolean | null;
+  value_success: boolean | null;
+  user_success: boolean | null;
+  latency_ms: number | null;
+  cost_usd: number | null;
+  model_used: string | null;
+  created_at: string;
+  executed_at: string | null;
+}
+
+export interface DelegationStats {
+  metrics: {
+    total_decisions: number;
+    action_distribution: Record<string, number>;
+    execution_success_rate: number;
+    avg_latency_ms: number;
+    avg_cost_usd: number;
+    rerank_stats: { rate: number; correction_rate: number };
+    routing_agreement_rate: number;
+  };
+  rerankStats: {
+    total: number;
+    rerank_count: number;
+    rerank_rate: number;
+    corrected_count: number;
+    correction_rate: number;
+  };
+  actionDistribution: Record<string, number>;
+}
+
+export async function fetchDelegationLogs(userId: string, limit = 50, offset = 0): Promise<{ logs: DelegationLog[]; limit: number; offset: number }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/api/delegation-logs/${encodeURIComponent(userId)}?limit=${limit}&offset=${offset}`, {
+    headers: buildHeaders(),
+  });
+  if (!res.ok) throw new Error(`加载委托日志失败 (${res.status})`);
+  return res.json();
+}
+
+export async function fetchDelegationStats(userId: string): Promise<DelegationStats> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/api/delegation-stats/${encodeURIComponent(userId)}`, {
+    headers: buildHeaders(),
+  });
+  if (!res.ok) throw new Error(`加载委托统计失败 (${res.status})`);
+  return res.json();
+}

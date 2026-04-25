@@ -175,11 +175,11 @@ CI Job 5: benchmark-delegation — 40 cases / Mode>=30% (baseline)    (reference
 |--------------------|---------|---------|------|
 | Phase 1.5 任务卡片 Schema 实现 | P0 | ✅ **已实现** | `task_brief JSONB` + GIN index 已落地 |
 | Phase 1.5 Clarifying 流程 | P0 | ✅ **已实现** | `ClarifyQuestion` interface + orchestrator 使用 + E2E 测试 |
-| Phase 1.5 Slow 模型只读优化 | P0 | 🟡 **部分实现** | `task_brief` 字段存在，prompt 正式 review 待做 |
-| Memory/Evidence 效果增强 | P1 | 🟡 **部分实现** | fire-and-forget 已实现，intent-aware boost 待 G4 后做 |
-| SSE done 事件 + 类型扩展 | P2 | ⏳ **待做** | SSE 框架已有，done 双路分发待实现 |
-| Phase 2.0 完整流量分级上线 | P3 | ⏳ **规划中** | 排入 Sprint 52+ |
-| 产品化 polish（前端） | P3 | ⏳ **规划中** | 排入 Sprint 52+ |
+| Phase 1.5 Slow 模型只读优化 | P0 | ✅ **已实现** | Sprint 54 S1：worker-prompt 正式 review，intent hint 注入，compressionRatio 修正 |
+| Memory/Evidence 效果增强 | P1 | ✅ **已实现** | Sprint 54 E1/E2：intent-aware source 加权 + 语义关键词自动提取 |
+| SSE done 事件 + 类型扩展 | P2 | ✅ **已实现** | Sprint 53 SSE1/SSE2：done 双路推送 + `stream` 字段统一 |
+| Phase 2.0 完整流量分级上线 | P3 | ⏳ **规划中** | 排入 Sprint 55+（依赖 G4 数据） |
+| 产品化 polish（前端） | P3 | ⏳ **规划中** | 排入 Sprint 55+（UI1/UI2） |
 
 ---
 
@@ -191,20 +191,27 @@ CI Job 5: benchmark-delegation — 40 cases / Mode>=30% (baseline)    (reference
 2026-04-21     │  Phase C COMPLETE (v1.1.0) ✅
                │
 2026-04-22     │  Sprint 50 COMPLETE ✅  G1/G2/G3 全链路 + E2E 测试
-               │  → Phase 1.5 P0 三项已通过 G1/G2/G3 实现覆盖
+               │  Sprint 51 COMPLETE ✅  T-LLM-NAT 全绿 + G4 delegation_logs 架构
                │
-Sprint 51 →    │  双轨并行 ⏳
-               │  轨道A: G4 delegation_logs + 日志 pipeline
-               │  轨道B: T-ORCH + T-LLM-NAT + T-P4 测试覆盖
-               │  轨道C: CFG-SEC JWT/Redis 安全收口
+2026-04-24     │  Sprint 52 COMPLETE ✅  Production Gap P0/P1/P2 收口
+               │                          9 个 gap 全部修复，rate-limit 中间件上线
                │
-Sprint 52+ →   │  Phase D 闭环 + P1 gap 补全
-               │  T-P5: Phase 5 存储后端测试
-               │  T-ERR: fire-and-forget → warn 日志
-               │  E1/E2: Evidence intent-aware boost
-               │  S1:   Slow prompt 最终版 review
-               │  SSE1/2: SSE done 双路 + stream 字段
-               │  L2:   Layer 2 全量上线
+2026-04-25     │  Sprint 53 COMPLETE ✅  T-ERR/T-P5/SSE1/SSE2 四项并行交付
+               │                          Phase 5 存储测试 79/79 + SSE done 双路
+               │
+2026-04-25     │  Sprint 54 COMPLETE ✅  E1/E2/S1/T-D 四项
+               │                          intent-aware evidence boost + worker-prompt review
+               │                          benchmark 40→78 cases | vitest 531/531 ✅
+               │
+Sprint 55 →    │  Sprint 55 开发中 ⏳
+               │  G4-A: /api/delegation-logs + /api/delegation-stats ✅
+               │  G4-B: backfill-delegation-success.ts ✅
+               │  UI-1: TracePanel 实时轮询（每 3s，非 terminal 任务）✅
+               │  UI-2: done 事件保留 delegationStatus，折叠显示 ✅
+               │  G4-C: Dashboard DelegationLogs 面板（待做）
+               │  L1: Layer 1 Fast + search/RAG 增强（规划中）
+               │
+               │  L2: Layer 2 全量上线（依赖 G4 数据）
                │
 远期 →          │  P5: Intent 准确率持续优化（97%→99%）
                │  Phase E: 可选项
@@ -213,4 +220,4 @@ Sprint 52+ →   │  Phase D 闭环 + P1 gap 补全
 ---
 
 *横行天下，一钳定乾坤 🦀*
-*最后更新：2026-04-22（v1.1.2-rc: Sprint 51 双轨规划 + Gap P0/P1 正式排入）*
+*最后更新：2026-04-25（Sprint 53/54 COMPLETE，04-18 Docx 待办全部清零，远端已同步）*

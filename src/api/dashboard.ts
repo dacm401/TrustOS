@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { calculateDashboard } from "../logging/metrics-calculator.js";
-import { GrowthRepo, DecisionRepo } from "../db/repositories.js";
+import { GrowthRepo, DecisionRepo, DelegationLogRepo } from "../db/repositories.js";
 import { getContextUserId } from "../middleware/identity.js";
 import { calcBaselineCost } from "../config/pricing.js";
 
@@ -36,6 +36,36 @@ dashboardRouter.get("/cost-stats/:userId", async (c) => {
     return c.json(stats);
   } catch (error: any) {
     console.error("Cost stats error:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// G4: Delegation logs — list with pagination
+dashboardRouter.get("/delegation-logs/:userId", async (c) => {
+  const userId = getContextUserId(c)!;
+  const limit = Math.min(Number(c.req.query("limit") ?? "50"), 200);
+  const offset = Number(c.req.query("offset") ?? "0");
+  try {
+    const logs = await DelegationLogRepo.listByUser(userId, limit, offset);
+    return c.json({ logs, limit, offset });
+  } catch (error: any) {
+    console.error("Delegation logs error:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// G4: Delegation benchmark — aggregate stats for dashboard
+dashboardRouter.get("/delegation-stats/:userId", async (c) => {
+  const userId = getContextUserId(c)!;
+  try {
+    const [metrics, rerankStats, actionDist] = await Promise.all([
+      DelegationLogRepo.getBenchmarkMetrics(userId),
+      DelegationLogRepo.getRerankStats(userId),
+      DelegationLogRepo.getActionStats(userId, "routed_action"),
+    ]);
+    return c.json({ metrics, rerankStats, actionDistribution: actionDist });
+  } catch (error: any) {
+    console.error("Delegation stats error:", error);
     return c.json({ error: error.message }, 500);
   }
 });

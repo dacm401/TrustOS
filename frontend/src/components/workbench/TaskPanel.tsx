@@ -13,7 +13,8 @@ interface TaskItem {
 interface TaskPanelProps {
   userId: string;
   sessionId?: string;
-  onTaskSelect?: (taskId: string) => void;
+  /** UI-1: 回调签名扩展为同时返回 taskId 和 status（用于 TracePanel 轮询决策） */
+  onTaskSelect?: (taskId: string, status?: string) => void;
   selectedTaskId?: string | null;
 }
 
@@ -99,7 +100,7 @@ export function TaskPanel({ userId, sessionId, onTaskSelect, selectedTaskId }: T
           return (
             <button
               key={task.task_id}
-              onClick={() => onTaskSelect?.(task.task_id)}
+              onClick={() => onTaskSelect?.(task.task_id, task.status)}
               className="w-full text-left px-3 py-2.5 transition-all group"
               style={{
                 backgroundColor: isSelected ? "var(--bg-overlay)" : "transparent",
