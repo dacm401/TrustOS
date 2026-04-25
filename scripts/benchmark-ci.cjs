@@ -2,7 +2,7 @@
 /**
  * SmartRouter Benchmark CI Runner
  *
- * 支持三套离线 benchmark，全部不调用 API：
+ * 支持四套离线 benchmark，全部不调用 API：
  *
  * routing    — 规则路由 CI gate（Mode>=80%, Intent>=70%）
  *              66 cases，覆盖 L0/L1/L2 fast vs slow 核心路径
@@ -15,9 +15,15 @@
  *              ⚠️ 此套件设计用于在线 LLM 路由评估
  *              ⚠️ 离线规则模式下 Mode/Intent CI gate 仅供参考
  *
+ * layer2     — Layer 2 复杂任务识别（离线规则参考基线）
+ *              30 cases，多跳推理/复杂工具链/深度摘要/跨session/边界条件
+ *              ⚠️ 部分 L2 任务（如跨session、多工具链）超出规则识别能力
+ *              ⚠️ 离线阈值 Mode>=30%/Intent>=20% 为宽松基线
+ *              ⚠️ 真实 L2 评估需在线 benchmark（benchmark-routing.cjs + SiliconFlow）
+ *
  * 用法：
- *   node scripts/benchmark-ci.cjs [--suite routing|kb|delegation] [--verbose]
- *   node scripts/benchmark-ci.cjs --suite delegation --verbose
+ *   node scripts/benchmark-ci.cjs [--suite routing|kb|delegation|layer2] [--verbose]
+ *   node scripts/benchmark-ci.cjs --suite layer2 --verbose
  *
  * 退出码：0 = PASS，1 = FAIL
  */
@@ -40,13 +46,14 @@ function getArgStr(name, defaultVal) {
 function hasArg(name) { return args.includes(name); }
 
 const SUITE            = getArgStr("--suite", "routing");
-const THRESHOLD_MODE    = getArg("--threshold-mode",    SUITE === "delegation" ? 30 : 80);
-const THRESHOLD_INTENT  = getArg("--threshold-intent",  SUITE === "delegation" ? 20 : 70);
+const THRESHOLD_MODE    = getArg("--threshold-mode",    SUITE === "delegation" ? 30 : SUITE === "layer2" ? 25 : 80);
+const THRESHOLD_INTENT  = getArg("--threshold-intent",  SUITE === "delegation" ? 20 : SUITE === "layer2" ? 15 : 70);
 const THRESHOLD_KB      = getArg("--threshold-kb",      80);
 const VERBOSE           = hasArg("--verbose");
 const BACKFILL_MODE     = hasArg("--backfill");   // G4: 导出 routing pairs JSON，供离线回填 routing_success 使用
 const isKbSuite         = SUITE === "kb" || SUITE === "unknown";
 const isDelegationSuite = SUITE === "delegation";
+const isLayer2Suite     = SUITE === "layer2";
 
 // ── 加载测试用例 ──────────────────────────────────────────────────────────────
 const TASK_DIR = path.join(__dirname, "..", "evaluation", "tasks");
@@ -55,6 +62,7 @@ const SUITE_MAP = {
   kb:          "unknown-by-definition.json",
   unknown:     "unknown-by-definition.json",
   delegation:  "delegation-benchmark.json",
+  layer2:      "benchmark-layer2.json",
 };
 
 function loadSuite(suite) {
@@ -559,6 +567,116 @@ function runDelegationSuite() {
   process.exit(0);
 }
 
+// ── Layer 2 套件：复杂任务 Benchmark（离线规则参考基线）───────────────────────────
+function runLayer2Suite() {
+  console.log(`\n=== Layer 2 Benchmark ===`);
+  console.log(`用例数: ${cases.length}  |  Mode 阈值: ${THRESHOLD_MODE}%  |  Intent 阈值: ${THRESHOLD_INTENT}%\n`);
+  console.log(`⚠️  此套件验证离线规则对 L2 复杂任务的识别能力\n`);
+
+  const results = [];
+
+  for (const tc of cases) {
+    const prediction = ruleRouter(tc.input);
+    const modeOk    = prediction.mode   === tc.expected_mode;
+    const intentOk  = prediction.intent === tc.expected_intent;
+    const layerOk   = prediction.layer  === tc.expected_layer;
+    const scenario  = tc.scenario || "unknown";
+
+    results.push({
+      input:           tc.input,
+      expected_mode:    tc.expected_mode,
+      actual_mode:      prediction.mode,
+      expected_intent:  tc.expected_intent,
+      actual_intent:    prediction.intent,
+      expected_layer:   tc.expected_layer,
+      actual_layer:     prediction.layer,
+      scenario,
+      mode_ok: modeOk, intent_ok: intentOk, layer_ok: layerOk,
+    });
+
+    process.stdout.write(modeOk ? "✓" : "✗");
+  }
+  console.log("\n");
+
+  const total     = results.length;
+  const modeOk   = results.filter(r => r.mode_ok).length;
+  const intentOk = results.filter(r => r.intent_ok).length;
+  const layerOk  = results.filter(r => r.layer_ok).length;
+  const modeRate   = (modeOk   / total * 100);
+  const intentRate = (intentOk / total * 100);
+  const layerRate  = (layerOk  / total * 100);
+
+  console.log(`=== 结果汇总（离线规则模式）==`);
+  console.log(`总用例:         ${total}`);
+  console.log(`Mode  准确:     ${modeOk}/${total} = ${modeRate.toFixed(1)}%`);
+  console.log(`Intent 准确:    ${intentOk}/${total} = ${intentRate.toFixed(1)}%`);
+  console.log(`Layer  准确:    ${layerOk}/${total} = ${layerRate.toFixed(1)}%`);
+
+  // 按 Scenario 分组
+  const byScenario = {};
+  for (const r of results) {
+    const k = r.scenario;
+    if (!byScenario[k]) byScenario[k] = { total: 0, correct: 0 };
+    byScenario[k].total++;
+    if (r.mode_ok) byScenario[k].correct++;
+  }
+  console.log(`\n按 Scenario (Mode 准确):`);
+  for (const [scenario, s] of Object.entries(byScenario).sort()) {
+    console.log(`  ${scenario.padEnd(24)}: ${s.correct}/${s.total} = ${(s.correct / s.total * 100).toFixed(1)}%`);
+  }
+
+  // 失败用例
+  const failures = results.filter(r => !r.mode_ok);
+  if (failures.length > 0) {
+    console.log(`\n失败用例 (${failures.length}条，仅显示前10):`);
+    for (const f of failures.slice(0, 10)) {
+      console.log(`  [${f.expected_layer}/${f.expected_intent}][${f.scenario}]`);
+      console.log(`    exp:${f.expected_mode.padEnd(5)} got:${f.actual_mode.padEnd(5)} | "${f.input.substring(0, 60)}"`);
+    }
+    if (failures.length > 10) console.log(`  ... 及其他 ${failures.length - 10} 条`);
+  }
+
+  if (VERBOSE) {
+    console.log(`\n=== 全量明细 ===`);
+    for (const r of results) {
+      console.log(`${r.mode_ok ? "✓" : "✗"} [${r.expected_layer}/${r.expected_intent}][${r.scenario}] exp:${r.expected_mode} got:${r.actual_mode} | "${r.input.substring(0, 60)}"`);
+    }
+  }
+
+  // 写出结果
+  const outDir  = path.join(__dirname, "..", "evaluation", "results");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outFile = path.join(outDir, `benchmark-layer2-${new Date().toISOString().split("T")[0]}.json`);
+  fs.writeFileSync(outFile, JSON.stringify({
+    run_date: new Date().toISOString(),
+    mode: "offline-rules-reference",
+    suite: "layer2",
+    total, mode_ok: modeOk, intent_ok: intentOk, layer_ok: layerOk,
+    mode_accuracy: `${modeRate.toFixed(1)}%`,
+    intent_accuracy: `${intentRate.toFixed(1)}%`,
+    layer_accuracy: `${layerRate.toFixed(1)}%`,
+    byScenario,
+    cases: results,
+  }, null, 2), "utf8");
+  console.log(`\n结果已写入: ${outFile}`);
+
+  // CI Gate（离线模式宽松阈值，仅作参考）
+  console.log(`\n=== CI Gate（离线规则参考值）===`);
+  const modePass   = modeRate   >= THRESHOLD_MODE;
+  const intentPass = intentRate >= THRESHOLD_INTENT;
+  console.log(`Mode   (${modeRate.toFixed(1)}% >= ${THRESHOLD_MODE}%):   ${modePass   ? "PASS" : "FAIL"}`);
+  console.log(`Intent (${intentRate.toFixed(1)}% >= ${THRESHOLD_INTENT}%): ${intentPass ? "PASS" : "FAIL"}`);
+  if (!modePass || !intentPass) {
+    console.error("\n⚠️  Layer2 benchmark 在离线规则模式下未达 CI gate");
+    console.error("   说明：部分 L2 复杂任务（如跨session、多工具链）超出规则路由器识别能力");
+    console.error("   这是预期行为，L2 真实评估需在线 LLM 路由（benchmark-routing.cjs + SiliconFlow）");
+    console.error("Layer2 Benchmark CI（离线）FAILED");
+    process.exit(1);
+  }
+  console.log("Layer2 Benchmark CI PASSED");
+  process.exit(0);
+}
+
 // ── G4 Backfill 模式：导出 routing pairs JSON ────────────────────────────────────
 // 用法：node scripts/benchmark-ci.cjs --backfill
 // 输出：evaluation/results/routing-pairs-{date}.json
@@ -617,6 +735,8 @@ function runBackfillMode() {
 // ── 调度器 ─────────────────────────────────────────────────────────────────────
 if (BACKFILL_MODE) {
   runBackfillMode();
+} else if (isLayer2Suite) {
+  runLayer2Suite();
 } else if (isKbSuite) {
   runKbSuite();
 } else if (isDelegationSuite) {

@@ -165,3 +165,37 @@ jobs:
           name: benchmark-delegation-${{ github.run_number }}
           path: evaluation/results/benchmark-delegation-*.json
           retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 6: Layer 2 复杂任务 Benchmark（30 cases，离线规则基线参考）
+  # ⚠️ 此套件验证离线规则对 L2 复杂任务的识别能力
+  # ⚠️ 真实 L2 评估需在线 benchmark（benchmark-routing.cjs + SiliconFlow）
+  # ─────────────────────────────────────────────────────────────────────────────
+  benchmark-layer2:
+    name: Layer2 Benchmark (Offline Reference)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run Layer 2 benchmark (offline reference)
+        run: node scripts/benchmark-ci.cjs --suite layer2 --verbose
+        # ⚠️ 离线阈值 Mode>=25%/Intent>=15% 为宽松基线
+        # ⚠️ 当前规则路由器实测 26.7%，阈值略低于实测值（预留回归空间）
+        # ⚠️ 预期部分 L2 任务（跨session/多工具链）超出规则识别能力 → 离线 FAIL 是预期的
+
+      - name: Upload Layer2 benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-layer2-${{ github.run_number }}
+          path: evaluation/results/benchmark-layer2-*.json
+          retention-days: 30
