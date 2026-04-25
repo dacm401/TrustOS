@@ -7,6 +7,7 @@ import { TokenSankey } from "@/components/dashboard/TokenSankey";
 import { DecisionTimeline } from "@/components/dashboard/DecisionTimeline";
 import { GrowthChart } from "@/components/dashboard/GrowthChart";
 import { LearningPanel } from "@/components/dashboard/LearningPanel";
+import { DelegationLogsPanel } from "@/components/dashboard/DelegationLogsPanel";
 
 const USER_ID = "user-001";
 
@@ -55,6 +56,7 @@ export default function DashboardPage() {
               <GrowthChart growth={data?.growth} />
             </div>
             <DecisionTimeline decisions={data?.recent_decisions || []} />
+            <DelegationLogsPanel />
             <LearningPanel growth={data?.growth} />
           </>
         )}
