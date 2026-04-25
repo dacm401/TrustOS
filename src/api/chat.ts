@@ -35,6 +35,8 @@ import { pollArchiveAndYield } from "../services/phase3/sse-poller.js";
 import { routeWithManagerDecision } from "../services/llm-native-router.js";
 // O-007: 安抚功能 — 检测 pending 任务
 import { DelegationArchiveRepo } from "../db/repositories.js";
+// Sprint 63: 跨会话上下文
+import { buildCrossSessionContext } from "../services/cross-session-context.js";
 
 const chatRouter = new Hono();
 
@@ -120,6 +122,19 @@ chatRouter.post("/chat", async (c) => {
     // LLM-Native 通过 routeWithManagerDecision → Manager 模型决策 → 四路分发
     if (body.use_llm_native_routing === true) {
 
+      // Sprint 63: 构建跨会话上下文（active task + history facts）
+      let crossSessionContext: string | undefined;
+      try {
+        const cross = await buildCrossSessionContext({
+          userId,
+          sessionId,
+          userMessage: body.message ?? "",
+        });
+        crossSessionContext = cross.crossSessionText || undefined;
+      } catch (e: any) {
+        console.warn("[chat] cross-session context build failed:", e.message);
+      }
+
       // ── SSE 流式分支：use_llm_native_routing=true + stream=true ────────────────
       // 流程：Manager 决策 → 立即推送安抚消息 → pollArchiveAndYield 推送 Worker 结果
       if (body.stream === true) {
@@ -133,6 +148,7 @@ chatRouter.post("/chat", async (c) => {
             history: body.history ?? [],
             language: features.language as "zh" | "en",
             reqApiKey,
+            crossSessionContext,
           });
         } catch (e: any) {
           console.warn("[stream-llm] routeWithManagerDecision failed:", e.message);
@@ -251,6 +267,7 @@ chatRouter.post("/chat", async (c) => {
           history: body.history ?? [],
           language: features.language as "zh" | "en",
           reqApiKey,
+          crossSessionContext,
         });
       } catch (e: any) {
         // Manager 模型调用失败 → fallback 到旧 orchestrator

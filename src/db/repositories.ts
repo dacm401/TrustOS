@@ -1705,3 +1705,56 @@ export const PromptTemplateRepo = {
     await query(`DELETE FROM prompt_templates WHERE id=$1`, [id]);
   },
 };
+
+// Sprint 63: 跨会话上下文查询
+export const SessionContextRepo = {
+  /** 查询用户最近的 sessions（7天内，有过 slow 模型调用） */
+  async getRecentSessions(userId: string, limit = 5): Promise<any[]> {
+    const result = await query(
+      `SELECT s.id, s.active_topic, s.slow_count, s.total_requests, s.turn_count,
+              s.created_at, s.updated_at,
+              ss.summary_text, ss.topic, ss.key_facts, ss.decisions_made, ss.open_questions
+       FROM sessions s
+       LEFT JOIN session_summaries ss ON ss.session_id = s.id
+       WHERE s.user_id = $1 AND s.slow_count > 0
+       ORDER BY s.updated_at DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+    return result.rows;
+  },
+
+  /** 查询用户所有未完成任务（跨 session） */
+  async getIncompleteTasks(userId: string, limit = 5): Promise<any[]> {
+    const result = await query(
+      `SELECT t.id, t.title, t.mode, t.status, t.goal,
+              ts.next_step, ts.blocked_by, ts.completed_steps,
+              t.session_id, t.updated_at
+       FROM tasks t
+       LEFT JOIN task_summaries ts ON ts.task_id = t.id
+       WHERE t.user_id = $1 AND t.status NOT IN ('completed', 'failed', 'cancelled')
+       ORDER BY t.updated_at DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+    return result.rows;
+  },
+
+  /** 从 session_summaries 表查询关键事实 */
+  async getRecentKeyFacts(userId: string, limit = 3): Promise<string[]> {
+    const result = await query(
+      `SELECT ss.key_facts
+       FROM session_summaries ss
+       WHERE ss.user_id = $1
+       ORDER BY ss.created_at DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+    const facts: string[] = [];
+    for (const row of result.rows) {
+      const kf: string[] = row.key_facts || [];
+      facts.push(...kf.slice(0, 2));
+    }
+    return facts.slice(0, limit);
+  },
+};

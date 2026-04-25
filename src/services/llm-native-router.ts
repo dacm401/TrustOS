@@ -133,7 +133,7 @@ export function runGatedDelegation(
 
 // ── Manager Prompt ────────────────────────────────────────────────────────────
 
-function buildManagerSystemPrompt(lang: "zh" | "en"): string {
+function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: string): string {
   // 中文版 prompt
   const zhPrompt = `你是 SmartRouter Pro 的 Manager（管理模型）。
 
@@ -251,7 +251,20 @@ After understanding the user's request, score each of the four actions (0.0~1.0)
 - Wrap JSON in code block: \`\`\`json ... \`\`\`
 - All fields are required`;
 
-  return lang === "zh" ? zhPrompt : enPrompt;
+  const base = lang === "zh" ? zhPrompt : enPrompt;
+  if (!crossSessionContext) return base;
+
+  // Sprint 63: 追加跨会话上下文（供路由决策参考）
+  const contextSection = `
+
+【跨会话上下文】（以下信息来自历史对话，请参考）
+${crossSessionContext}
+
+【决策影响】
+- 如果 context 显示有未完成任务或续写需求，请提高 delegate_to_slow 或 execute_task 的分数
+- 如果 context 显示用户偏好使用 fast 模型处理简单任务，可适当提高 direct_answer 分数`;
+
+  return base + contextSection;
 }
 
 // ── 入参 ─────────────────────────────────────────────────────────────────────
@@ -265,6 +278,8 @@ export interface LLMNativeRouterInput {
   history: ChatMessage[];
   language: "zh" | "en";
   reqApiKey?: string;
+  /** Sprint 63: 跨会话上下文（active task + history facts） */
+  crossSessionContext?: string;
 }
 
 export interface LLMNativeRouterResult {
@@ -299,10 +314,10 @@ export interface LLMNativeRouterResult {
 export async function routeWithManagerDecision(
   input: LLMNativeRouterInput
 ): Promise<LLMNativeRouterResult> {
-  const { message, user_id, session_id, turn_id, history, language, reqApiKey } = input;
+  const { message, user_id, session_id, turn_id, history, language, reqApiKey, crossSessionContext } = input;
 
-  // Step 1: 调用 Fast 模型，传递 Manager Prompt
-  const managerOutput = await callManagerModel({ message, history, language, reqApiKey });
+  // Step 1: 调用 Fast 模型，传递 Manager Prompt（含 cross-session 上下文）
+  const managerOutput = await callManagerModel({ message, history, language, reqApiKey, crossSessionContext });
 
   // Step 1.5 (KB-1): 检测知识边界信号
   // fail-open：检测异常不阻断主流程，只记录 warning
@@ -346,10 +361,12 @@ async function callManagerModel(input: {
   history: ChatMessage[];
   language: "zh" | "en";
   reqApiKey?: string;
+  /** Sprint 63: cross-session context */
+  crossSessionContext?: string;
 }): Promise<string> {
-  const { message, history, language, reqApiKey } = input;
+  const { message, history, language, reqApiKey, crossSessionContext } = input;
 
-  const systemPrompt = buildManagerSystemPrompt(language);
+  const systemPrompt = buildManagerSystemPrompt(language, crossSessionContext);
   // 保留最近 6 轮对话作为上下文，不传全量 history（Manager 只读当前任务）
   const recentHistory = history.filter((m) => m.role !== "system").slice(-6);
 
