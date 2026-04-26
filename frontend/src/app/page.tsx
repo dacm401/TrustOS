@@ -16,8 +16,10 @@ import MemoryView from "@/components/views/MemoryView";
 import DashboardView from "@/components/views/DashboardView";
 import TasksView from "@/components/views/TasksView";
 import ArchiveView from "@/components/views/ArchiveView";
+import PermissionsView from "@/components/views/PermissionsView";
+import { fetchPendingPermissions } from "@/lib/api";
 
-type NavView = "chat" | "tasks" | "memory" | "dashboard" | "archive";
+type NavView = "chat" | "tasks" | "memory" | "dashboard" | "archive" | "permissions";
 
 type WorkbenchTab = "evidence" | "trace" | "health" | "debug";
 
@@ -34,6 +36,7 @@ export default function HomePage() {
   const userId = user?.username ?? "anonymous";
   const [activeNav, setActiveNav] = useState<NavView>("chat");
   const [sessionId, setSessionId] = useState<string>(() => uuid());
+  const [pendingPermCount, setPendingPermCount] = useState(0);
 
   // Auth guard: redirect to login if not authenticated
   useEffect(() => {
@@ -41,6 +44,19 @@ export default function HomePage() {
       router.replace("/login");
     }
   }, [isLoading, token, router]);
+
+  // Poll pending permission count every 15s
+  useEffect(() => {
+    if (!token || !userId || userId === "anonymous") return;
+    const poll = () => {
+      fetchPendingPermissions(userId)
+        .then((r) => setPendingPermCount(r.requests?.length ?? 0))
+        .catch(() => {});
+    };
+    poll();
+    const iv = setInterval(poll, 15000);
+    return () => clearInterval(iv);
+  }, [token, userId]);
 
   const tabs: { id: WorkbenchTab; icon: string; label: string }[] = [
     { id: "evidence", icon: "🔍", label: "证据" },
@@ -80,7 +96,12 @@ export default function HomePage() {
       {/* Body: Sidebar + Chat + optional Workbench */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Sidebar */}
-        <Sidebar activeNav={activeNav} onNavChange={(id) => setActiveNav(id as NavView)} onSettingsClick={() => setShowSettings(true)} />
+        <Sidebar
+          activeNav={activeNav}
+          onNavChange={(id) => setActiveNav(id as NavView)}
+          onSettingsClick={() => setShowSettings(true)}
+          pendingPermCount={pendingPermCount}
+        />
 
         {/* Center: View Area */}
         <main
@@ -105,11 +126,15 @@ export default function HomePage() {
           )}
 
           {activeNav === "dashboard" && (
-            <DashboardView userId={userId} />
+            <DashboardView userId={userId} onNavChange={(v) => setActiveNav(v as NavView)} />
           )}
 
           {activeNav === "archive" && (
             <ArchiveView sessionId={sessionId} userId={userId} />
+          )}
+
+          {activeNav === "permissions" && (
+            <PermissionsView userId={userId} />
           )}
         </main>
 

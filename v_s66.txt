@@ -1,0 +1,1772 @@
+﻿
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mC:/Users/ligua/WorkBuddy/backend_real[39m
+
+ [32m✓[39m tests/services/tool-executor.test.ts [2m([22m[2m28 tests[22m[2m)[22m[90m 20[2mms[22m[39m
+ [32m✓[39m tests/services/knowledge-boundary-signals.test.ts [2m([22m[2m46 tests[22m[2m)[22m[90m 19[2mms[22m[39m
+ [31m❯[39m tests/services/orchestrator.test.ts [2m([22m[2m38 tests[22m[2m | [22m[33m38 skipped[39m[2m)[22m[90m 125[2mms[22m[39m
+ [32m✓[39m tests/services/trace-formatter.test.ts [2m([22m[2m19 tests[22m[2m)[22m[90m 12[2mms[22m[39m
+ [32m✓[39m tests/services/execution-result-formatter.test.ts [2m([22m[2m17 tests[22m[2m)[22m[90m 28[2mms[22m[39m
+ [32m✓[39m tests/services/phase5/pg-archive-storage.test.ts [2m([22m[2m23 tests[22m[2m)[22m[90m 15[2mms[22m[39m
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m越狱攻击检测[2m > [22m[2m应该检测到越狱尝试（ignore previous instructions）
+[22m[39m[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m越狱攻击检测[2m > [22m[2m应该检测到中文越狱尝试
+[22m[39m[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m越狱攻击检测[2m > [22m[2m应该检测到 'forget all rules' 模式
+[22m[39m[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m提示注入检测[2m > [22m[2m应该检测到提示注入（injected prompt）
+[22m[39m[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m提示注入检测[2m > [22m[2m应该检测到 'new system prompt' 注入
+[22m[39m[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m提示注入检测[2m > [22m[2m应该检测到 'ignore the above' 攻击
+[22m[39m[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m系统 Prompt 提取检测[2m > [22m[2m应该检测到 'repeat your system prompt' 请求
+[22m[39m[SmallModelGuard Audit] Rule: 系统 Prompt 提取尝试, Type: system_prompt_extraction, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m系统 Prompt 提取检测[2m > [22m[2m应该检测到中文 prompt 提取尝试
+[22m[39m[SmallModelGuard Audit] Rule: 系统 Prompt 提取尝试, Type: system_prompt_extraction, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m命令注入检测[2m > [22m[2m应该检测到命令注入（rm -rf）
+[22m[39m[SmallModelGuard Audit] Rule: 命令注入检测, Type: malicious_instruction, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m命令注入检测[2m > [22m[2m应该检测到管道命令注入
+[22m[39m[SmallModelGuard Audit] Rule: 命令注入检测, Type: malicious_instruction, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2mSQL 注入检测[2m > [22m[2m应该检测到 SQL 注入（OR 攻击）
+[22m[39m[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2mSQL 注入检测[2m > [22m[2m应该检测到 SQL UNION 注入
+[22m[39m[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m角色扮演攻击检测[2m > [22m[2m应该检测到 'roleplay as' 攻击
+[22m[39m[SmallModelGuard Audit] Rule: 角色扮演攻击检测, Type: role_playing_attack, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m角色扮演攻击检测[2m > [22m[2m应该检测到中文角色扮演攻击
+[22m[39m[SmallModelGuard Audit] Rule: 角色扮演攻击检测, Type: role_playing_attack, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m敏感数据泄露检测[2m > [22m[2m应该标记 'password' 关键词
+[22m[39m[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m敏感数据泄露检测[2m > [22m[2m应该标记 'api_key' 关键词
+[22m[39m[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2mESCALATE 动作[2m > [22m[2m越狱攻击应该触发拦截（DENY → passed=false）
+[22m[39m[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m规则管理[2m > [22m[2m应该能够启用规则
+[22m[39m[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m批量检查[2m > [22m[2m应该正确批量检查多个内容
+[22m[39m[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: test-session
+
+[90mstdout[2m | tests/services/phase4/small-model-guard.test.ts[2m > [22m[2mSmallModelGuard[2m > [22m[2m边缘情况[2m > [22m[2m应该处理大小写混合
+[22m[39m[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: test-session
+
+ [32m✓[39m tests/services/phase4/small-model-guard.test.ts [2m([22m[2m39 tests[22m[2m)[22m[90m 23[2mms[22m[39m
+ [32m✓[39m tests/services/phase4.test.ts [2m([22m[2m31 tests[22m[2m)[22m[90m 14[2mms[22m[39m
+[90mstdout[2m | tests/services/phase4/integration.test.ts[2m > [22m[2mPhase 4 Integration — Trust Gateway[2m > [22m[2m恶意请求处理流程[2m > [22m[2m应该阻止 SQL 注入攻击（DENY → passed=false）
+[22m[39m[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: test-session-001
+
+[90mstdout[2m | tests/services/phase4/integration.test.ts[2m > [22m[2mPhase 4 Integration — Trust Gateway[2m > [22m[2m恶意请求处理流程[2m > [22m[2m应该标记提示注入攻击（FLAG → passed=true，但有 violationType）
+[22m[39m[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: test-session-001
+
+[90mstdout[2m | tests/services/phase4/integration.test.ts[2m > [22m[2mPhase 4 Integration — Trust Gateway[2m > [22m[2m恶意请求处理流程[2m > [22m[2m应该将越狱尝试阻断（DENY → passed=false）
+[22m[39m[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: test-session-001
+
+[90mstdout[2m | tests/services/phase4/integration.test.ts[2m > [22m[2mEnd-to-End Security Scenarios[2m > [22m[2m系统安全场景[2m > [22m[2m应该检测 SQL 注入模式
+[22m[39m[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: test-session-001
+
+[90mstdout[2m | tests/services/phase4/integration.test.ts[2m > [22m[2mEnd-to-End Security Scenarios[2m > [22m[2m系统安全场景[2m > [22m[2m应该检测系统提示提取攻击
+[22m[39m[SmallModelGuard Audit] Rule: 系统 Prompt 提取尝试, Type: system_prompt_extraction, Session: test-session-001
+
+ [32m✓[39m tests/services/phase4/integration.test.ts [2m([22m[2m20 tests[22m[2m)[22m[90m 21[2mms[22m[39m
+ [32m✓[39m tests/services/gating.test.ts [2m([22m[2m25 tests[22m[2m)[22m[90m 13[2mms[22m[39m
+ [32m✓[39m tests/services/phase4/redaction-engine.test.ts [2m([22m[2m38 tests[22m[2m)[22m[90m 34[2mms[22m[39m
+[90mstdout[2m | tests/services/execution-loop.test.ts[2m > [22m[2mExecutionLoop[2m > [22m[2mTA-001.4: tool_call step executes a tool and appends result to messages
+[22m[39m[EXEC-DEBUG] about to call toolExecutor.execute for memory_search
+
+[90mstdout[2m | tests/services/execution-loop.test.ts[2m > [22m[2mExecutionLoop[2m > [22m[2mTA-001.5: tool_call step executes multiple tool calls in order
+[22m[39m[EXEC-DEBUG] about to call toolExecutor.execute for memory_search
+[EXEC-DEBUG] about to call toolExecutor.execute for task_read
+
+[90mstdout[2m | tests/services/execution-loop.test.ts[2m > [22m[2mExecutionLoop[2m > [22m[2mTA-001.6: full pipeline runs all three step types in sequence
+[22m[39m[EXEC-DEBUG] about to call toolExecutor.execute for memory_search
+
+[90mstdout[2m | tests/services/execution-loop.test.ts[2m > [22m[2mExecutionLoop[2m > [22m[2mTA-001.8: loop stops when total tool calls reach maxToolCalls
+[22m[39m[EXEC-DEBUG] about to call toolExecutor.execute for memory_search
+[EXEC-DEBUG] about to call toolExecutor.execute for memory_search
+[EXEC-DEBUG] about to call toolExecutor.execute for memory_search
+
+[90mstdout[2m | tests/services/execution-loop.test.ts[2m > [22m[2mExecutionLoop[2m > [22m[2mTA-001.9b: no-progress counter resets when tool_call step emits a tool
+[22m[39m[EXEC-DEBUG] about to call toolExecutor.execute for memory_search
+
+[90mstdout[2m | tests/services/execution-loop.test.ts[2m > [22m[2mExecutionLoop[2m > [22m[2mTA-001.10: loop aborts on step error, step status set to failed
+[22m[39m[EXEC-DEBUG] about to call toolExecutor.execute for memory_search
+
+[90mstdout[2m | tests/services/execution-loop.test.ts[2m > [22m[2mExecutionLoop[2m > [22m[2mTA-001.11: GuardrailRejection from tool causes loop abort via step catch
+[22m[39m[EXEC-DEBUG] about to call toolExecutor.execute for http_request
+
+ [32m✓[39m tests/services/phase5/s3-archive-storage.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 44[2mms[22m[39m
+[90mstdout[2m | tests/services/execution-loop.test.ts[2m > [22m[2mExecutionLoop[2m > [22m[2mTA-001.12: toolExecutor re-throws GuardrailRejection so loop can abort
+[22m[39m[EXEC-DEBUG] about to call toolExecutor.execute for http_request
+
+[90mstdout[2m | tests/services/execution-loop.test.ts[2m > [22m[2mExecutionLoop[2m > [22m[2mTA-001.13: messages array grows with each step output
+[22m[39m[EXEC-DEBUG] about to call toolExecutor.execute for memory_search
+
+[90mstdout[2m | tests/services/execution-loop.test.ts[2m > [22m[2mExecutionLoop[2m > [22m[2mTA-001.14: taskId/userId/sessionId from context reach toolExecutor
+[22m[39m[EXEC-DEBUG] about to call toolExecutor.execute for memory_search
+
+[90mstdout[2m | tests/services/execution-loop.test.ts[2m > [22m[2mExecutionLoop[2m > [22m[2mTA-001.16: reason is completed when all steps finish within all limits
+[22m[39m[EXEC-DEBUG] about to call toolExecutor.execute for memory_search
+
+ [32m✓[39m tests/services/execution-loop.test.ts [2m([22m[2m20 tests[22m[2m)[22m[90m 31[2mms[22m[39m
+node.exe : [90mstderr[2m | tests/services/task-planner.test.ts[2m > [22m[2mTaskPlanner[2m > [22m[2msynthesizeFa
+llbackPlan — malformed responses[2m > [22m[2mfalls back when plan_task arguments are invalid JSON
+所在位置 行:1 字符: 1
++ & "C:\Program Files\nodejs/node.exe" "C:\Users\ligua\AppData\Roaming\ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([90mstderr[2m...re invalid JSON:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[22m[39m[planner] Failed to parse plan arguments: { this is not valid json }
+
+[90mstderr[2m | tests/services/task-planner.test.ts[2m > [22m[2mTaskPlanner[2m > [22m[2mplanning trace[2m > [
+22m[2mdoes NOT throw when trace write fails
+[22m[39m[planner] Failed to write planning trace: Error: DB down
+    at [90mC:\Users\ligua\WorkBuddy\backend_real\[39mtests\services\task-planner.test.ts:520:53
+    at [90mfile:///C:/Users/ligua/WorkBuddy/backend_real/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///C:/Users/ligua/WorkBuddy/backend_real/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///C:/Users/ligua/WorkBuddy/backend_real/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///C:/Users/ligua/WorkBuddy/backend_real/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m
+    at runSuite [90m(file:///C:/Users/ligua/WorkBuddy/backend_real/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/ligua/WorkBuddy/backend_real/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///C:/Users/ligua/WorkBuddy/backend_real/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///C:/Users/ligua/WorkBuddy/backend_real/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+ [32m✓[39m tests/services/task-planner.test.ts [2m([22m[2m37 tests[22m[2m)[22m[90m 42[2mms[22m[39m
+[90mstderr[2m | tests/services/gating-integration.test.ts
+[22m[39m[CFG-SEC] WARNING: JWT_SECRET is not set or too short (<32 chars). Using insecure fallback. DO NOT use in pro
+duction.
+
+[90mstderr[2m | tests/services/tool-guardrail.test.ts[2m > [22m[2mToolGuardrail[2m > [22m[2mTA-003.1: http_requ
+est rejects missing url parameter
+[22m[39m[CFG-SEC] WARNING: JWT_SECRET is not set or too short (<32 chars). Using insecure fallback. DO NOT use in pro
+duction.
+
+ [32m✓[39m tests/services/phase5/storage-backend.test.ts [2m([22m[2m14 tests[22m[2m)[22m[90m 87[2mms[22m[39m
+ [32m✓[39m tests/services/tool-guardrail.test.ts [2m([22m[2m21 tests[22m[2m)[22m[33m 541[2mms[22m[39m
+   [33m[2m✓[22m[39m ToolGuardrail[2m > [22mTA-003.1: http_request rejects missing url parameter [33m519[2mms[22m[39m
+[90mstderr[2m | tests/middleware/rate-limit.test.ts
+[22m[39m[CFG-SEC] WARNING: JWT_SECRET is not set or too short (<32 chars). Using insecure fallback. DO NOT use in pro
+duction.
+
+[90mstderr[2m | tests/db/feedback-event-repo.test.ts
+[22m[39m[CFG-SEC] WARNING: JWT_SECRET is not set or too short (<32 chars). Using insecure fallback. DO NOT use in pro
+duction.
+
+ [32m✓[39m tests/services/smoke.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m tests/unit/operation-auth.test.ts [2m([22m[2m21 tests[22m[2m)[22m[90m 14[2mms[22m[39m
+[90mstderr[2m | tests/services/memory-store.test.ts
+[22m[39m[CFG-SEC] WARNING: JWT_SECRET is not set or too short (<32 chars). Using insecure fallback. DO NOT use in pro
+duction.
+
+[90mstderr[2m | tests/services/phase5/ttl-eviction.test.ts
+[22m[39m[CFG-SEC] WARNING: JWT_SECRET is not set or too short (<32 chars). Using insecure fallback. DO NOT use in pro
+duction.
+
+[90mstderr[2m | tests/unit/permission-manager.test.ts
+[22m[39m[CFG-SEC] WARNING: JWT_SECRET is not set or too short (<32 chars). Using insecure fallback. DO NOT use in pro
+duction.
+
+ [32m✓[39m tests/middleware/jwt.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 192[2mms[22m[39m
+ [32m✓[39m tests/unit/permission-manager.test.ts [2m([22m[2m18 tests[22m[2m)[22m[90m 11[2mms[22m[39m
+ [32m✓[39m tests/services/phase5/ttl-eviction.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 102[2mms[22m[39m
+[90mstderr[2m | tests/middleware/rate-limit.test.ts[2m > [22m[2mrateLimitMiddleware — config kill switch[2m > [2
+2m[2mpasses through when RATE_LIMIT_ENABLED != 'true'
+[22m[39m[CFG-SEC] WARNING: JWT_SECRET is not set or too short (<32 chars). Using insecure fallback. DO NOT use in pro
+duction.
+
+[90mstderr[2m | tests/services/phase5/local-archive-store.test.ts
+[22m[39m[CFG-SEC] WARNING: JWT_SECRET is not set or too short (<32 chars). Using insecure fallback. DO NOT use in pro
+duction.
+
+ [32m✓[39m tests/middleware/rate-limit.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 472[2mms[22m[39m
+ [32m✓[39m tests/services/gating-integration.test.ts [2m([22m[2m19 tests[22m[2m)[22m[90m 16[2mms[22m[39m
+ [32m✓[39m tests/services/phase5/local-archive-store.test.ts [2m([22m[2m23 tests[22m[2m)[22m[90m 137[2mms[22m[39m
+[90mstdout[2m | tests/services/memory-store.test.ts[2m > [22m[2mP4.1 relaxed positive gate — new condition: positiveCount >= 3 && fastPositiveRate > 0.5[2m > [22m[2mdoes NOT create positive memory when positiveCount < 3 (2/3 scenario)
+[22m[39mSlow query (404ms): SELECT decision_id, signal_level
+       FROM feedback_events
+       WHERE user_i
+
+[90mstdout[2m | tests/services/memory-store.test.ts[2m > [22m[2mP4.2 execution signal samples contribute to eligibility threshold (effectiveFastSampleCount)[2m > [22m[2mP4.1 regression: 3 explicit positives still creates positive memory (execution signal layer transparent)
+[22m[39mSlow query (255ms): SELECT decision_id, signal_level
+       FROM feedback_events
+       WHERE user_i
+
+ [32m✓[39m tests/services/memory-store.test.ts [2m([22m[2m33 tests[22m[2m)[22m[33m 707[2mms[22m[39m
+   [33m[2m✓[22m[39m P4.1 relaxed positive gate — new condition: positiveCount >= 3 && fastPositiveRate > 0.5[2m > [22mdoes NOT create positive memory when positiveCount < 3 (2/3 scenario) [33m408[2mms[22m[39m
+ [32m✓[39m tests/db/feedback-event-repo.test.ts [2m([22m[2m33 tests[22m[2m)[22m[33m 9722[2mms[22m[39m
+   [33m[2m✓[22m[39m FeedbackEventRepo.save — row writes[2m > [22mauto-generates a UUID id on insert [33m439[2mms[22m[39m
+   [33m[2m✓[22m[39m FeedbackEventRepo.save — row writes[2m > [22mfollow_up_doubt → signal_level=2 [33m420[2mms[22m[39m
+   [33m[2m✓[22m[39m FeedbackEventRepo.save — row writes[2m > [22maccepted → signal_level=1 [33m611[2mms[22m[39m
+   [33m[2m✓[22m[39m FeedbackEventRepo.save — row writes[2m > [22mfollow_up_thanks → source=auto_detect [33m385[2mms[22m[39m
+   [33m[2m✓[22m[39m FeedbackEventRepo.save — row writes[2m > [22mcan write multiple events for different decisions without conflict [33m353[2mms[22m[39m
+   [33m[2m✓[22m[39m FeedbackEventRepo.getByDecisionIds — batch retrieval[2m > [22mreturns empty Map when no events exist for the given decision IDs [33m350[2mms[22m[39m
+   [33m[2m✓[22m[39m FeedbackEventRepo.getByDecisionIds — batch retrieval[2m > [22mmultiple events for same decision_id: lowest signal_level (most trustworthy) wins [33m505[2mms[22m[39m
+   [33m[2m✓[22m[39m FeedbackEventRepo.getByDecisionIds — batch retrieval[2m > [22mhandles 50+ decision IDs in a single call [33m379[2mms[22m[39m
+[90mstdout[2m | tests/benchmark/phase4-benchmark.test.ts[2m > [22m[2mPhase 4 — Benchmark: DataClassifier[2m > [22m[2mclassify — 1000 iterations across 6 cases
+[22m[39m[DataClassifier.classify] n=1000 | mean=0.00ms median=0.00ms p95=0.01ms p99=0.03ms
+
+[90mstdout[2m | tests/benchmark/phase4-benchmark.test.ts[2m > [22m[2mPhase 4 — Benchmark: DataClassifier[2m > [22m[2mclassify — PII-heavy content
+[22m[39m[DataClassifier.classify PII] mean=0.00ms p95=0.00ms
+
+[90mstdout[2m | tests/benchmark/phase4-benchmark.test.ts[2m > [22m[2mPhase 4 — Benchmark: RedactionEngine[2m > [22m[2mredact — 1000 iterations across 7 cases
+[22m[39m[RedactionEngine.redact] n=1000 | mean=2.17ms p95=12.46ms | throughput=330.6 KB/s
+
+[90mstdout[2m | tests/benchmark/phase4-benchmark.test.ts[2m > [22m[2mPhase 4 — Benchmark: RedactionEngine[2m > [22m[2mredact — large content only
+[22m[39m[RedactionEngine.redact large] mean=10.68ms p95=12.09ms
+
+[90mstdout[2m | tests/benchmark/phase4-benchmark.test.ts[2m > [22m[2mPhase 4 — Benchmark: SmallModelGuard[2m > [22m[2mcheck — 1000 iterations across 6 cases
+[22m[39m[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard Audit] Rule: SQL 注入检测, Type: malicious_instruction, Session: undefined
+[SmallModelGuard Audit] Rule: 提示注入检测, Type: prompt_injection, Session: undefined
+[SmallModelGuard Audit] Rule: 敏感数据关键词检测, Type: data_leakage, Session: undefined
+[SmallModelGuard.check] n=1000 | mean=0.04ms median=0.01ms p95=0.22ms p99=0.39ms
+
+[90mstdout[2m | tests/benchmark/phase4-benchmark.test.ts[2m > [22m[2mPhase 4 — Benchmark: SmallModelGuard[2m > [22m[2mcheck — jailbreak worst-case
+[22m[39m[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard Audit] Rule: 越狱尝试检测, Type: jailbreak, Session: undefined
+[SmallModelGuard.check jailbreak] mean=0.01ms p95=0.01ms
+
+[90mstdout[2m | tests/benchmark/phase4-benchmark.test.ts[2m > [22m[2mPhase 4 — Benchmark: Full Pipeline (Classifier → Guard → Redaction)[2m > [22m[2mpipeline — normal request
+[22m[39m[Full Pipeline normal] n=1000 | mean=0.00ms median=0.00ms p95=0.00ms p99=0.00ms
+
+[90mstdout[2m | tests/benchmark/phase4-benchmark.test.ts[2m > [22m[2mPhase 4 — Benchmark: Full Pipeline (Classifier → Guard → Redaction)[2m > [22m[2mpipeline — PII request (LOCAL_ONLY)
+[22m[39m[Full Pipeline PII] n=1000 | mean=0.00ms p95=0.00ms
+
+ [32m✓[39m tests/benchmark/phase4-benchmark.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 12991[2mms[22m[39m
+   [33m[2m✓[22m[39m Phase 4 — Benchmark: RedactionEngine[2m > [22mredact — 1000 iterations across 7 cases [33m2190[2mms[22m[39m
+   [33m[2m✓[22m[39m Phase 4 — Benchmark: RedactionEngine[2m > [22mredact — large content only [33m10687[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯[1m[7m Failed Suites 1 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[31m[1m[7m FAIL [27m[22m[39m tests/services/orchestrator.test.ts[2m > [22morchestrator (module)
+[31m[1mError[22m: Failed to load url ../../src/services/orchestrator.js (resolved id: ../../src/services/orchestrato
+r.js) in C:/Users/ligua/WorkBuddy/backend_real/tests/services/orchestrator.test.ts. Does the file exist?[39m
+[90m [2m❯[22m loadAndTransform node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:[2m51969:17[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m26 passed[39m[22m[90m (27)[39m
+[2m      Tests [22m [1m[32m570 passed[39m[22m[2m | [22m[33m38 skipped[39m[90m (608)[39m
+[2m   Start at [22m 11:12:46
+[2m   Duration [22m 14.10s[2m (transform 5.00s, setup 0ms, collect 11.99s, tests 25.44s, environment 10ms, prepare 6.36s)[22m
+

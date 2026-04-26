@@ -312,3 +312,91 @@ export async function fetchDelegationStats(userId: string): Promise<DelegationSt
   if (!res.ok) throw new Error(`加载委托统计失败 (${res.status})`);
   return res.json();
 }
+
+// ── Sprint 66: Permissions & Workspaces ──────────────────────────────────────
+
+export interface PermissionRequest {
+  id: string;
+  task_id: string;
+  worker_id: string;
+  user_id: string;
+  session_id: string;
+  field_name: string;
+  field_key: string;
+  purpose: string;
+  value_preview?: string;
+  status: "pending" | "approved" | "denied" | "expired";
+  expires_in: number;
+  approved_scope?: string;
+  created_at: string;
+  resolved_at?: string;
+  resolved_by?: string;
+}
+
+export interface TaskWorkspace {
+  id: string;
+  task_id: string;
+  user_id: string;
+  session_id: string;
+  objective: string;
+  constraints: string[];
+  shared_outputs: Record<string, unknown>;
+  access_log: any[];
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchPendingPermissions(userId: string): Promise<{ requests: PermissionRequest[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/permissions/pending`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载待审批权限失败 (${res.status})`);
+  return res.json();
+}
+
+export async function fetchPermissionsByTask(taskId: string, userId: string): Promise<{ requests: PermissionRequest[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/permissions/task/${encodeURIComponent(taskId)}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载任务权限失败 (${res.status})`);
+  return res.json();
+}
+
+export async function approvePermission(id: string, userId: string, approvedScope?: string): Promise<void> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/permissions/${encodeURIComponent(id)}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+    body: JSON.stringify({ approved_scope: approvedScope }),
+  });
+  if (!res.ok) throw new Error(`授权失败 (${res.status})`);
+}
+
+export async function denyPermission(id: string, userId: string): Promise<void> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/permissions/${encodeURIComponent(id)}/deny`, {
+    method: "POST",
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`拒绝失败 (${res.status})`);
+}
+
+export async function fetchActiveWorkspaces(userId: string): Promise<{ workspaces: TaskWorkspace[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/workspaces`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载工作区失败 (${res.status})`);
+  return res.json();
+}
+
+export async function fetchWorkspaceByTask(taskId: string, userId: string): Promise<{ workspace: TaskWorkspace | null }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/workspaces/${encodeURIComponent(taskId)}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载工作区详情失败 (${res.status})`);
+  return res.json();
+}

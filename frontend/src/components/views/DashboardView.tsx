@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
-import { getDashboard, getGrowth, fetchCostStats } from "@/lib/api";
-import type { CostStats } from "@/lib/api";
+import { getDashboard, getGrowth, fetchCostStats, fetchPendingPermissions, fetchActiveWorkspaces } from "@/lib/api";
+import type { CostStats, PermissionRequest, TaskWorkspace } from "@/lib/api";
 
 interface DashboardData {
   total_chats: number;
@@ -55,12 +55,15 @@ function SkeletonCard() {
 
 interface DashboardViewProps {
   userId: string;
+  onNavChange?: (view: string) => void;
 }
 
-export default function DashboardView({ userId }: DashboardViewProps) {
+export default function DashboardView({ userId, onNavChange }: DashboardViewProps) {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [growth, setGrowth] = useState<GrowthData | null>(null);
   const [costStats, setCostStats] = useState<CostStats | null>(null);
+  const [pendingPerms, setPendingPerms] = useState<PermissionRequest[]>([]);
+  const [activeWs, setActiveWs] = useState<TaskWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,11 +72,15 @@ export default function DashboardView({ userId }: DashboardViewProps) {
       getDashboard(userId),
       getGrowth(userId),
       fetchCostStats(userId),
+      fetchPendingPermissions(userId),
+      fetchActiveWorkspaces(userId),
     ])
-      .then(([dashResult, growthResult, costResult]) => {
+      .then(([dashResult, growthResult, costResult, permResult, wsResult]) => {
         if (dashResult.status === "fulfilled") setDashboard(dashResult.value);
         if (growthResult.status === "fulfilled") setGrowth(growthResult.value);
         if (costResult.status === "fulfilled") setCostStats(costResult.value);
+        if (permResult.status === "fulfilled") setPendingPerms(permResult.value.requests ?? []);
+        if (wsResult.status === "fulfilled") setActiveWs(wsResult.value.workspaces ?? []);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -82,11 +89,13 @@ export default function DashboardView({ userId }: DashboardViewProps) {
   const reload = () => {
     setLoading(true);
     setError(null);
-    Promise.allSettled([getDashboard(userId), getGrowth(userId), fetchCostStats(userId)])
-      .then(([dashResult, growthResult, costResult]) => {
+    Promise.allSettled([getDashboard(userId), getGrowth(userId), fetchCostStats(userId), fetchPendingPermissions(userId), fetchActiveWorkspaces(userId)])
+      .then(([dashResult, growthResult, costResult, permResult, wsResult]) => {
         if (dashResult.status === "fulfilled") setDashboard(dashResult.value);
         if (growthResult.status === "fulfilled") setGrowth(growthResult.value);
         if (costResult.status === "fulfilled") setCostStats(costResult.value);
+        if (permResult.status === "fulfilled") setPendingPerms(permResult.value.requests ?? []);
+        if (wsResult.status === "fulfilled") setActiveWs(wsResult.value.workspaces ?? []);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -311,6 +320,105 @@ export default function DashboardView({ userId }: DashboardViewProps) {
               {(!growth || (growth.milestones?.length === 0 && growth.recent_learnings?.length === 0)) && (
                 <div className="text-xs text-center py-4" style={{ color: "var(--text-muted)" }}>
                   暂无成长记录
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        {/* Security Card */}
+        <div className="rounded-xl p-4 mt-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>🔐 安全中心</div>
+              {pendingPerms.length > 0 && (
+                <span
+                  className="text-[9px] px-2 py-0.5 rounded-full font-bold"
+                  style={{ backgroundColor: "#f59e0b", color: "white" }}
+                >
+                  {pendingPerms.length} 待审
+                </span>
+              )}
+            </div>
+            {onNavChange && (
+              <button
+                onClick={() => onNavChange("permissions")}
+                className="text-[10px] underline"
+                style={{ color: "var(--text-muted)" }}
+              >
+                查看全部
+              </button>
+            )}
+          </div>
+
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2].map((i) => <div key={i} className="h-3 rounded animate-pulse" style={{ backgroundColor: "var(--border-subtle)" }} />)}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {/* Pending permissions */}
+              <div
+                className="rounded-lg p-3 cursor-pointer"
+                style={{
+                  backgroundColor: pendingPerms.length > 0 ? "rgba(245,158,11,0.08)" : "var(--bg-elevated)",
+                  border: pendingPerms.length > 0 ? "1px solid rgba(245,158,11,0.3)" : "1px solid transparent",
+                }}
+                onClick={() => onNavChange?.("permissions")}
+              >
+                <div
+                  className="text-2xl font-bold"
+                  style={{ color: pendingPerms.length > 0 ? "#f59e0b" : "var(--text-secondary)" }}
+                >
+                  {pendingPerms.length}
+                </div>
+                <div className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>待审批权限请求</div>
+              </div>
+
+              {/* Active workspaces */}
+              <div
+                className="rounded-lg p-3 cursor-pointer"
+                style={{ backgroundColor: "var(--bg-elevated)" }}
+                onClick={() => onNavChange?.("permissions")}
+              >
+                <div className="text-2xl font-bold" style={{ color: "var(--accent-blue)" }}>
+                  {activeWs.length}
+                </div>
+                <div className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>活跃任务工作区</div>
+              </div>
+            </div>
+          )}
+
+          {/* Pending requests preview */}
+          {!loading && pendingPerms.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                待审批
+              </div>
+              {pendingPerms.slice(0, 2).map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2"
+                  style={{ backgroundColor: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}
+                >
+                  <span className="text-xs flex-shrink-0">🔑</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>
+                      {r.field_name}
+                    </div>
+                    <div className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>
+                      {r.purpose}
+                    </div>
+                  </div>
+                  <span className="text-[10px] flex-shrink-0" style={{ color: "#f59e0b" }}>待审</span>
+                </div>
+              ))}
+              {pendingPerms.length > 2 && (
+                <div
+                  className="text-[10px] text-center cursor-pointer underline"
+                  style={{ color: "var(--text-muted)" }}
+                  onClick={() => onNavChange?.("permissions")}
+                >
+                  还有 {pendingPerms.length - 2} 条…
                 </div>
               )}
             </div>
