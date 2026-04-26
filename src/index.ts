@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { config } from "./config.js";
+import { query } from "./db/connection.js";
 import { identityMiddleware } from "./middleware/identity.js";
 import { rateLimitMiddleware } from "./middleware/rate-limit.js";
 import { chatRouter } from "./api/chat.js";
@@ -54,6 +55,26 @@ console.log(`
 ║     Port: ${config.port}                          ║
 ╚══════════════════════════════════════════╝
 `);
+
+// Sprint 69: Block startup if DB is unreachable — fail fast with a clear message
+const authUsers = process.env.AUTH_USERS;
+const authHint = authUsers
+  ? `  → Auth: ${authUsers.split(",").length} user(s) loaded`
+  : "  → Auth: using dev fallback (admin:changeme) ⚠  set AUTH_USERS for production";
+
+try {
+  const start = Date.now();
+  await query("SELECT 1");
+  const latency = Date.now() - start;
+  console.log(`  ✅ Database connected (${latency}ms)\n${authHint}\n`);
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error(`  ❌ Database FAILED to connect: ${msg}`);
+  console.error(`\n  → Is PostgreSQL running on ${config.databaseUrl}?`);
+  console.error(`  → Start via Docker: docker run -d -p 5432:5432 \\`);
+  console.error(`    -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=smartrouter postgres:16-alpine\n`);
+  process.exit(1);
+}
 
 serve({ fetch: app.fetch, port: config.port });
 

@@ -15,6 +15,36 @@ import { config } from "../config.js";
 
 const authRouter = new Hono();
 
+/**
+ * GET /auth/status — public endpoint for diagnosing login issues.
+ * Shows whether AUTH_USERS is configured, which users exist, and a hint.
+ */
+authRouter.get("/status", (c) => {
+  const raw = process.env.AUTH_USERS;
+  const isDevFallback = !raw;
+
+  if (isDevFallback) {
+    return c.json({
+      configured: false,
+      mode: "dev-fallback",
+      users: ["admin"],
+      hint: "AUTH_USERS not set. Using insecure dev default (admin:changeme). Set AUTH_USERS env var for production.",
+    });
+  }
+
+  const users = raw!
+    .split(",")
+    .map((e) => e.trim().split(":")[0])
+    .filter(Boolean);
+
+  return c.json({
+    configured: true,
+    mode: "production",
+    users,
+    hint: `Found ${users.length} user(s). Use POST /auth/token with { username, password } to obtain a JWT.`,
+  });
+});
+
 const isProduction = process.env.NODE_ENV === "production";
 
 // In-memory user store parsed from AUTH_USERS env var
@@ -82,13 +112,18 @@ authRouter.post("/token", async (c) => {
     return c.json({ error: "Invalid credentials" }, 401);
   }
 
-  const token = await signToken(username);
-
-  return c.json({
-    token,
-    expires_in: TOKEN_EXPIRY_SECONDS,
-    token_type: "Bearer",
-  });
+  try {
+    const token = await signToken(username);
+    return c.json({
+      token,
+      expires_in: TOKEN_EXPIRY_SECONDS,
+      token_type: "Bearer",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[AUTH] signToken failed:", msg, err);
+    return c.json({ error: "Token generation failed", detail: msg }, 500);
+  }
 });
 
 export { authRouter };
