@@ -37,6 +37,9 @@ import { routeWithManagerDecision } from "../services/llm-native-router.js";
 import { DelegationArchiveRepo } from "../db/repositories.js";
 // Sprint 63: 跨会话上下文
 import { buildCrossSessionContext } from "../services/cross-session-context.js";
+// Sprint 65: Permission 对话流 + Operation Auth Matrix
+import { handlePermissionResponseMessage } from "../services/permission-manager.js";
+import { validateWithAuthMatrix } from "../services/operation-auth-matrix.js";
 
 const chatRouter = new Hono();
 
@@ -109,6 +112,25 @@ chatRouter.post("/chat", async (c) => {
   const reqApiKey = body.api_key || undefined;
   const effectiveFastModel = body.fast_model || config.fastModel;
   const effectiveSlowModel = body.slow_model || config.slowModel;
+
+  // ── Sprint 65: 权限响应检测（优先于路由，直接处理授权指令）─────────────────
+  // 检测用户消息是否是"允许 xxx" / "拒绝 xxx" 格式，如果是，直接处理授权并返回
+  try {
+    const permResult = await handlePermissionResponseMessage(body.message ?? "", userId);
+    if (permResult.handled) {
+      return c.json({
+        content: permResult.reply,
+        model: "manager",
+        routing_layer: "L0",
+        decision_type: "direct_answer",
+        session_id: sessionId,
+        permission_handled: true,
+      } satisfies Record<string, unknown>);
+    }
+  } catch (permErr: any) {
+    console.warn("[chat] permission response handling error:", permErr.message);
+    // 不阻断主流程，继续正常处理
+  }
 
   try {
     const { features } = await analyzeAndRoute(

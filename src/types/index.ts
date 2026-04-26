@@ -2074,6 +2074,15 @@ export interface PromptTemplateContent {
     fast: string[];
     slow: string[];
   };
+  /** Sprint 65: 信息安全规则（Fast 守门人 PII 管控） */
+  security_and_permissions?: {
+    blocked?: string[];
+    important?: string[];
+    necessary?: string[];
+    principle?: string;
+  };
+  /** Sprint 65: Worker 委托规则 */
+  worker_delegation?: string[];
   /** Hook 钩子映射 */
   hooks?: Record<string, string>;
   /** 变量定义 */

@@ -11,11 +11,14 @@
 
 // ── 数据权限 ────────────────────────────────────────────────────────────────
 
+/** Worker 数据项的权限级别 */
+export type WorkerDataPermission = "ALLOW" | "IMPORTANT" | "BLOCK";
+
 /** 传递给 Worker 的单个数据项 */
 export interface WorkerDataItem {
   key: string;
   value: unknown;
-  permission: "ALLOW" | "IMPORTANT" | "BLOCK";
+  permission: WorkerDataPermission;
   reason: string;
 }
 

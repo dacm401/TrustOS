@@ -1861,6 +1861,14 @@ export const PermissionRequestRepo = {
        WHERE status='pending' AND created_at < NOW() - INTERVAL '5 minutes'`
     );
   },
+
+  async getById(id: string): Promise<PermissionRequestRecord | null> {
+    const result = await query(
+      `SELECT * FROM permission_requests WHERE id=$1 LIMIT 1`,
+      [id]
+    );
+    return result.rows.length > 0 ? (result.rows[0] as PermissionRequestRecord) : null;
+  },
 };
 
 // ── TaskWorkspaceRepo ──────────────────────────────────────────────────────

@@ -220,15 +220,92 @@ export async function resolvePermission(decision: PermissionDecision): Promise<{
       decision.resolvedBy,
       decision.approvedScope
     );
-    // 找到 request 记录发 scoped token
-    const [req] = await PermissionRequestRepo.getByTask(decision.requestId).then(
-      () => [] // 不用 getByTask，这里用 getPending 就够；实际要用 getById
-    );
-    // NOTE: 真实场景 getById 最合适，但 Sprint 64 简化用 pending 列表不重复请求
+    // Sprint 65: 获取 request 详情并颁发 scoped token
+    const req = await PermissionRequestRepo.getById(decision.requestId);
+    if (req) {
+      const token = await issueScopedToken({
+        taskId: req.task_id,
+        workerId: req.worker_id,
+        userId: req.user_id,
+        scope: decision.approvedScope ? [decision.approvedScope] : [req.field_key],
+        expiresInSeconds: req.expires_in,
+      });
+      return { scopedToken: token };
+    }
     return {};
   } else {
     await PermissionRequestRepo.deny(decision.requestId, decision.resolvedBy);
     return {};
+  }
+}
+
+// ── 对话式权限响应解析 ────────────────────────────────────────────────────────
+
+export interface PermissionResponseParsed {
+  approved: boolean;
+  /** request ID 的前 8 位（用于匹配） */
+  requestIdPrefix: string;
+}
+
+/**
+ * 检测用户消息是否是权限确认/拒绝回复。
+ * 格式："允许 abc12345" 或 "拒绝 abc12345"（不区分大小写）
+ */
+export function parsePermissionResponse(message: string): PermissionResponseParsed | null {
+  const approveMatch = message.trim().match(/^(允许|approve|yes|同意)\s+([a-f0-9\-]{8,36})/i);
+  if (approveMatch) {
+    return { approved: true, requestIdPrefix: approveMatch[2].toLowerCase() };
+  }
+
+  const denyMatch = message.trim().match(/^(拒绝|deny|no|不允许|不同意)\s+([a-f0-9\-]{8,36})/i);
+  if (denyMatch) {
+    return { approved: false, requestIdPrefix: denyMatch[2].toLowerCase() };
+  }
+
+  return null;
+}
+
+/**
+ * 根据用户消息中的 requestIdPrefix 找到对应的 pending request，执行批准/拒绝。
+ * 返回给用户的确认文本。
+ */
+export async function handlePermissionResponseMessage(
+  message: string,
+  userId: string
+): Promise<{ handled: boolean; reply: string }> {
+  const parsed = parsePermissionResponse(message);
+  if (!parsed) return { handled: false, reply: "" };
+
+  // 找到该用户所有 pending requests
+  const pending = await PermissionRequestRepo.getPending(userId);
+  const matched = pending.find((r) =>
+    r.id.toLowerCase().startsWith(parsed.requestIdPrefix.toLowerCase())
+  );
+
+  if (!matched) {
+    return {
+      handled: true,
+      reply: `⚠️ 未找到对应的权限请求（ID 前缀：${parsed.requestIdPrefix}），可能已超时或不存在。`,
+    };
+  }
+
+  const result = await resolvePermission({
+    requestId: matched.id,
+    approved: parsed.approved,
+    resolvedBy: userId,
+    approvedScope: matched.field_key,
+  });
+
+  if (parsed.approved) {
+    return {
+      handled: true,
+      reply: `✅ 已授权 **${matched.field_name}** 供 Worker 使用。任务将继续执行。${result.scopedToken ? `（令牌已颁发，有效期 ${matched.expires_in}s）` : ""}`,
+    };
+  } else {
+    return {
+      handled: true,
+      reply: `🚫 已拒绝授权 **${matched.field_name}**，Worker 将在不使用该信息的情况下继续尝试。`,
+    };
   }
 }
 
