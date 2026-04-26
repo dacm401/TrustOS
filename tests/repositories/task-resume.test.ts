@@ -12,13 +12,14 @@
  * Infrastructure: tests/db/harness.ts → createTestTask()
  */
 import { TaskRepo } from "../../src/db/repositories.js";
-import { truncateTables, createTestTask } from "../db/harness.js";
+import {
+  truncateTables,
+  createTestTask,
+  withTestUser,
+} from "../db/harness.js";
 
 const USER_A = "task-resume-test-user-a";
 const USER_B = "task-resume-test-user-b";
-
-// withTestUser: thin wrapper for user-scoped tests (userId is arbitrary string, no FK needed)
-const withTestUser = async (fn: (id: string) => Promise<void>) => fn(USER_A);
 
 beforeEach(async () => {
   await truncateTables();

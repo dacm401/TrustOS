@@ -432,5 +432,149 @@ CREATE INDEX IF NOT EXISTS idx_dl_g3_final      ON delegation_logs(g3_final_acti
 
 COMMIT;
 
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Sprint 62 — Prompt Template System (Migration 014)
+-- ══════════════════════════════════════════════════════════════════════════════
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS prompt_templates (
+  id          VARCHAR(36) PRIMARY KEY,
+  name        VARCHAR(100) NOT NULL,
+  description TEXT DEFAULT '',
+  version     INTEGER NOT NULL DEFAULT 1,
+  content     TEXT NOT NULL,
+  scope       VARCHAR(20) NOT NULL DEFAULT 'global',
+  is_active   BOOLEAN NOT NULL DEFAULT FALSE,
+  created_by  VARCHAR(64) DEFAULT 'system',
+  tags        TEXT[] DEFAULT '{}',
+  metadata    JSONB DEFAULT '{}',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pt_active ON prompt_templates(is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_pt_scope  ON prompt_templates(scope);
+CREATE INDEX IF NOT EXISTS idx_pt_name   ON prompt_templates(name);
+
+COMMIT;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Sprint 63 — Memory / Cross-Session Context (Migration 015)
+-- ══════════════════════════════════════════════════════════════════════════════
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS session_summaries (
+  id              VARCHAR(36) PRIMARY KEY,
+  session_id      VARCHAR(64) NOT NULL UNIQUE,
+  user_id         VARCHAR(64) NOT NULL,
+  topic           TEXT,
+  topic_keywords  TEXT[] DEFAULT '{}',
+  summary_text    TEXT,
+  key_facts       TEXT[] DEFAULT '{}',
+  decisions_made  TEXT[] DEFAULT '{}',
+  open_questions  TEXT[] DEFAULT '{}',
+  preferences     TEXT[] DEFAULT '{}',
+  turn_count      INTEGER DEFAULT 0,
+  fast_count      INTEGER DEFAULT 0,
+  slow_count      INTEGER DEFAULT 0,
+  generated_by    VARCHAR(20) DEFAULT 'auto',
+  model_used      VARCHAR(100),
+  version         INTEGER DEFAULT 1,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ss_user_time  ON session_summaries(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ss_session    ON session_summaries(session_id);
+CREATE INDEX IF NOT EXISTS idx_ss_topic      ON session_summaries USING GIN (topic_keywords);
+
+-- sessions 表扩展字段
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS active_topic TEXT;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_topic_updated TIMESTAMPTZ;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS turn_count INTEGER DEFAULT 0;
+
+COMMIT;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Sprint 63 — Delegation Logs Success Fields (Migration 013)
+-- ══════════════════════════════════════════════════════════════════════════════
+BEGIN;
+
+ALTER TABLE delegation_logs ADD COLUMN IF NOT EXISTS routing_success BOOLEAN;
+ALTER TABLE delegation_logs ADD COLUMN IF NOT EXISTS value_success VARCHAR(20)
+  CHECK (value_success IS NULL OR value_success IN ('better', 'same', 'worse'));
+ALTER TABLE delegation_logs ADD COLUMN IF NOT EXISTS user_success BOOLEAN;
+
+CREATE INDEX IF NOT EXISTS idx_dl_routing_success ON delegation_logs(routing_success, created_at DESC)
+  WHERE routing_success IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_dl_value_success   ON delegation_logs(value_success, created_at DESC)
+  WHERE value_success IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_dl_user_success     ON delegation_logs(user_success, created_at DESC)
+  WHERE user_success IS NOT NULL;
+
+COMMIT;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Sprint 64 — Permission-Gated Worker Architecture (Migration 016)
+-- ══════════════════════════════════════════════════════════════════════════════
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS permission_requests (
+  id              VARCHAR(64)  PRIMARY KEY,
+  task_id         VARCHAR(64)  NOT NULL,
+  worker_id       VARCHAR(64)  NOT NULL,
+  user_id         VARCHAR(64)  NOT NULL,
+  session_id      VARCHAR(64)  NOT NULL,
+  field_name      VARCHAR(128) NOT NULL,
+  field_key       VARCHAR(128) NOT NULL,
+  purpose         TEXT         NOT NULL,
+  value_preview   VARCHAR(256),
+  status          VARCHAR(20)  NOT NULL DEFAULT 'pending',
+  expires_in      INTEGER      NOT NULL DEFAULT 300,
+  approved_scope  VARCHAR(256),
+  created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  resolved_at     TIMESTAMPTZ,
+  resolved_by     VARCHAR(64)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pr_user_pending ON permission_requests(user_id, status) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_pr_task         ON permission_requests(task_id);
+CREATE INDEX IF NOT EXISTS idx_pr_session      ON permission_requests(session_id);
+
+CREATE TABLE IF NOT EXISTS task_workspaces (
+  id            VARCHAR(64)  PRIMARY KEY,
+  task_id       VARCHAR(64)  NOT NULL UNIQUE,
+  user_id       VARCHAR(64)  NOT NULL,
+  session_id    VARCHAR(64)  NOT NULL,
+  objective     TEXT         NOT NULL,
+  constraints   TEXT[]      NOT NULL DEFAULT '{}',
+  shared_outputs JSONB       NOT NULL DEFAULT '{}',
+  access_log    JSONB       NOT NULL DEFAULT '[]',
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tw_task ON task_workspaces(task_id);
+CREATE INDEX IF NOT EXISTS idx_tw_user ON task_workspaces(user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS scoped_tokens (
+  id           VARCHAR(64)  PRIMARY KEY,
+  token        VARCHAR(128) NOT NULL UNIQUE,
+  task_id      VARCHAR(64)  NOT NULL,
+  worker_id    VARCHAR(64)  NOT NULL,
+  user_id      VARCHAR(64)  NOT NULL,
+  scope        TEXT[]       NOT NULL,
+  expires_at   TIMESTAMPTZ  NOT NULL,
+  created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_st_token   ON scoped_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_st_task    ON scoped_tokens(task_id);
+CREATE INDEX IF NOT EXISTS idx_st_expires ON scoped_tokens(expires_at) WHERE expires_at > NOW();
+
+COMMIT;
+
+
+
 
 

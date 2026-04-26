@@ -131,22 +131,28 @@ export async function truncateTables(): Promise<void> {
   try {
     const client = await pool.connect();
     try {
-      // TRUNCATE in reverse FK-dependency order; CASCADE handles children
-      await client.query(`
-        TRUNCATE TABLE
-          feedback_events,
-          execution_results,
-          task_traces,
-          task_summaries,
-          tasks,
-          memory_entries,
-          behavioral_memories,
-          growth_milestones,
-          sessions,
-          identity_memories,
-          decision_logs
-        CASCADE;
-      `);
+      // Dynamically discover which tables exist in the current schema.
+      // This avoids "relation does not exist" when migration tables
+      // (prompt_templates / session_summaries / permission_requests / etc.)
+      // are not yet present in the test DB.
+      const ALL_TABLES = [
+        "feedback_events", "execution_results", "task_traces", "task_summaries",
+        "tasks", "memory_entries", "behavioral_memories", "growth_milestones",
+        "sessions", "identity_memories", "decision_logs",
+        "prompt_templates", "session_summaries",
+        "permission_requests", "task_workspaces", "scoped_tokens",
+        "delegation_logs",
+      ];
+      const schemaRes = await client.query(
+        `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`
+      );
+      const existing = new Set(
+        (schemaRes.rows as Array<{ tablename: string }>).map((r) => r.tablename)
+      );
+      const toTruncate = ALL_TABLES.filter((t) => existing.has(t));
+      if (toTruncate.length === 0) return;
+
+      await client.query(`TRUNCATE TABLE ${toTruncate.join(", ")} CASCADE`);
       await client.query("COMMIT");
     } finally {
       client.release();
@@ -154,6 +160,22 @@ export async function truncateTables(): Promise<void> {
   } finally {
     await pool.end();
   }
+}
+
+/**
+ * Run fn(userId) with an explicit test user ID.
+ * userId is an arbitrary string — no FK dependency on sessions table.
+ * Convenience wrapper so callers don't need to inline the lambda every time.
+ *
+ * Usage:
+ *   const USER_A = "my-test-user-a";
+ *   await withTestUser(USER_A, async (userId) => { ... });
+ */
+export async function withTestUser(
+  userId: string,
+  fn: (userId: string) => Promise<void>
+): Promise<void> {
+  await fn(userId);
 }
 
 /**
