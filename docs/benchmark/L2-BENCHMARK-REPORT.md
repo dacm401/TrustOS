@@ -1,26 +1,26 @@
-# L2 Benchmark Report — Sprint 57/58/60
+# L2 Benchmark Report — Sprint 57/58/60/68（最终版）
 
-**日期**: 2026-04-25
-**执行人**: Sprint 57 (7B) → Sprint 58 (72B Run1) → Sprint 60 (72B Run2)
+**日期**: 2026-04-25 → 2026-04-26（Sprint 68 归档）
+**执行人**: Sprint 57 (7B) → Sprint 58 (72B Run1) → Sprint 60 (72B Run2) → Sprint 68（Feature Flag 上线）
 **目标**: 建立 LLM 路由在 Layer 2（复杂推理/多步任务）场景的真实基线，与离线规则 63.3% 对比
 
 ---
 
 ## 结论（一句话）
 
-> **Qwen2.5-72B-Instruct 72B 路由准确率 80.0%~83.3%（两次运行），比离线规则高 +16.7pp~+20.0pp，提升 26%~32%。LLM 路由方案在 L2 场景下明确优于规则。**
+> **Qwen2.5-72B-Instruct 路由准确率 80.0%~83.3%（两次运行），比离线规则高 +16.7pp~+20.0pp，提升 26%~32%。LLM 路由在 L2 场景明确优于规则，Phase 2.0 L2 Feature Flag 已上线（Sprint 68）。**
 
 ---
 
 ## 结果总览
 
-| Provider | Model | Mode准确率 | vs 规则基线 | 平均延迟 |
-|----------|-------|-----------|------------|---------|
+| Provider | Model | 准确率 | vs 规则基线 | 平均延迟 |
+|----------|-------|--------|------------|---------|
 | SiliconFlow | Qwen2.5-7B-Instruct | 40.0% (12/30) | -23.3pp | ~800ms |
 | **SiliconFlow** | **Qwen2.5-72B-Instruct** | **80.0~83.3%** (24~25/30) | **+16.7~+20pp** | **~8.7s** |
 | — | 离线规则基线 | 63.3% (19/30) | — | 0ms |
 
-**注**: 72B 两次运行有波动（80.0% / 83.3%），建议取 3 次均值作为最终数字。7B 数字偏低部分因为 prompt 含可选 JSON 字段导致模型输出乱码（Sprint 57 诊断修复后 72B 无此问题）。
+**注**: 72B 两次运行有波动（80.0% / 83.3%），建议取 3 次均值作为最终数字。7B 数字偏低因为 prompt 含可选 JSON 字段导致模型输出乱码（Sprint 57 诊断修复后 72B 无此问题）。
 
 ---
 
@@ -109,14 +109,29 @@
 
 ---
 
+## Sprint 68 Phase 2.0 L2 Feature Flag（已上线）
+
+| 配置项 | 值 | 说明 |
+|--------|-----|------|
+| `LAYER2_ENABLED` | `true`（默认） | Master kill switch |
+| `LAYER2_ROLLOUT` | `1.0`（默认） | 100% L2 委托流量 |
+| `delegation_logs.routing_layer` | 写入 | 显式路由层 L0/L1/L2/L3 |
+
+**降级机制**：若 `rollout < 1.0`，L2/L3 流量按概率降级为 L0 direct_answer，降级响应含 `routing_layer_degraded: true` 字段，可通过 delegation_logs 追踪。
+
+**监控索引**：`idx_dl_routing_layer`（按 Layer 统计）+ `idx_dl_layer2_success`（L2 专项监控）。
+
+---
+
 ## 下一步
 
-1. **Sprint 59** ✅: Layer 2 路由切换 72B + G1 冗余逻辑已清理
-2. **Cross-session prompt 优化**: prompt 增加"续写/继续"显式识别（需在 LLM 层而非 G2 层处理）
-3. **L1 benchmark**: 建 L1（简单 Q&A）benchmark，验证 Fast 模型是否过度代理到 slow
-4. **延迟优化**: 72B 平均 ~8s，首次冷启动可能 >15s，考虑预热或缓存
+1. **L2-C Router 微调**：delegation_logs 积累 500+ L2 条目后，分析 `value_success=false` case，调整 `delegate_to_slow` 阈值
+2. **Cross-session prompt 优化**：prompt 增加"续写/继续"显式识别（L2 Benchmark 显示 cross-session 是 LLM 弱点）
+3. **L1 benchmark**：建 L1（简单 Q&A）benchmark，验证 Fast 模型是否过度代理到 slow
+4. **延迟优化**：72B 平均 ~8s，首次冷启动可能 >15s，考虑预热或缓存
 
 ---
 
 *报告生成: benchmark-routing.cjs Sprint 58 Run 1 + Sprint 60 Run 2 运行结果*
+*Feature Flag: Sprint 68（Migration 017 + config.ts layer2）*
 *结果文件: results/layer2-benchmark-siliconflow-2026-04-25.json*

@@ -523,6 +523,8 @@ async function routeByGatedDecision(
     g3_final_action: gated.rerankResult ? gated.routedAction : undefined,
     routed_action: gated.routedAction,
     routing_reason: `Gated: ${gated.routedAction} (sys_conf=${gated.systemConfidence.toFixed(3)})`,
+    // Sprint 68: 显式路由层，用于分层监控和 L2 灰度分析
+    routing_layer: DECISION_TO_LAYER[gated.routedAction],
   }).catch((e) => console.warn("[delegation-log] write failed:", e.message));
 
   // Gated Delegation 日志（console.debug 级别，不阻塞主流程）
@@ -531,6 +533,7 @@ async function routeByGatedDecision(
     llmConfidenceHint: gated.llmConfidenceHint,
     systemConfidence: gated.systemConfidence.toFixed(3),
     routedAction: gated.routedAction,
+    routingLayer: DECISION_TO_LAYER[gated.routedAction],
     reranked: gated.rerankResult?.reranked ?? false,
     rerankReason: gated.rerankResult?.reason,
     policyOverrides: gated.policyOverrides.length,

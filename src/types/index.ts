@@ -742,6 +742,8 @@ export interface DelegationLog {
   // 最终路由决策
   routed_action: ManagerDecisionType;
   routing_reason?: string;
+  // Sprint 68: 显式路由层（L0/L1/L2/L3），用于分层监控和 L2 灰度分析
+  routing_layer?: RoutingLayer;
 
   // 执行结果（异步回写）
   execution_status?: "pending" | "success" | "failed" | "timeout";
@@ -784,6 +786,8 @@ export interface DelegationLogInput {
   g3_final_action?: ManagerDecisionType;
   routed_action: ManagerDecisionType;
   routing_reason?: string;
+  // Sprint 68: 显式路由层（L0/L1/L2/L3），用于分层监控和 L2 灰度分析
+  routing_layer?: RoutingLayer;
 
   // G4: 四层成功标准（异步回填，首次写入时为空）
   routing_success?: boolean;

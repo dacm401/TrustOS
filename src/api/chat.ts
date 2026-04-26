@@ -181,8 +181,24 @@ chatRouter.post("/chat", async (c) => {
           return c.json({ error: "Manager returned null decision" }, 500);
         }
 
-        const taskId = llmNativeResult.delegation?.task_id || uuid();
         const lang = features.language as "zh" | "en";
+
+        // Sprint 68: Phase 2.0 L2 Rollout — 按 config.layer2.rollout 比例降级 L2 委托流量
+        // isL2: delegate_to_slow (L2) 或 execute_task (L3) 才受 rollout 控制
+        const isL2Traffic = llmNativeResult.routing_layer === "L2" || llmNativeResult.routing_layer === "L3";
+        if (isL2Traffic && (!config.layer2.enabled || Math.random() > config.layer2.rollout)) {
+          const fallback = llmNativeResult.message || (lang === "zh" ? "好的。" : "Got it.");
+          c.header("Content-Type", "application/json");
+          return c.json({
+            routing_layer: "L0",
+            routing_layer_degraded: true,
+            degraded_from: llmNativeResult.routing_layer,
+            message: fallback,
+            delegation_log_id: llmNativeResult.delegation_log_id,
+          });
+        }
+
+        const taskId = llmNativeResult.delegation?.task_id || uuid();
 
         // SSE headers
         c.header("Content-Type", "text/event-stream");

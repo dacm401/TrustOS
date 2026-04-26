@@ -121,6 +121,17 @@ export const config = {
     maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "60"),
   },
 
+  // Sprint 68: Phase 2.0 L2 Feature Flag — 控制 Layer 2 委托流量的灰度开关
+  // enabled: Master kill switch，默认 true（LLM-native 路由已稳定）
+  // rollout: 0.0~1.0，L2 委托流量占比（delegate_to_slow / execute_task）
+  //          0 = 全部降级为 direct_answer（仅用于紧急回滚）
+  //          1 = 全量 L2 委托（正常生产状态）
+  layer2: {
+    enabled: process.env.LAYER2_ENABLED !== "false",
+    // rollout=1.0 时所有 L2 决策正常执行；<1.0 时按概率降级到 direct_answer
+    rollout: parseFloat(process.env.LAYER2_ROLLOUT ?? "1.0"),
+  },
+
   // ── Phase 4: Local Trust Gateway ─────────────────────────────────────────────
   permission: {
     // Master switch for Permission Layer

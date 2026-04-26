@@ -1347,6 +1347,7 @@ function mapDelegationLogRow(row: any): DelegationLog {
     g3_final_action: row.g3_final_action,
     routed_action: row.routed_action,
     routing_reason: row.routing_reason,
+    routing_layer: row.routing_layer,
     execution_status: row.execution_status,
     execution_correct: row.execution_correct,
     error_message: row.error_message,
@@ -1376,7 +1377,7 @@ export const DelegationLogRepo = {
         system_confidence,
         calibrated_scores, policy_overrides, g2_final_action,
         did_rerank, rerank_gap, rerank_rules, g3_final_action,
-        routed_action, routing_reason,
+        routed_action, routing_reason, routing_layer,
         routing_success, value_success, user_success
       ) VALUES (
         $1,$2,$3,$4,$5,$6,
@@ -1384,8 +1385,8 @@ export const DelegationLogRepo = {
         $9,
         $10,$11,$12,
         $13,$14,$15,$16,
-        $17,$18,
-        $19,$20,$21
+        $17,$18,$19,
+        $20,$21,$22
       )`,
       [
         id,
@@ -1406,6 +1407,7 @@ export const DelegationLogRepo = {
         d.g3_final_action ?? null,
         d.routed_action,
         d.routing_reason ?? null,
+        d.routing_layer ?? null,
         // G4: 四层成功标准，首次写入时均为 null（异步回填）
         d.routing_success ?? null,
         d.value_success ?? null,
