@@ -102,6 +102,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId, sessionId: p
       session_id: sessionId,
       message: text,
       history,
+      use_llm_native_routing: true,
       stream: true,
     };
     if (apiKey) body.api_key = apiKey;
