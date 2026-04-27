@@ -176,8 +176,12 @@ chatRouter.post("/chat", async (c) => {
       const taskId = llmNativeResult.delegation?.task_id || uuid();
 
       // Sprint 68: Phase 2.0 L2 Rollout
+      // Sprint 72: 修复 stream 对齐 bug —— stream=true 时必须走 SSE，不能退化到 JSON
+      // 当 isL2Traffic=true 且 L2 未启用或命中 rollout 回退时：
+      //   - stream=false：降级到 L0 JSON 响应（符合预期）
+      //   - stream=true：跳过此块，走正常 SSE 流程，降级信息通过 routing_layer_degraded 字段传递
       const isL2Traffic = llmNativeResult.routing_layer === "L2" || llmNativeResult.routing_layer === "L3";
-      if (isL2Traffic && (!config.layer2.enabled || Math.random() > config.layer2.rollout)) {
+      if (isL2Traffic && !useStream && (!config.layer2.enabled || Math.random() > config.layer2.rollout)) {
         const fallback = llmNativeResult.message || (lang === "zh" ? "好的。" : "Got it.");
         c.header("Content-Type", "application/json");
         return c.json({
