@@ -2,7 +2,7 @@
 
 **轻量 AI Runtime** — 基于 Manager-Worker 架构的智能路由系统。
 
-> 核心设计：Fast 模型（7B）做"守门人"，Slow 模型（72B）做"执行者"。所有委托决策带置信度日志，支持实时流式反馈。
+> 核心设计：Fast/Manager 做"守门人"，Slow/Worker 做执行者。Fast 模型用户可选，默认 `Qwen2.5-72B-Instruct`（benchmark 实测路由能力最优）。所有委托决策带置信度日志，支持实时流式反馈。
 
 ---
 
@@ -11,7 +11,7 @@
 | 特性 | 说明 |
 |------|------|
 | **LLM-Native Routing** | Gated Delegation 四层（Score → Policy → Rerank → Learn），benchmark 72B 路由准确率 80-83% |
-| **Manager-Worker 架构** | Fast/Manager 做分层决策，Slow/Worker 做执行，Fast 配置 `Qwen2.5-72B-Instruct` |
+| **Manager-Worker 架构** | Fast/Manager 做分层决策，Slow/Worker 做执行，Fast 模型用户可选（默认 `Qwen2.5-72B-Instruct`） |
 | **Phase 4 安全层** | Data Classification → SmallModelGuard → Redaction Engine，PII/凭证不过 Worker |
 | **权限授权流** | Worker 访问敏感数据前，需 Fast 审批（`permission_requests` 表 + 实时面板） |
 | **Prompt 模板系统** | 数据库存储 + 版本控制 + 渲染服务，支持作用域（global/user/session） |
@@ -28,7 +28,7 @@
 |------|------|
 | Runtime | TypeScript + Node.js + Hono（端口 3000 前端 / 3001 后端） |
 | Database | PostgreSQL 16 + pgvector（Docker，端口 5432） |
-| 模型 | SiliconFlow — Fast 层 `Qwen2.5-72B-Instruct`，Slow 层 `Qwen2.5-72B-Instruct` |
+| 模型 | SiliconFlow — Fast 层（用户可选，默认 `Qwen2.5-72B-Instruct`），Slow 层（用户可选） |
 | 部署 | Docker + Docker Compose |
 
 > ⚠️ DeepSeek-V3/R1 在 SiliconFlow 不支持 function calling（会 hang），统一使用 Qwen 系列。
