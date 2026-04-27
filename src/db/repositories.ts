@@ -1575,7 +1575,7 @@ export const DelegationLogRepo = {
           COUNT(*) FILTER (WHERE routing_success IS NOT NULL)::int as routing_total,
           COUNT(*) FILTER (WHERE execution_correct = true)::int  as exec_ok,
           COUNT(*) FILTER (WHERE execution_correct IS NOT NULL)::int as exec_total,
-          COUNT(*) FILTER (WHERE value_success = true)::int      as value_ok,
+          COUNT(*) FILTER (WHERE value_success = 'better')::int  as value_ok,
           COUNT(*) FILTER (WHERE value_success IS NOT NULL)::int as value_total,
           COUNT(*) FILTER (WHERE user_success = true)::int       as user_ok,
           COUNT(*) FILTER (WHERE user_success IS NOT NULL)::int as user_total

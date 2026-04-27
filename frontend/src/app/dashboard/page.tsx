@@ -9,7 +9,7 @@ import { GrowthChart } from "@/components/dashboard/GrowthChart";
 import { LearningPanel } from "@/components/dashboard/LearningPanel";
 import { DelegationLogsPanel } from "@/components/dashboard/DelegationLogsPanel";
 
-const USER_ID = "user-001";
+const USER_ID = "benchmark-user";
 
 export default function DashboardPage() {
   const [data, setData] = useState<any>(null);

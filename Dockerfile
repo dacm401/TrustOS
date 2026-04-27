@@ -7,7 +7,7 @@ RUN npm install -g tsx
 
 # 复制 package 文件并安装依赖（包含 devDependencies）
 COPY package*.json ./
-RUN npm ci
+RUN npm install --ignore-scripts
 
 # 复制源码
 COPY src ./src

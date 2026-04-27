@@ -338,12 +338,17 @@ export async function routeWithManagerDecision(
     if (decision) {
       return routeByDecision(decision, { message, user_id, session_id, language, reqApiKey, raw: managerOutput });
     }
-    console.warn("[llm-native-router] ManagerDecision parse failed, fallback to direct_answer");
+    // Sprint 72 fix: LLM 有时返回截断/乱码 JSON（如 scores 字段不完整），直接吐出 JSON 是错误的
+    // 改为：如果 managerOutput 看起来像 JSON（非自然语言），使用 fallback
+    const trimmed = managerOutput.trim();
+    const looksLikeJSON = trimmed.startsWith("{") || trimmed.startsWith("```") || trimmed.startsWith("json");
+    const fallbackMsg = language === "zh" ? "好的，让我看看。" : "Got it, let me check.";
+    console.warn("[llm-native-router] ManagerDecision parse failed, fallback to direct_answer. looksLikeJSON:", looksLikeJSON);
     return {
-      message: managerOutput.trim() || (language === "zh" ? "好的，让我看看。" : "Got it, let me check."),
+      message: looksLikeJSON ? fallbackMsg : (trimmed || fallbackMsg),
       decision: null,
       routing_layer: "L0",
-      decision_type: null,
+      decision_type: "direct_answer",
       raw_manager_output: managerOutput,
       delegation_log_id: undefined,
     };
@@ -423,15 +428,22 @@ function parseGatedDecision(
     if (!match) return null;
     const raw = JSON.parse(match.trim());
 
-    // 必须为 v2 格式
-    if (raw.schema_version !== "manager_decision_v2") return null;
+    // Sprint 72 fix: 同时接受 v1 和 v2
+    // 模型偶尔输出 v1（仅含 scores/features）而非要求的 v2（全量决策字段）
+    if (!["manager_decision_v2", "manager_decision_v1"].includes(raw.schema_version)) return null;
 
+    // v1/v2 共用 scores 字段结构，直接取用
     const scores: Record<ManagerDecisionType, number> = {
       direct_answer: raw.scores?.direct_answer ?? 0,
       ask_clarification: raw.scores?.ask_clarification ?? 0,
       delegate_to_slow: raw.scores?.delegate_to_slow ?? 0,
       execute_task: raw.scores?.execute_task ?? 0,
     };
+
+    // v1 有 confidence_hint；v2 有 confidence_hint（统一用此字段）
+    const llmConfidenceHint = typeof raw.confidence_hint === "number"
+      ? Math.max(0, Math.min(1, raw.confidence_hint))
+      : 0.5;
 
     const features: DecisionFeatures = {
       missing_info: Boolean(raw.features?.missing_info),
@@ -442,10 +454,6 @@ function parseGatedDecision(
       requires_multi_step: Boolean(raw.features?.requires_multi_step),
       is_continuation: Boolean(raw.features?.is_continuation),
     };
-
-    const llmConfidenceHint = typeof raw.confidence_hint === "number"
-      ? Math.max(0, Math.min(1, raw.confidence_hint))
-      : 0.5;
 
     // KB-1: 传入知识边界信号，供 G1/G2 校准使用
     return runGatedDelegation(scores, llmConfidenceHint, features, kbSignals);
@@ -486,7 +494,7 @@ async function routeByGatedDecision(
     confidence: gated.systemConfidence,
     needs_archive: gated.routedAction !== "direct_answer",
     direct_response: gated.routedAction === "direct_answer"
-      ? { style: "natural" as const, content: (v2Decision?.direct_response as { content?: string })?.content ?? (language === "zh" ? "好的。" : "Got it.") }
+      ? { style: "natural" as const, content: (v2Decision?.direct_response as { content?: string })?.content || (language === "zh" ? "好的。" : "Got it.") }
       : undefined,
     clarification: gated.routedAction === "ask_clarification"
       ? { question_id: "q1", question_text: (v2Decision?.clarification as { question_text?: string })?.question_text ?? (language === "zh" ? "能再具体一点吗？" : "Could you be more specific?"), clarification_reason: gated.features.query_too_vague ? "请求模糊" : "需要更多信息" }
@@ -572,7 +580,7 @@ async function routeByDecision(
   switch (decision.decision_type) {
     case "direct_answer": {
       const dr = decision.direct_response as DirectResponse | undefined;
-      const reply = dr?.content ?? (language === "zh" ? "好的。" : "Got it.");
+      const reply = dr?.content || (language === "zh" ? "好的。" : "Got it.");
       return {
         message: reply,
         decision,

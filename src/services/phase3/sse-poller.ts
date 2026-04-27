@@ -19,6 +19,8 @@ import { DelegationLogRepo } from "../../db/repositories.js";
 export interface SSEEvent {
   type: "status" | "result" | "error" | "done" | "chunk" | "fast_reply"
        | "worker_completed" | "manager_synthesized"; // Phase 3.0
+  /** Sprint 73: 统一使用 content 字段，stream 保留兼容 */
+  content?: string;
   stream?: string;
   /** 路由分层（L0/L1/L2/L3） */
   routing_layer?: RoutingLayer;
@@ -146,6 +148,7 @@ export async function* pollArchiveAndYield(
   const msgs = MESSAGES[lang] ?? MESSAGES.zh;
   const startTime = Date.now();
   let lastStatusTime = startTime;
+  let sentResult = false;
 
   while (true) {
     const task = await TaskArchiveRepo.getById(taskId);
@@ -268,14 +271,15 @@ export async function* pollArchiveAndYield(
         }
 
         // 推送 result 文本事件
+        sentResult = true;
         yield {
           type: "result",
-          stream: `${msgs.done}\n\n${synthesizedContent}`,
+          content: `${msgs.done}\n\n${synthesizedContent}`,
           routing_layer: "L2",
         };
 
         // SSE1: 成功路径也发送 done 事件（与 failed/timeout 路径一致）
-        yield { type: "done", stream: lang === "zh" ? "分析完成" : "Analysis complete", routing_layer: "L2" };
+        yield { type: "done", content: lang === "zh" ? "分析完成" : "Analysis complete", routing_layer: "L2" };
 
         await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
           console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
@@ -297,8 +301,10 @@ export async function* pollArchiveAndYield(
       }
       const exec = task.slow_execution as Record<string, unknown> | null;
       const errors = (Array.isArray(exec?.errors) ? exec.errors : []) as string[];
-      yield { type: "error", stream: `任务执行失败: ${errors[0] ?? "Unknown error"}`, routing_layer: "L2" };
-      yield { type: "done", stream: lang === "zh" ? "执行失败" : "Execution failed", routing_layer: "L2" };
+      if (!sentResult) {
+        yield { type: "error", content: `任务执行失败: ${errors[0] ?? "Unknown error"}`, routing_layer: "L2" };
+      }
+      yield { type: "done", content: lang === "zh" ? "执行失败" : "Execution failed", routing_layer: "L2" };
       await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
         console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
       );
@@ -314,14 +320,16 @@ export async function* pollArchiveAndYield(
           error_message: "Task execution exceeded 180s timeout",
         }).catch((e) => console.warn("[delegation-log] updateExecution timeout failed:", e.message));
       }
-      yield {
-        type: "error",
-        stream: lang === "zh"
-          ? "⏱ 任务执行超时（180s），请稍后重试或简化问题"
-          : "⏱ Task execution timed out (180s), please retry or simplify your request",
-        routing_layer: "L2",
-      };
-      yield { type: "done", stream: lang === "zh" ? "任务超时" : "Task timed out", routing_layer: "L2" };
+      if (!sentResult) {
+        yield {
+          type: "error",
+          content: lang === "zh"
+            ? "⏱ 任务执行超时（180s），请稍后重试或简化问题"
+            : "⏱ Task execution timed out (180s), please retry or simplify your request",
+          routing_layer: "L2",
+        };
+      }
+      yield { type: "done", content: lang === "zh" ? "任务超时" : "Task timed out", routing_layer: "L2" };
       await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
         console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
       );

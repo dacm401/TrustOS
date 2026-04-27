@@ -27,6 +27,7 @@ import { handlePermissionResponseMessage } from "../services/permission-manager.
 const chatRouter = new Hono();
 
 chatRouter.post("/chat", async (c) => {
+  console.log("[chat] POST /chat received, body size:", c.req.raw.headers.get("content-length") ?? "unknown");
   // UTF-8 fix: use c.req.raw.text() instead of c.req.json()
   // c.req.json() in @hono/node-server can mis-decode UTF-8 body as Latin-1
   const rawBody = await c.req.raw.text();
@@ -153,6 +154,7 @@ chatRouter.post("/chat", async (c) => {
         });
         const crossSessionContext = cross.crossSessionText || undefined;
 
+        console.log("[chat] calling routeWithManagerDecision for:", body.message?.substring(0, 30));
         llmNativeResult = await routeWithManagerDecision({
           message: body.message ?? "",
           user_id: userId,
@@ -163,6 +165,7 @@ chatRouter.post("/chat", async (c) => {
           reqApiKey,
           crossSessionContext,
         });
+        console.log("[chat] routeWithManagerDecision done, decision_type:", llmNativeResult?.decision_type, "delegation:", !!llmNativeResult?.delegation);
       } catch (e: any) {
         console.warn("[stream-llm] routeWithManagerDecision failed:", e.message);
         return c.json({ error: "LLM-native routing failed: " + e.message }, 500);
@@ -200,6 +203,7 @@ chatRouter.post("/chat", async (c) => {
       c.header("X-Accel-Buffering", "no");
 
       return stream(c, async (s) => {
+        console.log("[chat] SSE stream started, writing events...");
         try {
           // Step 1: Manager 的安抚消息
           if (llmNativeResult.message) {
@@ -207,7 +211,7 @@ chatRouter.post("/chat", async (c) => {
               type: "manager_decision",
               decision_type: llmNativeResult.decision_type,
               routing_layer: llmNativeResult.routing_layer,
-              message: llmNativeResult.message,
+              content: llmNativeResult.message,
             })}\n\n`);
           }
 
@@ -233,6 +237,19 @@ chatRouter.post("/chat", async (c) => {
                 routing_layer: llmNativeResult.routing_layer,
                 timestamp: new Date().toISOString(),
               })}\n\n`);
+            } else {
+              // delegation 触发但 archive 未创建 → 发 error + done 后立即返回，不进入 pollArchiveAndYield
+              await s.write(`data: ${JSON.stringify({
+                type: "error",
+                content: llmNativeResult.message ?? "任务无法触发，请重试",
+                routing_layer: llmNativeResult.routing_layer,
+              })}\n\n`);
+              await s.write(`data: ${JSON.stringify({
+                type: "done",
+                content: "任务失败",
+                routing_layer: llmNativeResult.routing_layer,
+              })}\n\n`);
+              return;
             }
             if (llmNativeResult.command_id) {
               await s.write(`data: ${JSON.stringify({
@@ -250,7 +267,9 @@ chatRouter.post("/chat", async (c) => {
               routing_layer: llmNativeResult.routing_layer,
             })}\n\n`);
 
+            console.log("[chat] entering pollArchiveAndYield for task:", taskId);
             for await (const event of pollArchiveAndYield(taskId, lang, llmNativeResult.delegation_log_id)) {
+              console.log("[chat] pollArchiveAndYield event:", event.type);
               await s.write(`data: ${JSON.stringify({
                 ...event,
                 routing_layer: event.routing_layer ?? llmNativeResult.routing_layer,
@@ -260,7 +279,7 @@ chatRouter.post("/chat", async (c) => {
 
           await s.write(`data: ${JSON.stringify({
             type: "done",
-            stream: llmNativeResult.delegation
+            content: llmNativeResult.delegation
               ? (lang === "zh" ? "分析完成" : "Analysis complete")
               : (lang === "zh" ? "已返回答案" : "Answer ready"),
             routing_layer: llmNativeResult.routing_layer,
@@ -269,8 +288,7 @@ chatRouter.post("/chat", async (c) => {
           })}\n\n`);
         } catch (e: any) {
           console.warn("[stream-llm] SSE error:", e.message);
-          await s.write(`data: ${JSON.stringify({ type: "error", stream: e.message })}\n\n`);
-          await s.write(`data: ${JSON.stringify({ type: "done", stream: lang === "zh" ? "发生错误" : "Error occurred" })}\n\n`);
+          await s.write(`data: ${JSON.stringify({ type: "error", content: e.message, routing_layer: llmNativeResult.routing_layer })}\n\n`);
         }
       });
     }
@@ -346,8 +364,19 @@ chatRouter.post("/chat", async (c) => {
       },
     }).catch((e) => console.warn("[chat] Failed to log llm-native decision:", e));
 
+    // delegation 触发但 archive 未创建 → 立即返回，不走慢模型等待
+    if (llmNativeResult.delegation && !llmNativeResult.archive_id) {
+      return c.json({
+        content: llmNativeResult.message ?? "任务无法触发，请重试",
+        decision_type: llmNativeResult.decision_type ?? "delegate_slow",
+        routing_layer: llmNativeResult.routing_layer,
+        task_id: undefined,
+        error: "archive_create_failed",
+      });
+    }
+
     return c.json({
-      message: llmNativeResult.message ?? "",
+      content: llmNativeResult.message ?? "",
       decision_type: llmNativeResult.decision_type,
       routing_layer: llmNativeResult.routing_layer,
       clarifying: llmNativeResult.clarifying,

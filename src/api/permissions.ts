@@ -99,7 +99,10 @@ export function createPermissionsRouter(): Hono {
    */
   app.get("/pending", async (c) => {
     const userId = c.req.query("user_id");
-    if (!userId) return c.json({ error: "user_id required" }, 400);
+    // "anonymous" comes from unauthenticated sessions — return empty, don't throw
+    if (!userId || userId === "anonymous") {
+      return c.json({ requests: [], prompt_hint: "" });
+    }
 
     await PermissionRequestRepo.expireOld();
     const requests = await PermissionRequestRepo.getPending(userId);
@@ -201,7 +204,9 @@ export function createWorkspacesRouter(): Hono {
    */
   app.get("/user/mine", async (c) => {
     const userId = c.req.query("user_id");
-    if (!userId) return c.json({ error: "user_id required" }, 400);
+    if (!userId || userId === "anonymous") {
+      return c.json({ workspaces: [] });
+    }
     const list = await TaskWorkspaceService.getByUser(userId);
     return c.json({ workspaces: list });
   });

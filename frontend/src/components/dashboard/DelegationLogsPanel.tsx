@@ -9,7 +9,7 @@ import {
   type DelegationStats,
 } from "@/lib/api";
 
-const USER_ID = "user-001";
+const USER_ID = "benchmark-user";
 const PAGE_SIZE = 20;
 
 const ACTION_LABELS: Record<string, string> = {

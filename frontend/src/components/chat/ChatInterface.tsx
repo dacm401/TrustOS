@@ -111,16 +111,22 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId, sessionId: p
 
     let response: Response;
     try {
+      console.log("[SSE] POST /api/chat", { message: text, stream: true });
       response = await fetch(`${apiBase}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-User-Id": userId },
         body: JSON.stringify(body),
       });
-    } catch {
+      console.log("[SSE] response status:", response.status, "ok:", response.ok, "body:", !!response.body);
+    } catch (e) {
+      console.error("[SSE] fetch error:", e);
       return false;
     }
 
-    if (!response.ok || !response.body) return false;
+    if (!response.ok || !response.body) {
+      console.warn("[SSE] response not ok or no body");
+      return false;
+    }
 
     const placeholderId = uuid();
     setMessages((prev) => [...prev, { id: placeholderId, role: "assistant", content: "", streaming: true }]);
@@ -128,12 +134,19 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId, sessionId: p
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let finished = false;                          // Sprint 73: 收到 done 后立即退出，不用等 reader 自然关闭
+    const TIMEOUT_MS = 30000; // 30s timeout，防止 reader.read() 永久卡死
 
     try {
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        if (finished) break;                        // Sprint 73: done 事件触发后不再继续读
+        // Sprint 72 fix: reader.read() 加 timeout，避免主线程被卡导致 fetch 永不 resolve
+        const readPromise = reader.read();
+        const timeoutPromise = new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), TIMEOUT_MS));
+        const result = await Promise.race([readPromise.then((r) => ({ done: r.done, value: r.value })), timeoutPromise.then(() => ({ done: true, value: undefined }))]);
+        const { done, value } = result;
+
+        if (value) buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
 
@@ -144,12 +157,15 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId, sessionId: p
           let data: any;
           try { data = JSON.parse(raw); } catch { continue; }
 
+          // DEBUG: log all incoming SSE events
+          console.log("[SSE]", data.type, "decision_type=", data.decision_type, "task_id=", data.task_id, "content=", data.content ? data.content.substring(0, 30) : "(empty)");
+
           if (data.type === "chunk") {
             // 标准流式 chunk
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, content: m.content + (data.stream ?? ""), routing_layer: data.routing_layer ?? m.routing_layer }
+                  ? { ...m, content: m.content + (data.content ?? data.stream ?? ""), routing_layer: data.routing_layer ?? m.routing_layer }
                   : m
               )
             );
@@ -158,76 +174,107 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId, sessionId: p
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, content: data.stream ?? "", routing_layer: data.routing_layer ?? m.routing_layer, streaming: false }
+                  ? { ...m, content: data.content ?? data.stream ?? "", routing_layer: data.routing_layer ?? m.routing_layer, streaming: false }
                   : m
               )
             );
-          } else if (data.type === "clarifying") {
-            // Phase 1.5: Fast 请求澄清 → 显示澄清问题
-            setClarifyQuestion({
-              question_id: data.question_id ?? uuid(),
-              question_text: data.stream ?? "",
-              options: data.options,
-            });
-            // 同时更新 placeholder 消息内容
+          } else if (data.type === "manager_synthesized") {
+            // Manager 合成最终输出（来自 slow model）
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, content: data.stream ?? "", routing_layer: data.routing_layer ?? m.routing_layer, streaming: false }
+                  ? { ...m, content: data.content ?? data.final_content ?? data.stream ?? "", streaming: false }
                   : m
               )
             );
-          } else if (data.type === "status") {
-            // Phase 2.0: 慢模型处理中的安抚消息（临时状态，不写入消息列表）
-            setStatusMsg(data.stream ?? null);
-          } else if (data.type === "result") {
-            // Phase 2.0: 慢模型完成 → 追加新消息显示结果
-            const resultContent = data.stream ?? "";
-            setStatusMsg(null);
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: uuid(),
-                role: "assistant",
-                content: resultContent,
-                routing_layer: data.routing_layer as "L0" | "L1" | "L2" | "L3" | undefined,
-              },
-            ]);
           } else if (data.type === "done") {
+            finished = true;                         // Sprint 73: 立即标记退出，不再等 reader 自然关闭
             setStatusMsg(null);
-            setDelegationDone(true); // UI-2: 不清空，标记完成状态，由 CSS 折叠
+            setLoading(false);
+            setDelegationDone(true);
+
             if (data.task_id) onTaskIdChange?.(data.task_id);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, streaming: false, decision: data.decision, routing_layer: data.routing_layer ?? m.routing_layer }
+                  ? {
+                      ...m,
+                      streaming: false,
+                      decision: data.decision_type,    // Sprint 73: 统一用 decision_type，与后端一致
+                      routing_layer: data.routing_layer ?? m.routing_layer,
+                      // Sprint 73: content 优先，保留气泡已有内容
+                      content: m.content || data.content || data.stream || "",
+                    }
                   : m
               )
             );
           } else if (data.type === "error") {
             setStatusMsg(null);
+            setLoading(false);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, content: `⚠️ 流式错误：${data.stream ?? data.message ?? "Unknown error"}`, streaming: false }
+                  ? { ...m, content: `⚠️ 流式错误：${data.content ?? data.message ?? data.stream ?? "Unknown error"}`, streaming: false }
                   : m
               )
             );
           // ── Phase 3.0 SSE 委托生命周期事件 ───────────────────────────────────
           } else if (data.type === "manager_decision") {
-            // LLM-Native: Manager 做出路由决策，显示决策信息
-            addDelegationStatus("manager_decision", `🔄 路由决策 [${data.routing_layer ?? "?"}]: ${data.decision_type ?? data.message ?? ""}`, data.message);
+            // LLM-Native: Manager 做出路由决策
+            const decisionContent = data.content ?? data.message ?? "";
+
+            addDelegationStatus("manager_decision", `🔄 路由决策 [${data.routing_layer ?? "?"}]: ${data.decision_type ?? decisionContent}`, decisionContent);
+            // Sprint 73 fix: 有 content 就写入气泡；字段统一用 content，兼容旧 message
+            // delegate_to_slow / execute_task 保持 streaming=true（后续有 slow model 结果）；其他立即关闭
+            const isDelegation = data.decision_type === "delegate_to_slow" || data.decision_type === "execute_task";
+            if (decisionContent) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === placeholderId
+                    ? {
+                        ...m,
+                        content: decisionContent,
+                        routing_layer: data.routing_layer ?? m.routing_layer,
+                        streaming: isDelegation ? true : false, // delegation 需要等 slow model，暂不关闭
+                      }
+                    : m
+                )
+              );
+            }
+            // delegation 路径：立即显示 pending 状态，等 archive_written 拿到 task_id 后轮询
+            if (isDelegation && decisionContent) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === placeholderId
+                    ? { ...m, delegation: { status: "pending" as const, taskId: undefined } }
+                    : m
+                )
+              );
+            }
           } else if (data.type === "clarifying_needed") {
             // 请求澄清 → 同时触发 clarifyQuestion 弹窗
             setClarifyQuestion({
               question_id: data.question_id ?? uuid(),
-              question_text: data.question_text ?? data.stream ?? "",
+              question_text: data.question_text ?? data.content ?? data.stream ?? "",
               options: data.options,
             });
             addDelegationStatus("clarifying_needed", `❓ 请求澄清: ${data.question_text ?? data.stream ?? ""}`);
           } else if (data.type === "archive_written") {
-            // 委托存档已写入
+            // 委托存档已写入 → 立即启动轮询获取 slow model 结果
             addDelegationStatus("archive_written", `📋 委托存档已写入 [${data.decision_type ?? ""}]`, `archive_id: ${data.archive_id ?? ""}`);
+            const taskId = data.task_id;
+            if (taskId) {
+              // 用当前 placeholder 消息的 id 启动轮询
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.streaming === true
+                    ? { ...m, delegation: { status: "pending" as const, taskId } }
+                    : m
+                )
+              );
+              // 直接在此处启动轮询（pollDelegation 已在外部作用域定义）
+              pollDelegation(placeholderId, taskId);
+            }
           } else if (data.type === "worker_started") {
             // Worker 开始执行
             addDelegationStatus("worker_started", `🚀 Worker 已启动 [${data.worker_role ?? "?"}]`, `task_id: ${data.task_id ?? ""}`);
@@ -242,6 +289,13 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId, sessionId: p
             addDelegationStatus("manager_synthesized", `🧠 Manager 合成完成 [置信度 ${data.confidence != null ? Math.round(data.confidence * 100) : "?"}%]`, `长度: ${data.final_content?.length ?? 0} chars`);
           }
         }
+
+        // timeout 触发时不再继续循环，直接退出
+        if (done && value === undefined) {
+          console.warn("[SSE] reader timeout after", TIMEOUT_MS, "ms");
+          break;
+        }
+        if (done) break;
       }
     } catch {
       setMessages((prev) =>
