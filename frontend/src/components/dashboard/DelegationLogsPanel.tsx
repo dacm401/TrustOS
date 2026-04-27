@@ -148,15 +148,15 @@ export function DelegationLogsPanel() {
           <div className="text-xs font-semibold text-gray-500 mb-2">🎯 路由准确率</div>
           <SuccessRateBar
             label=""
-            value={metrics?.routing_agreement_rate ?? routingSuccessRate}
+            value={metrics?.routing_success_rate ?? routingSuccessRate}
             color="bg-blue-500"
           />
         </Card>
         <Card className="col-span-2 lg:col-span-1">
-          <div className="text-xs font-semibold text-gray-500 mb-2">⚙️ 执行成功率</div>
+          <div className="text-xs font-semibold text-gray-500 mb-2">⚙️ 执行正确率</div>
           <SuccessRateBar
             label=""
-            value={metrics?.execution_success_rate ?? executionSuccessRate}
+            value={metrics?.execution_correct_rate ?? executionSuccessRate}
             color="bg-green-500"
           />
         </Card>
@@ -164,7 +164,7 @@ export function DelegationLogsPanel() {
           <div className="text-xs font-semibold text-gray-500 mb-2">💎 价值增益率</div>
           <SuccessRateBar
             label=""
-            value={metrics?.routing_agreement_rate ? null : valueSuccessRate}
+            value={metrics?.value_success_rate ?? valueSuccessRate}
             color="bg-purple-500"
           />
         </Card>
@@ -172,7 +172,7 @@ export function DelegationLogsPanel() {
           <div className="text-xs font-semibold text-gray-500 mb-2">👤 用户满意率</div>
           <SuccessRateBar
             label=""
-            value={metrics?.routing_agreement_rate ? null : userSuccessRate}
+            value={metrics?.user_success_rate ?? userSuccessRate}
             color="bg-amber-500"
           />
         </Card>

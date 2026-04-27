@@ -1542,7 +1542,11 @@ export const DelegationLogRepo = {
     avg_latency_ms: number;
     avg_cost_usd: number;
     rerank_stats: { rate: number; correction_rate: number };
-    routing_agreement_rate: number;  // G2 → G3 一致率（越高说明 rerank 越少）
+    routing_agreement_rate: number;
+    routing_success_rate: number;      // G4-1: 路由准确率（vs benchmark ground truth）
+    execution_correct_rate: number;    // G4-2: 执行正确率（Worker 执行结果质量）
+    value_success_rate: number;        // G4-3: 价值增益率（Fast vs Slow 对比）
+    user_success_rate: number;        // G4-4: 用户满意率
   }> {
     const result = await query(
       `WITH exec AS (
@@ -1564,6 +1568,18 @@ export const DelegationLogRepo = {
           COUNT(*) FILTER (WHERE did_rerank = true)::int as rerank_count,
           COUNT(*) FILTER (WHERE did_rerank = true AND g2_final_action = g3_final_action)::int as agreed_count
         FROM delegation_logs WHERE user_id = $1
+      ),
+      g4 AS (
+        SELECT
+          COUNT(*) FILTER (WHERE routing_success = true)::int    as routing_ok,
+          COUNT(*) FILTER (WHERE routing_success IS NOT NULL)::int as routing_total,
+          COUNT(*) FILTER (WHERE execution_correct = true)::int  as exec_ok,
+          COUNT(*) FILTER (WHERE execution_correct IS NOT NULL)::int as exec_total,
+          COUNT(*) FILTER (WHERE value_success = true)::int      as value_ok,
+          COUNT(*) FILTER (WHERE value_success IS NOT NULL)::int as value_total,
+          COUNT(*) FILTER (WHERE user_success = true)::int       as user_ok,
+          COUNT(*) FILTER (WHERE user_success IS NOT NULL)::int as user_total
+        FROM delegation_logs WHERE user_id = $1
       )
       SELECT
         exec.total,
@@ -1575,8 +1591,12 @@ export const DelegationLogRepo = {
         rerank.agreed_count,
         rerank.rerank_count::float / NULLIF(exec.total, 0) as rerank_rate,
         (rerank.rerank_count - rerank.agreed_count)::float / NULLIF(rerank.rerank_count, 0) as correction_rate,
-        rerank.agreed_count::float / NULLIF(rerank.rerank_count, 0) as agreement_rate
-      FROM exec, rerank`,
+        rerank.agreed_count::float / NULLIF(rerank.rerank_count, 0) as agreement_rate,
+        g4.routing_ok::float  / NULLIF(g4.routing_total, 0) as routing_success_rate,
+        g4.exec_ok::float     / NULLIF(g4.exec_total,     0) as execution_correct_rate,
+        g4.value_ok::float    / NULLIF(g4.value_total,    0) as value_success_rate,
+        g4.user_ok::float    / NULLIF(g4.user_total,     0) as user_success_rate
+      FROM exec, rerank, g4`,
       [userId]
     );
     const row = result.rows[0];
@@ -1598,6 +1618,10 @@ export const DelegationLogRepo = {
         correction_rate: row.correction_rate ?? 0,
       },
       routing_agreement_rate: row.agreement_rate ?? 1,
+      routing_success_rate: row.routing_success_rate ?? 0,
+      execution_correct_rate: row.execution_correct_rate ?? 0,
+      value_success_rate: row.value_success_rate ?? 0,
+      user_success_rate: row.user_success_rate ?? 0,
     };
   },
 };

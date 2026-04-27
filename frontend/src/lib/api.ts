@@ -284,6 +284,10 @@ export interface DelegationStats {
     avg_cost_usd: number;
     rerank_stats: { rate: number; correction_rate: number };
     routing_agreement_rate: number;
+    routing_success_rate: number;      // G4-1: 路由准确率
+    execution_correct_rate: number;    // G4-2: 执行正确率
+    value_success_rate: number;        // G4-3: 价值增益率
+    user_success_rate: number;         // G4-4: 用户满意率
   };
   rerankStats: {
     total: number;
