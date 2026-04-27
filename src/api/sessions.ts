@@ -133,7 +133,11 @@ ${historyText}
 
     const jsonMatch = resp.content.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      summaryData = JSON.parse(jsonMatch[0]);
+      try {
+        summaryData = JSON.parse(jsonMatch[0]);
+      } catch (parseErr: any) {
+        console.warn("[sessions] LLM returned malformed JSON:", parseErr.message, "| raw:", jsonMatch[0]);
+      }
     }
   } catch (e: any) {
     console.warn("[sessions] summary generation failed:", e.message);

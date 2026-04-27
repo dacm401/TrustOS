@@ -68,8 +68,6 @@ export function createPermissionsRouter(): Hono {
 
     await PermissionRequestRepo.approve(reqId, resolvedBy, approvedScope);
 
-    // 查出 request 记录以发 token
-    const allForTask = await PermissionRequestRepo.getByTask(reqId).then(() => []);
     // 简化：token scope = field_key（实际应从 request 读取）
     const scopedToken = await issueScopedToken({
       taskId: reqId,

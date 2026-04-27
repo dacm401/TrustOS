@@ -260,8 +260,6 @@ export interface TaskListItem {
   session_id: string;
 }
 
-export interface TaskDetail extends Task {}
-
 export interface TaskSummary {
   task_id: string;
   summary_id: string;
@@ -297,13 +295,6 @@ export interface TaskTrace {
   type: TraceType;
   detail: Record<string, any> | null;
   created_at: string;
-}
-
-export interface GetTracesOptions {
-  /** Filter by trace type */
-  type?: TraceType;
-  /** Maximum number of traces to return (default: 100) */
-  limit?: number;
 }
 
 /** Human-readable summary of a trace */
@@ -1205,15 +1196,6 @@ export interface SSEStatusEvent {
   routing_layer?: RoutingLayer;
 }
 
-/** SSE clarifying 事件（补全字段） */
-export interface SSEClarifyingEvent {
-  type: "clarifying_needed";
-  routing_layer: RoutingLayer;
-  question_text?: string;
-  options?: string[];
-  question_id?: string;
-}
-
 // ── Task Archive Repository Types ─────────────────────────────────────────────
 
 /** task_archives 表记录（Phase 3.0 扩展版） */
@@ -1408,22 +1390,6 @@ export interface PermissionResult {
 }
 
 // ── 数据暴露决策记录 ──────────────────────────────────────────────────────────
-
-/**
- * 数据暴露决策记录 — 用于审计日志。
- */
-export interface DataExposureDecision {
-  id: string;
-  sessionId: string;
-  userId: string;
-  dataType: string;
-  sourceClassification: DataClassification;
-  requestedTier: DataClassification;
-  finalTier: DataClassification;
-  decision: "allow" | "reject" | "summarize" | "redact";
-  reason: string;
-  timestamp: string;
-}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Phase 4.2: Data Redaction Engine
