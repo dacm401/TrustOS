@@ -268,7 +268,7 @@ chatRouter.post("/chat", async (c) => {
             })}\n\n`);
 
             console.log("[chat] entering pollArchiveAndYield for task:", taskId);
-            for await (const event of pollArchiveAndYield(taskId, lang, llmNativeResult.delegation_log_id)) {
+            for await (const event of pollArchiveAndYield(taskId, lang, llmNativeResult.delegation_log_id, reqApiKey)) {
               console.log("[chat] pollArchiveAndYield event:", event.type);
               await s.write(`data: ${JSON.stringify({
                 ...event,

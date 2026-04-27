@@ -151,7 +151,7 @@ cp backend/.env.example backend/.env
 cd backend && npm run dev
 
 # Terminal 2:
-cd frontend && npm run dev
+cd ../frontend && npm run dev
 ```
 
 ### 方式二：Docker 部署

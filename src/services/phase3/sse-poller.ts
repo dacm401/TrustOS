@@ -3,7 +3,7 @@
  * 轮询 TaskArchive，感知状态变化，推送 SSE 事件
  */
 import type { RoutingLayer } from "../../types/index.js";
-import { callModelFull } from "../../models/model-gateway.js";
+import { callModelFull, callModelStream } from "../../models/model-gateway.js";
 import { config } from "../../config.js";
 import type { ChatMessage } from "../../types/index.js";
 import type { DelegationLogExecutionUpdate } from "../../types/index.js";
@@ -105,6 +105,62 @@ async function synthesizeManagerOutput(
   }
 }
 
+/**
+ * 流式 Manager Synthesis — 边生成边 yield SSE chunk 事件。
+ * yield { type: "chunk", content: string }
+ * yield { type: "chunk", content: "" }  // 结束
+ */
+async function* synthesizeManagerOutputStream(
+  taskId: string,
+  workerResult: string,
+  confidence: number,
+  lang: "zh" | "en",
+  reqApiKey?: string
+): AsyncGenerator<{ type: "chunk"; content: string; routing_layer: RoutingLayer }> {
+  try {
+    const archive = await TaskArchiveRepo.getById(taskId);
+    if (!archive) return;
+
+    const userInput = archive.user_input ?? "";
+
+    const systemPrompt = lang === "zh"
+      ? "你是 SmartRouter Pro 的管理模型（Manager）。负责把执行专家的结果整合成最终回复。"
+      : "You are SmartRouter Pro's Manager model. Your job is to synthesize execution results into the final user-facing response.";
+
+    const userPrompt = MANAGER_SYNTHESIS_PROMPT[lang](workerResult);
+
+    const messages: ChatMessage[] = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `用户原始问题：${userInput}\n\n${userPrompt}` },
+    ];
+
+    let firstChunk = true;
+    let buffer = "";
+
+    for await (const chunk of callModelStream(config.fastModel, messages, reqApiKey)) {
+      buffer += chunk;
+      if (firstChunk) {
+        // 第一个 chunk 前发一个状态消息，让前端知道开始流式输出了
+        yield {
+          type: "chunk",
+          content: lang === "zh" ? "📝 正在整理回复...\n" : "📝 Organizing response...\n",
+          routing_layer: "L2",
+        };
+        firstChunk = false;
+      }
+      yield { type: "chunk", content: chunk, routing_layer: "L2" };
+    }
+
+    // 空结果降级为原始 worker 结果
+    if (!buffer.trim()) {
+      yield { type: "chunk", content: `\n\n${workerResult}`, routing_layer: "L2" };
+    }
+  } catch (e: any) {
+    console.warn("[synthesizeManagerOutputStream] Stream failed, falling back to raw result:", e.message);
+    yield { type: "chunk", content: `\n\n${workerResult}`, routing_layer: "L2" };
+  }
+}
+
 // ── Sleep Helper ───────────────────────────────────────────────────────────────
 
 function sleep(ms: number): Promise<void> {
@@ -117,11 +173,13 @@ function sleep(ms: number): Promise<void> {
  * 轮询 TaskArchive，感知状态变化，推送 SSE 事件
  * 嵌入用户体验安抚消息（30s/60s/120s 节点）
  * @param delegation_log_id G4: delegation_logs 主键 ID，用于异步回写 execution 结果
+ * @param reqApiKey 可选的 API Key（用于流式 Manager Synthesis）
  */
 export async function* pollArchiveAndYield(
   taskId: string,
   lang: "zh" | "en",
-  delegation_log_id?: string
+  delegation_log_id?: string,
+  reqApiKey?: string
 ): AsyncGenerator<SSEEvent> {
   // 自适应轮询间隔
   const getPollInterval = (elapsedMs: number): number => {
@@ -242,41 +300,28 @@ export async function* pollArchiveAndYield(
             .catch((e) => console.warn("[delegation-log] updateExecution failed:", e.message));
         }
 
-        // Manager Synthesis
-        let synthesizedContent = workerResult;
+        // Manager Synthesis — 流式输出，边生成边推送到前端
+        sentResult = true;
         try {
-          const synthesized = await synthesizeManagerOutput(taskId, workerResult, workerConfidence, lang);
-          if (synthesized) {
-            synthesizedContent = synthesized;
-            await TaskArchiveEventRepo.create({
-              archive_id: taskId,
-              task_id: taskId,
-              event_type: "manager_synthesized",
-              payload: {
-                final_content_length: synthesized.length,
-                confidence: workerConfidence,
-              },
-              actor: "fast_manager",
-            });
-            yield {
-              type: "manager_synthesized",
-              task_id: taskId,
-              final_content: synthesized,
-              confidence: workerConfidence,
-              routing_layer: "L2",
-            };
+          // 发一个"开始整理"的提示
+          yield {
+            type: "result",
+            content: `${msgs.done}\n\n`,
+            routing_layer: "L2",
+          };
+
+          // 流式 yield chunks，直接推给前端
+          for await (const chunkEvent of synthesizeManagerOutputStream(taskId, workerResult, workerConfidence, lang, reqApiKey)) {
+            yield chunkEvent;
           }
         } catch (e: any) {
           console.warn("[pollArchiveAndYield] Manager synthesis failed, using raw result:", e.message);
+          yield {
+            type: "result",
+            content: `${msgs.done}\n\n${workerResult}`,
+            routing_layer: "L2",
+          };
         }
-
-        // 推送 result 文本事件
-        sentResult = true;
-        yield {
-          type: "result",
-          content: `${msgs.done}\n\n${synthesizedContent}`,
-          routing_layer: "L2",
-        };
 
         // SSE1: 成功路径也发送 done 事件（与 failed/timeout 路径一致）
         yield { type: "done", content: lang === "zh" ? "分析完成" : "Analysis complete", routing_layer: "L2" };
