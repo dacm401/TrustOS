@@ -8,21 +8,9 @@ const VALID_FEEDBACK_TYPES: readonly FeedbackType[] = [
   "thumbs_up", "thumbs_down",
   "follow_up_doubt", "follow_up_thanks",
 ] as const;
-import { manageContext } from "../services/context-manager.js";
-import { callModelFull, callModelStream } from "../models/model-gateway.js";
-import { callOpenAIWithOptions } from "../models/providers/openai.js";
-import { checkQuality } from "../router/quality-gate.js";
-import { analyzeAndRoute, getDefaultRouting } from "../router/router.js";
 import { logDecision } from "../logging/decision-logger.js";
-import { learnFromInteraction } from "../features/learning-engine.js";
-import { estimateCost } from "../models/token-counter.js";
 import { config } from "../config.js";
-import { TaskRepo } from "../db/repositories.js";
-import type { ChatMessage } from "../types/index.js";
-import { assemblePrompt } from "../services/prompt-assembler.js";
-import type { PromptMode } from "../services/prompt-assembler.js";
-import { MemoryEntryRepo, ExecutionResultRepo } from "../db/repositories.js";
-import { runRetrievalPipeline, buildCategoryAwareMemoryText } from "../services/memory-retrieval.js";
+import { MemoryEntryRepo, TaskRepo, ExecutionResultRepo } from "../db/repositories.js";
 import { formatExecutionResultsForPlanner } from "../services/execution-result-formatter.js";
 // EL-003: Execution Loop
 import { taskPlanner } from "../services/task-planner.js";
@@ -31,29 +19,12 @@ import { executionLoop } from "../services/execution-loop.js";
 import { getContextUserId } from "../middleware/identity.js";
 // SSE 流式轮询（从 orchestrator.ts 迁移出来）
 import { pollArchiveAndYield } from "../services/phase3/sse-poller.js";
-// Phase 3.0: LLM-Native Router — ManagerDecision 驱动的路由
 import { routeWithManagerDecision } from "../services/llm-native-router.js";
-// O-007: 安抚功能 — 检测 pending 任务
-import { DelegationArchiveRepo } from "../db/repositories.js";
 // Sprint 63: 跨会话上下文
 import { buildCrossSessionContext } from "../services/cross-session-context.js";
 // Sprint 65: Permission 对话流 + Operation Auth Matrix
 import { handlePermissionResponseMessage } from "../services/permission-manager.js";
-import { validateWithAuthMatrix } from "../services/operation-auth-matrix.js";
-
 const chatRouter = new Hono();
-
-/** 调用模型：若请求携带 api_key 则用请求级 client，否则走默认 provider */
-async function callModel(
-  model: string,
-  messages: ChatMessage[],
-  reqApiKey?: string
-) {
-  if (reqApiKey) {
-    return callOpenAIWithOptions(model, messages, reqApiKey, config.openaiBaseUrl || undefined);
-  }
-  return callModelFull(model, messages);
-}
 
 chatRouter.post("/chat", async (c) => {
   // UTF-8 fix: use c.req.raw.text() instead of c.req.json()
@@ -133,16 +104,254 @@ chatRouter.post("/chat", async (c) => {
   }
 
   try {
-    const { features } = await analyzeAndRoute(
-      { ...body, user_id: userId, session_id: sessionId }
-    );
-    // LLM-native routing: routing done by orchestrator, analyzeAndRoute returns empty routing
-    const routing: import("../types/index.js").RoutingDecision = getDefaultRouting();
+    // Sprint 69: 统一 dispatcher — 不再区分 use_llm_native_routing
+    // 所有请求走 routeWithManagerDecision，由 stream 标志决定返回格式
+    // Sprint 68 发现：use_llm_native_routing 隐式分支导致规则路径和 SSE 路径不对齐
+    const useStream = body.stream === true;
+    const useLLMNative = body.use_llm_native_routing !== false; // 默认 true
 
-    // ── Phase 3.0: LLM-Native Manager-Worker 路由（默认路径）─────────────────────
-    // 所有非 execute 请求默认走 LLM-Native 路由
-    // LLM-Native 通过 routeWithManagerDecision → Manager 模型决策 → 四路分发
-    if (body.use_llm_native_routing === true) {
+    if (!useLLMNative) {
+      return c.json({ error: "Legacy routing path (use_llm_native_routing=false) has been removed. Please remove this flag." }, 400);
+    }
+
+    // Sprint 69: 轻量 features 提取（仅用于 logDecision / execute mode）
+    // 不再走旧的 analyzeAndRoute，统一由 routeWithManagerDecision 提供
+    const { features } = (() => {
+      const message = body.message ?? "";
+      const safeText = message ?? "";
+      const chineseChars = safeText.match(/[\u4e00-\u9fff]/g);
+      const language = (chineseChars && chineseChars.length > safeText.length * 0.1) ? "zh" : "en";
+      return {
+        features: {
+          raw_query: message,
+          token_count: 0,
+          context_token_count: 0,
+          conversation_depth: (body.history ?? []).filter((m: any) => m.role === "user").length,
+          language,
+          intent: "general" as const,
+          complexity_score: 50,
+          has_code: false,
+          has_math: false,
+          requires_reasoning: false,
+        }
+      };
+    })();
+
+    // SSE 契约强制：stream=true 必须走 SSE 路径，否则 500
+    // 防止 stream=true 但走错了路径导致前端 SSE reader 永远挂起
+    if (useStream) {
+      // ── SSE 流式分支 ───────────────────────────────────────────────────────────
+      let llmNativeResult;
+      try {
+        const cross = await buildCrossSessionContext({
+          userId,
+          sessionId,
+          userMessage: body.message ?? "",
+        }).catch((e: any) => {
+          console.warn("[chat] cross-session context build failed:", e.message);
+          return { crossSessionText: "" };
+        });
+        const crossSessionContext = cross.crossSessionText || undefined;
+
+        llmNativeResult = await routeWithManagerDecision({
+          message: body.message ?? "",
+          user_id: userId,
+          session_id: sessionId,
+          turn_id: (body.history ?? []).length,
+          history: body.history ?? [],
+          language: features.language as "zh" | "en",
+          reqApiKey,
+          crossSessionContext,
+        });
+      } catch (e: any) {
+        console.warn("[stream-llm] routeWithManagerDecision failed:", e.message);
+        return c.json({ error: "LLM-native routing failed: " + e.message }, 500);
+      }
+
+      if (!llmNativeResult) {
+        return c.json({ error: "Manager returned null decision" }, 500);
+      }
+
+      const lang = features.language as "zh" | "en";
+      const taskId = llmNativeResult.delegation?.task_id || uuid();
+
+      // Sprint 68: Phase 2.0 L2 Rollout
+      const isL2Traffic = llmNativeResult.routing_layer === "L2" || llmNativeResult.routing_layer === "L3";
+      if (isL2Traffic && (!config.layer2.enabled || Math.random() > config.layer2.rollout)) {
+        const fallback = llmNativeResult.message || (lang === "zh" ? "好的。" : "Got it.");
+        c.header("Content-Type", "application/json");
+        return c.json({
+          routing_layer: "L0",
+          routing_layer_degraded: true,
+          degraded_from: llmNativeResult.routing_layer,
+          message: fallback,
+          delegation_log_id: llmNativeResult.delegation_log_id,
+        });
+      }
+
+      // SSE headers
+      c.header("Content-Type", "text/event-stream");
+      c.header("Cache-Control", "no-cache");
+      c.header("Connection", "keep-alive");
+      c.header("X-Accel-Buffering", "no");
+
+      return stream(c, async (s) => {
+        try {
+          // Step 1: Manager 的安抚消息
+          if (llmNativeResult.message) {
+            await s.write(`data: ${JSON.stringify({
+              type: "manager_decision",
+              decision_type: llmNativeResult.decision_type,
+              routing_layer: llmNativeResult.routing_layer,
+              message: llmNativeResult.message,
+            })}\n\n`);
+          }
+
+          // Step 2: Clarifying
+          if (llmNativeResult.clarifying) {
+            await s.write(`data: ${JSON.stringify({
+              type: "clarifying_needed",
+              routing_layer: "L0",
+              question_text: llmNativeResult.clarifying.question_text,
+              options: llmNativeResult.clarifying.options,
+              question_id: llmNativeResult.clarifying.question_id,
+            })}\n\n`);
+          }
+
+          // Step 3: delegation
+          if (llmNativeResult.delegation) {
+            if (llmNativeResult.archive_id) {
+              await s.write(`data: ${JSON.stringify({
+                type: "archive_written",
+                task_id: taskId,
+                archive_id: llmNativeResult.archive_id,
+                decision_type: llmNativeResult.decision_type ?? "delegate_to_slow",
+                routing_layer: llmNativeResult.routing_layer,
+                timestamp: new Date().toISOString(),
+              })}\n\n`);
+            }
+            if (llmNativeResult.command_id) {
+              await s.write(`data: ${JSON.stringify({
+                type: "worker_started",
+                task_id: taskId,
+                command_id: llmNativeResult.command_id,
+                worker_role: llmNativeResult.decision_type === "execute_task" ? "execute_worker" : "slow_worker",
+                routing_layer: llmNativeResult.routing_layer,
+                timestamp: new Date().toISOString(),
+              })}\n\n`);
+            }
+            await s.write(`data: ${JSON.stringify({
+              type: "command_issued",
+              task_id: taskId,
+              routing_layer: llmNativeResult.routing_layer,
+            })}\n\n`);
+
+            for await (const event of pollArchiveAndYield(taskId, lang, llmNativeResult.delegation_log_id)) {
+              await s.write(`data: ${JSON.stringify({
+                ...event,
+                routing_layer: event.routing_layer ?? llmNativeResult.routing_layer,
+              })}\n\n`);
+            }
+          }
+
+          await s.write(`data: ${JSON.stringify({
+            type: "done",
+            stream: llmNativeResult.delegation
+              ? (lang === "zh" ? "分析完成" : "Analysis complete")
+              : (lang === "zh" ? "已返回答案" : "Answer ready"),
+            routing_layer: llmNativeResult.routing_layer,
+            archive_id: llmNativeResult.archive_id,
+            task_id: taskId,
+          })}\n\n`);
+        } catch (e: any) {
+          console.warn("[stream-llm] SSE error:", e.message);
+          await s.write(`data: ${JSON.stringify({ type: "error", stream: e.message })}\n\n`);
+          await s.write(`data: ${JSON.stringify({ type: "done", stream: lang === "zh" ? "发生错误" : "Error occurred" })}\n\n`);
+        }
+      });
+    }
+
+    // ── 非 SSE 分支（stream=false / undefined）───────────────────────────────────
+    // 走 routeWithManagerDecision，返回 Manager 完整响应（直接回答或澄清）
+    let llmNativeResult;
+    try {
+      const cross = await buildCrossSessionContext({
+        userId,
+        sessionId,
+        userMessage: body.message ?? "",
+      }).catch((e: any) => {
+        console.warn("[chat] cross-session context build failed:", e.message);
+        return { crossSessionText: "" };
+      });
+      const crossSessionContext = cross.crossSessionText || undefined;
+
+      llmNativeResult = await routeWithManagerDecision({
+        message: body.message ?? "",
+        user_id: userId,
+        session_id: sessionId,
+        turn_id: (body.history ?? []).length,
+        history: body.history ?? [],
+        language: features.language as "zh" | "en",
+        reqApiKey,
+        crossSessionContext,
+      });
+    } catch (e: any) {
+      return c.json({ error: "LLM-native routing failed: " + e.message }, 500);
+    }
+
+    if (!llmNativeResult) {
+      return c.json({ error: "Manager returned null decision" }, 500);
+    }
+
+    const taskId = llmNativeResult.delegation?.task_id || uuid();
+
+    // 记录 decision log
+    await logDecision({
+      id: uuid(),
+      user_id: userId,
+      session_id: sessionId,
+      timestamp: startTime,
+      input_features: features,
+      routing: {
+        router_version: "llm_native_v1",
+        scores: { fast: 1, slow: 0 },
+        confidence: llmNativeResult.decision?.confidence ?? 1.0,
+        selected_model: config.fastModel,
+        selected_role: "fast",
+        selection_reason: `llm_native(${llmNativeResult.decision?.decision_type ?? "direct_answer"})`,
+        fallback_model: config.slowModel,
+        routing_layer: llmNativeResult.routing_layer,
+      },
+      context: {
+        original_tokens: 0,
+        compressed_tokens: 0,
+        compression_level: "L0",
+        compression_ratio: 0,
+        memory_items_retrieved: 0,
+        final_messages: [],
+        compression_details: [],
+      },
+      execution: {
+        model_used: config.fastModel,
+        input_tokens: 0,
+        output_tokens: 0,
+        total_cost_usd: 0,
+        latency_ms: Date.now() - startTime,
+        did_fallback: false,
+        response_text: llmNativeResult.message ?? "",
+      },
+    }).catch((e) => console.warn("[chat] Failed to log llm-native decision:", e));
+
+    return c.json({
+      message: llmNativeResult.message ?? "",
+      decision_type: llmNativeResult.decision_type,
+      routing_layer: llmNativeResult.routing_layer,
+      clarifying: llmNativeResult.clarifying,
+      task_id: taskId,
+      delegation: llmNativeResult.delegation
+        ? { task_id: llmNativeResult.delegation.task_id, status: "triggered" }
+        : undefined,
+    });
 
       // Sprint 63: 构建跨会话上下文（active task + history facts）
       let crossSessionContext: string | undefined;
@@ -397,18 +606,11 @@ chatRouter.post("/chat", async (c) => {
 
         return c.json(response);
       }
-      // llmNativeResult === null（Manager 模型调用失败）→ 返回错误，不回退到旧路径
-        throw new Error("LLM-native routing failed: Manager model returned null. " +
-          "Set body.execute=true for execution mode or check model availability.");
-    }
-    // ── End Phase 3.0 LLM-Native 分支 ───────────────────────────────────────────
 
-    // 注意：非 execute 请求已在 LLM-Native 分支 return，此处仅处理 execute 模式
+      // llm-native-router 失败且非 execute 模式 → 返回错误
+      return c.json({ message: "路由失败，请重试" }, 503);
     // ── EL-003: Execution mode ───────────────────────────────────────────────
-    // Triggered when the client sets body.execute === true.
-    // Routes the request through TaskPlanner + ExecutionLoop instead of
-    // the single-call model path. Existing logic is entirely unchanged when
-    // body.execute is absent or false.
+    // Sprint 69 注：execute=true 仍然是独立路径（不走 ManagerDecision），保持不变
     if (body.execute === true) {
       // T1: reuse resumed taskId if available, otherwise create new
       const taskId = resumedTaskId || uuid();
@@ -535,177 +737,6 @@ chatRouter.post("/chat", async (c) => {
       return c.json({ message: loopResult.finalContent, task_id: taskId });
     }
     // ── End EL-003 execution mode ────────────────────────────────────────────
-
-    // 流式请求（非 execute）默认走 LLM-Native SSE 分支，已在 try 块顶部处理。
-    // 旧 streaming 路径（依赖 orchestrator）已废弃删除。
-    // 此处保留单次调用路径作为 legacy API fallback（body.execute && !body.use_llm_native_routing）
-
-    // 创建任务记录（用 intent 作为 mode 推断：simple_qa/chat → direct，其他 → research）
-    // T1: if we resumed an existing task, reuse its taskId instead of creating a new one
-    const taskId = resumedTaskId || uuid();
-    const message = body.message ?? "";
-    const intentToMode: Record<string, string> = { simple_qa: "direct", chat: "direct", unknown: "direct" };
-    const mode = intentToMode[features.intent] || "research";
-    const complexityMap = ["low", "low", "medium", "high"];
-    const complexity = complexityMap[Math.min(Math.floor(features.complexity_score / 33), 3)];
-    const title = message.substring(0, 100);
-
-    TaskRepo.create({
-      id: taskId,
-      user_id: userId,
-      session_id: sessionId,
-      title,
-      mode,
-      complexity,
-      risk: "low",
-      goal: title,
-    }).catch((e) => console.warn("[chat] Failed to create task:", e));
-
-    // 组装 prompt（Memory Injection MC-003 + MR-001 Retrieval Policy）
-    const memories = config.memory.enabled
-      ? await MemoryEntryRepo.getTopForUser(userId, config.memory.maxEntriesToInject)
-      : [];
-
-    // MR-001: v2 retrieval pipeline — only active when strategy === "v2"
-    let retrievalResults: Array<{ entry: any; score: number; reason: string }> = [];
-    if (config.memory.enabled && config.memory.retrieval.strategy === "v2") {
-      const context = { userMessage: message };
-      // Fetch a wider candidate pool (1.5× the injection limit) for scoring
-      const candidates = await MemoryEntryRepo.getTopForUser(
-        userId,
-        Math.ceil(config.memory.maxEntriesToInject * 1.5)
-      );
-      retrievalResults = runRetrievalPipeline({
-        entries: candidates,
-        context,
-        categoryPolicy: config.memory.retrieval.categoryPolicy,
-        maxTotalEntries: config.memory.maxEntriesToInject,
-      });
-
-      // Fallback to v1 if v2 returns nothing
-      if (retrievalResults.length === 0) {
-        retrievalResults = memories.map((m) => ({
-          entry: m,
-          score: m.importance,
-          reason: "v1-fallback(no-v2-results)",
-        }));
-      }
-    } else {
-      // Legacy v1 path: flat importance+recency ordering
-      retrievalResults = memories.map((m) => ({
-        entry: m,
-        score: m.importance,
-        reason: "v1",
-      }));
-    }
-
-    // MR-002: category-aware memory text assembly
-    // Replaces flat "[category] content" list with grouped sections by category
-    // T1: Inject resumed task summary into context so the model knows the conversation history
-    let taskSummary: { goal: string; summaryText: string; nextStep: string | null } | undefined;
-    if (resumedTaskSummary) {
-      const s = resumedTaskSummary;
-      const parts: string[] = [];
-      if (s.completed_steps?.length) parts.push(`已完成步骤:\n${s.completed_steps.join("\n")}`);
-      if (s.blocked_by?.length) parts.push(`卡点: ${s.blocked_by.join(", ")}`);
-      if (s.confirmed_facts?.length) parts.push(`已确认事实:\n${s.confirmed_facts.map((f: string) => `• ${f}`).join("\n")}`);
-      if (s.summary_text) parts.push(`任务摘要: ${s.summary_text}`);
-      taskSummary = {
-        goal: s.goal || "继续任务",
-        summaryText: parts.length > 0 ? parts.join("\n\n") : "(无详细摘要)",
-        nextStep: s.next_step ?? null,
-      };
-    } else if (retrievalResults.length > 0) {
-      taskSummary = {
-        goal: "User memories:",
-        summaryText: buildCategoryAwareMemoryText(retrievalResults as any).combined,
-        nextStep: null,
-      };
-    }
-
-    const promptAssembly = assemblePrompt({
-      mode: mode as PromptMode,
-      modelMode: routing.selected_role as "fast" | "slow",
-      intent: features.intent,
-      userMessage: message,
-      memoryText: retrievalResults.length > 0 ? buildCategoryAwareMemoryText(retrievalResults as any).combined : undefined,
-      taskSummary,
-      maxTaskSummaryTokens: config.memory.maxEntriesToInject * config.memory.maxTokensPerEntry,
-      lang: features.language as "zh" | "en",
-    });
-
-    const contextResult = await manageContext(
-      { ...body, user_id: userId, session_id: sessionId },
-      routing.selected_model,
-      promptAssembly.systemPrompt
-    );
-
-    let modelResponse = await callModel(routing.selected_model, contextResult.final_messages, reqApiKey);
-    let didFallback = false, fallbackReason: string | undefined;
-
-    if (config.qualityGateEnabled && routing.selected_role === "fast") {
-      const qualityCheck = checkQuality(modelResponse.content, features);
-      if (!qualityCheck.passed && config.fallbackEnabled) {
-        didFallback = true;
-        fallbackReason = qualityCheck.issues.join("; ");
-        modelResponse = await callModel(routing.fallback_model, contextResult.final_messages, reqApiKey);
-      }
-    }
-
-    const latencyMs = Date.now() - startTime;
-    const totalCost = estimateCost(modelResponse.input_tokens, modelResponse.output_tokens, modelResponse.model);
-
-    const decision: DecisionRecord = {
-      id: uuid(), user_id: userId, session_id: sessionId, timestamp: startTime, input_features: features, routing,
-      context: contextResult,
-      execution: {
-        model_used: modelResponse.model,
-        input_tokens: modelResponse.input_tokens,
-        output_tokens: modelResponse.output_tokens,
-        total_cost_usd: totalCost,
-        latency_ms: latencyMs,
-        did_fallback: didFallback,
-        fallback_reason: fallbackReason,
-        response_text: modelResponse.content,
-      },
-    };
-
-    logDecision(decision).catch((e) => console.warn("[chat] Failed to log decision:", e));
-
-    // P4: derive previousDecisionId from the last assistant message in history
-    const previousDecisionId: string | undefined = (() => {
-      for (let i = (body.history?.length ?? 0) - 1; i >= 0; i--) {
-        const msg = body.history![i];
-        if (msg.role === "assistant" && msg.decision_id) return msg.decision_id;
-      }
-      return undefined;
-    })();
-
-    // P4: userId is available in scope; pass to learnFromInteraction for feedback_events writes
-    learnFromInteraction(decision, message, previousDecisionId, userId).catch((e) => console.warn("[chat] Learning failed:", e));
-    // 更新任务执行统计
-    TaskRepo.updateExecution(taskId, modelResponse.input_tokens + modelResponse.output_tokens).catch((e) => console.warn("[chat] Failed to update task:", e));
-
-    // 写 trace：classification + response
-    TaskRepo.createTrace({
-      id: uuid(), task_id: taskId, type: "classification",
-      detail: { intent: features.intent, complexity_score: features.complexity_score, mode },
-    }).catch((e) => console.warn("[chat] Failed to write classification trace:", e));
-    TaskRepo.createTrace({
-      id: uuid(), task_id: taskId, type: "routing",
-      detail: { selected_model: routing.selected_model, selected_role: routing.selected_role, confidence: routing.confidence, did_fallback: didFallback },
-    }).catch((e) => console.warn("[chat] Failed to write routing trace:", e));
-    TaskRepo.createTrace({
-      id: uuid(), task_id: taskId, type: "response",
-      detail: { input_tokens: modelResponse.input_tokens, output_tokens: modelResponse.output_tokens, latency_ms: latencyMs, total_cost_usd: totalCost },
-    }).catch((e) => console.warn("[chat] Failed to write response trace:", e));
-
-    const response: ChatResponse = {
-      message: modelResponse.content,
-      decision: { ...decision, execution: { ...decision.execution, response_text: "" } },
-      task_id: taskId,
-    };
-    return c.json(response);
   } catch (error: any) {
     console.error("Chat error:", error);
     return c.json({ error: error.message }, 500);

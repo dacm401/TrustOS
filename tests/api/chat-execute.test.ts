@@ -275,40 +275,7 @@ vi.mock("../../src/config.js", () => ({
   config: mockConfig,
 }));
 
-// ── Phase 2.0 dependency mocks (required by chat.ts top-level imports) ────────
 
-// orchestrator.ts — used by chat.ts non-execute path; mock prevents real imports
-vi.mock("../../src/services/orchestrator.js", () => ({
-  orchestrator: vi.fn().mockResolvedValue({
-    fast_reply: "mock orchestrator reply",
-    routing_info: { delegated: false },
-  }),
-  getDelegationResult: vi.fn().mockResolvedValue(null),
-  pollArchiveAndYield: vi.fn(),
-  evaluateRouting: vi.fn().mockReturnValue({
-    routing_intent: "chat",
-    selected_role: "fast",
-    confidence: 0.9,
-  }),
-  inferRoutingLayer: vi.fn().mockReturnValue("L0"),
-}));
-
-// weather-search.ts — imported at module level in chat.ts
-vi.mock("../../src/services/weather-search.js", () => ({
-  detectWeatherQuery: vi.fn().mockReturnValue(false),
-  fetchRealTimeWeather: vi.fn().mockRejectedValue(new Error("weather not mocked")),
-  formatWeatherPrompt: vi.fn().mockReturnValue(""),
-}));
-
-// fast-model-tools.ts — imported at module level in chat.ts (via orchestrator)
-vi.mock("../../src/services/fast-model-tools.js", () => ({
-  FAST_MODEL_TOOLS: [],
-}));
-
-// tool executor — used by orchestrator
-vi.mock("../../src/tools/executor.js", () => ({
-  toolExecutor: vi.fn().mockResolvedValue({ success: true, result: {} }),
-}));
 
 // Hono router test client
 async function POSTChat(body: Record<string, unknown>) {

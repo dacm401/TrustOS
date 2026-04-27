@@ -1,5 +1,5 @@
 // Phase 3.0: Manager-Worker Runtime — ManagerDecision 校验
-// backend/src/orchestrator/decision-validator.ts
+// backend/src/services/decision-validator.ts
 //
 // 用 zod（已安装）替代 ajv，运行时校验 Fast Manager 输出的 ManagerDecision。
 

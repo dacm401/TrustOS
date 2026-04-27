@@ -29,7 +29,7 @@ import type {
   DecisionFeatures,
 } from "../types/index.js";
 import { DECISION_TO_LAYER } from "../types/index.js";
-import { parseAndValidate } from "../orchestrator/decision-validator.js";
+import { parseAndValidate } from "./decision-validator.js";
 import { taskPlanner } from "./task-planner.js";
 import { DelegationLogRepo } from "../db/repositories.js";
 
