@@ -110,40 +110,8 @@ vi.mock("../../src/db/repositories", () => ({
   },
 }));
 
-vi.mock("../../src/router/router.js", () => ({
-  analyzeAndRoute: vi.fn().mockResolvedValue({
-    features: {
-      raw_query: "hello world",
-      token_count: 2,
-      intent: "chat",
-      complexity_score: 0.1,
-      has_code: false,
-      has_math: false,
-      requires_reasoning: false,
-      conversation_depth: 0,
-      context_token_count: 0,
-      language: "en",
-    },
-    routing: {
-      router_version: "v1",
-      scores: { fast: 0.9, slow: 0.3 },
-      confidence: 0.9,
-      selected_model: "gpt-4o-mini",
-      selected_role: "fast",
-      selection_reason: "test",
-      fallback_model: "gpt-4o",
-    },
-  }),
-  getDefaultRouting: vi.fn().mockReturnValue({
-    router_version: "llm_native_v0.4",
-    scores: { fast: 0, slow: 0 },
-    confidence: 0,
-    selected_model: "",
-    selected_role: "fast",
-    selection_reason: "llm_native_routing",
-    fallback_model: "",
-  }),
-}));
+// Note: src/router/router.ts was removed in Sprint 69 cleanup
+// (getDefaultRouting + analyzeAndRoute replaced by routeWithManagerDecision)
 
 vi.mock("../../src/services/context-manager.js", () => ({
   manageContext: vi.fn().mockResolvedValue({

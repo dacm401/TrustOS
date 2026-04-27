@@ -19,47 +19,8 @@
 
 // ── Mock factory refs (hoisted, populated before vi.mock) ───────────────────
 
-// router mocks — hoisted so vi.clearAllMocks() does NOT reset their return values
-// (clearAllMocks resets calls history and mock.calls, but mockImplementation set
-//  inside vi.mock() factory is wiped; hoisted refs survive because they are
-//  re-applied on each call via the closure).
-const mockAnalyzeAndRoute = vi.hoisted(() =>
-  vi.fn().mockResolvedValue({
-    features: {
-      raw_query: "帮我完成这个任务",
-      token_count: 5,
-      intent: "task",
-      complexity_score: 60,
-      has_code: false,
-      has_math: false,
-      requires_reasoning: false,
-      conversation_depth: 0,
-      context_token_count: 0,
-      language: "zh",
-    },
-    routing: {
-      router_version: "v1",
-      scores: { fast: 0.3, slow: 0.9 },
-      confidence: 0.8,
-      selected_model: "gpt-4o",
-      selected_role: "slow" as const,
-      selection_reason: "test",
-      fallback_model: "gpt-4o",
-    },
-  })
-);
-
-const mockGetDefaultRouting = vi.hoisted(() =>
-  vi.fn().mockReturnValue({
-    router_version: "llm_native_v0.4",
-    scores: { fast: 0, slow: 0 },
-    confidence: 0,
-    selected_model: "",
-    selected_role: "fast" as const,
-    selection_reason: "llm_native_routing",
-    fallback_model: "",
-  })
-);
+// Note: src/router/router.ts was removed in Sprint 69 cleanup
+// (getDefaultRouting + analyzeAndRoute replaced by routeWithManagerDecision)
 const mockPlan = vi.hoisted(() =>
   vi.fn().mockResolvedValue({
     taskId: "mock-task-id",
@@ -156,18 +117,10 @@ vi.mock("../../src/models/model-gateway.js", () => ({
   callModelFull: vi.fn(),
 }));
 
-vi.mock("../../src/router/router.js", () => ({
-  analyzeAndRoute: mockAnalyzeAndRoute,
-  // Phase 2.0: getDefaultRouting used by chat.ts LLM-Native routing branch
-  getDefaultRouting: mockGetDefaultRouting,
-}));
+
 
 vi.mock("../../src/services/context-manager.js", () => ({
   manageContext: vi.fn().mockResolvedValue({ final_messages: [] }),
-}));
-
-vi.mock("../../src/router/quality-gate.js", () => ({
-  checkQuality: vi.fn().mockReturnValue({ passed: true, issues: [] }),
 }));
 
 vi.mock("../../src/logging/decision-logger.js", () => ({
@@ -180,14 +133,6 @@ vi.mock("../../src/features/learning-engine.js", () => ({
     milestones: [],
     implicit_feedback: null,
   }),
-}));
-
-vi.mock("../../src/logging/decision-logger.js", () => ({
-  logDecision: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../../src/features/learning-engine.js", () => ({
-  learnFromInteraction: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../src/models/token-counter.js", () => ({
@@ -296,39 +241,6 @@ describe("POST /api/chat – execute mode", () => {
     // Reset call counts only — do NOT restoreAllMocks() because that would wipe
     // the mockResolvedValue implementations set on hoisted vi.fn() refs.
     vi.clearAllMocks();
-    // Re-apply default return values after clearAllMocks (which strips implementations)
-    mockAnalyzeAndRoute.mockResolvedValue({
-      features: {
-        raw_query: "帮我完成这个任务",
-        token_count: 5,
-        intent: "task",
-        complexity_score: 60,
-        has_code: false,
-        has_math: false,
-        requires_reasoning: false,
-        conversation_depth: 0,
-        context_token_count: 0,
-        language: "zh",
-      },
-      routing: {
-        router_version: "v1",
-        scores: { fast: 0.3, slow: 0.9 },
-        confidence: 0.8,
-        selected_model: "gpt-4o",
-        selected_role: "slow" as const,
-        selection_reason: "test",
-        fallback_model: "gpt-4o",
-      },
-    });
-    mockGetDefaultRouting.mockReturnValue({
-      router_version: "llm_native_v0.4",
-      scores: { fast: 0, slow: 0 },
-      confidence: 0,
-      selected_model: "",
-      selected_role: "fast" as const,
-      selection_reason: "llm_native_routing",
-      fallback_model: "",
-    });
     mockLoopRun.mockResolvedValue({
       finalContent: "✅ Mock execution completed.",
       reason: "completed" as const,
