@@ -230,6 +230,7 @@ export async function* pollArchiveAndYield(
 
           const execUpdate: Partial<DelegationLogExecutionUpdate> = {
             execution_status: "success",
+            execution_correct: true, // G4: Worker 执行成功，标记 execution_correct
             model_used: (execution.worker_role as string) ?? "slow_worker",
             latency_ms: latency_ms ?? undefined,
             cost_usd: cost_usd ?? undefined,
@@ -290,6 +291,7 @@ export async function* pollArchiveAndYield(
         const errors = (Array.isArray(exec?.errors) ? exec.errors : []) as string[];
         DelegationLogRepo.updateExecution(delegation_log_id, {
           execution_status: "failed",
+          execution_correct: false, // G4: Worker 执行失败，标记 execution_correct
           error_message: errors[0] ?? "Unknown error",
         }).catch((e) => console.warn("[delegation-log] updateExecution failed:", e.message));
       }
@@ -308,6 +310,7 @@ export async function* pollArchiveAndYield(
       if (delegation_log_id) {
         DelegationLogRepo.updateExecution(delegation_log_id, {
           execution_status: "timeout",
+          execution_correct: false, // G4: Worker 超时，标记 execution_correct
           error_message: "Task execution exceeded 180s timeout",
         }).catch((e) => console.warn("[delegation-log] updateExecution timeout failed:", e.message));
       }

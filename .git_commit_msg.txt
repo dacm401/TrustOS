@@ -1,0 +1,8 @@
+Sprint 71: G4 execution_correct write-through activated
+
+sse-poller.ts: add execution_correct to all three updateExecution calls
+- success path: true
+- failed path: false
+- timeout path: false
+
+tsc 0 errors | vitest 570 passed
