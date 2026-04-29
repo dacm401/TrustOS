@@ -52,22 +52,30 @@ export class CircuitBreaker {
       const result = await fn();
       this.onSuccess();
       return result;
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.onFailure(err);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.onFailure(error);
       
       if (errorHandler) {
-        await errorHandler(err);
+        await errorHandler(error);
       }
       
-      throw error;
+      throw err;
     }
   }
 
   private canExecute(): boolean {
-    if (this.state === 'closed') {
-      return true;
-    }
+      if (this.state === 'closed') {
+      this.lastFailureTime = Date.now();
+      
+      if (this.failureCount >= (this.config.failureThreshold ?? 5)) {
+        this.state = 'open';
+        console.warn(
+          `🔴 Circuit Breaker OPENED after ${this.failureCount} failures`,
+          'Last error details logged separately'
+        );
+      }
+      }
 
     if (this.state === 'open') {
       if (this.lastFailureTime === null) {
@@ -82,7 +90,7 @@ export class CircuitBreaker {
         return true;
       }
 
-      this.nextAttempt = this.lastFailureTime + this.config.timeout;
+      this.nextAttempt = this.lastFailureTime + (this.config.timeout ?? 30000);
       return false;
     }
 

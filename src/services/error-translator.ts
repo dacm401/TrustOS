@@ -61,26 +61,6 @@ const ERROR_PATTERNS: Array<{
     },
   },
   {
-    pattern: /503|Service Unavailable/i,
-    translation: {
-      userMessage: '服务暂时维护中，请稍后再试',
-      techMessage: 'Service temporarily unavailable',
-      code: 'SERVICE_UNAVAILABLE',
-      retryable: true,
-      suggestedAction: '请耐心等待服务恢复',
-    },
-  },
-  {
-    pattern: /504|Gateway Timeout/i,
-    translation: {
-      userMessage: '请求响应超时，请重试',
-      techMessage: 'Gateway timeout',
-      code: 'GATEWAY_TIMEOUT',
-      retryable: true,
-      suggestedAction: '请重试请求',
-    },
-  },
-  {
     pattern: /LLM_TIMEOUT|timeout.*model|model.*timeout/i,
     translation: {
       userMessage: 'AI 思考超时，已尝试切换到更快的模型',
@@ -88,16 +68,6 @@ const ERROR_PATTERNS: Array<{
       code: 'LLM_TIMEOUT',
       retryable: true,
       suggestedAction: '已自动重试，如仍失败请简化问题',
-    },
-  },
-  {
-    pattern: /DELEGATION_FAILED|task.*fail|fail.*task/i,
-    translation: {
-      userMessage: '任务执行失败，可以重新提交或查看错误详情',
-      techMessage: 'Task delegation failed',
-      code: 'DELEGATION_FAILED',
-      retryable: true,
-      suggestedAction: '查看详细错误信息或重新提交任务',
     },
   },
   {
@@ -131,7 +101,7 @@ const ERROR_PATTERNS: Array<{
     },
   },
   {
-    pattern: /database|postgres|postgres|connection.*pool/i,
+    pattern: /database|postgres|connection.*pool/i,
     translation: {
       userMessage: '数据库连接异常，请稍后重试',
       techMessage: 'Database connection error',
@@ -160,53 +130,39 @@ const DEFAULT_ERROR: TranslatedError = {
 };
 
 export function translateError(error: unknown): TranslatedError {
-  if (error instanceof TranslatedError) {
-    return error;
-  }
-
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  const errorName = error instanceof Error ? error.name : 'Error';
-  const fullText = `${errorName}: ${errorMessage}`;
-
-  // Try to match against known patterns
-  for (const { pattern, translation } of ERROR_PATTERNS) {
-    if (pattern instanceof RegExp) {
-      if (pattern.test(errorMessage) || pattern.test(fullText)) {
-        return {
-          ...translation,
-          techMessage: errorMessage,
-        };
-      }
-    } else if (
-      errorMessage.includes(pattern) ||
-      fullText.includes(pattern)
-    ) {
-      return {
-        ...translation,
-        techMessage: errorMessage,
-      };
-    }
-  }
-
-  // Check for specific error types
   if (error instanceof Error) {
-    if ('code' in error && typeof error.code === 'string') {
-      // Check by error code
-      const codeMatch = ERROR_PATTERNS.find(
-        ({ pattern }) => pattern instanceof RegExp && pattern.test(error.code)
-      );
-      if (codeMatch) {
-        return {
-          ...codeMatch.translation,
-          techMessage: errorMessage,
-        };
+    const errorMessage = error.message;
+    const errorName = error.name;
+    const fullText = `${errorName}: ${errorMessage}`;
+
+    // Try to match against known patterns
+    for (const { pattern, translation } of ERROR_PATTERNS) {
+      if (pattern instanceof RegExp) {
+        if (pattern.test(errorMessage) || pattern.test(fullText)) {
+          return { ...translation, techMessage: errorMessage };
+        }
+      } else if (
+        errorMessage.includes(pattern) ||
+        fullText.includes(pattern)
+      ) {
+        return { ...translation, techMessage: errorMessage };
       }
+    }
+
+    // Check common patterns without reference comparison
+    if (errorMessage.includes('timeout')) {
+      return { ...ERROR_PATTERNS[4].translation, techMessage: errorMessage };
+    }
+    if (errorMessage.includes('unauthorized') || errorMessage.includes(' authentication')) {
+      return { ...ERROR_PATTERNS[2].translation, techMessage: errorMessage };
+    }
+    if (errorMessage.includes('rate limit')) {
+      return { ...ERROR_PATTERNS[3].translation, techMessage: errorMessage };
+    }
+    if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+      return { ...ERROR_PATTERNS[0].translation, techMessage: errorMessage };
     }
   }
 
-  // Return default with actual error message
-  return {
-    ...DEFAULT_ERROR,
-    techMessage: errorMessage,
-  };
+  return DEFAULT_ERROR;
 }

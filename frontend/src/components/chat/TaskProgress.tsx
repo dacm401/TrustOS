@@ -49,7 +49,7 @@ function calculateProgressFromTraces(traces: Trace[]): {
   const hasClassification = traceTypes.includes('classification');
   const hasRouting = traceTypes.includes('routing');
   const hasPlanning = traceTypes.includes('planning');
-  const hasStep = traceTypes.some(t => t.type === 'step');
+  const hasStep = traceTypes.includes('step');
   const hasResponse = traceTypes.includes('response');
   const hasError = traceTypes.includes('error');
 
