@@ -17,3 +17,5 @@ export { calibrateWithPolicy } from "./policy-calibrator.js";
 export type { CalibratedDecision } from "./policy-calibrator.js";
 export { shouldRerank, ruleBasedRerank } from "./delegation-reranker.js";
 export type { RerankResult } from "./delegation-reranker.js";
+export { detectSensitiveData } from "./sensitive-data-rule.js";
+export type { SensitiveDataResult } from "./sensitive-data-rule.js";

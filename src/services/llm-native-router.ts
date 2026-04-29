@@ -54,6 +54,8 @@ import type { RerankResult } from "./gating/delegation-reranker.js";
 // KB-1: Knowledge Boundary Signals
 import { detectKnowledgeBoundarySignals } from "./gating/knowledge-boundary-signals.js";
 import type { KnowledgeBoundarySignal } from "../types/index.js";
+// Sensitive Data Guard: 信息分发红线
+import { detectSensitiveData } from "./gating/sensitive-data-rule.js";
 
 export interface GatedDelegationContext {
   llmScores: Record<ManagerDecisionType, number>;
@@ -290,7 +292,7 @@ export interface LLMNativeRouterResult {
   /** ManagerDecision（供 SSE 推送） */
   decision: ManagerDecision | null;
   /** 委托信息（有委托时返回 task_id） */
-  delegation?: { task_id: string; status: "triggered" };
+  delegation?: { task_id: string; status: "triggered" | "blocked_by_sensitive_guard" };
   /** 澄清问题（有澄清请求时返回） */
   clarifying?: ClarifyQuestion;
   /** 路由层 */
@@ -640,6 +642,29 @@ async function routeByDecision(
       const command = decision.command as CommandPayload | undefined;
       const taskId = uuid();
       let processedCommand = command;
+
+      // ── Sensitive Data Guard（信息分发红线）────────────────────────────────────
+      // 在发给云端模型之前，先扫描是否包含红线敏感数据
+      const scanTargets = [
+        message,                           // 用户原始输入
+        command?.task_brief ?? "",          // Manager 组装的任务摘要
+      ].join(" ");
+
+      const sensitiveResult = detectSensitiveData(scanTargets);
+      if (sensitiveResult) {
+        const alertText = language === "zh"
+          ? `⚠️ 检测到敏感数据 [${sensitiveResult.label}]，为保护您的信息，此请求不会发给云端模型。`
+          : `⚠️ Sensitive data detected [${sensitiveResult.label}]. This request will not be sent to the cloud model.`;
+        return {
+          message: alertText,
+          decision,
+          decision_type: "delegate_to_slow",
+          routing_layer: "L1",
+          raw_manager_output: raw,
+          delegation: { task_id: taskId, status: "blocked_by_sensitive_guard" },
+        };
+      }
+
 
       // Phase 4.1 + 4.2: Permission Layer + Redaction Engine
       // 目的：在数据暴露给云端模型之前，检查是否允许暴露，必要时执行脱敏
