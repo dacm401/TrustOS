@@ -34,6 +34,7 @@ export interface OrchestratorInput {
   session_id: string;
   history?: ChatMessage[];
   reqApiKey?: string;
+  reqBaseUrl?: string;
   hasPendingTask?: boolean;       // O-007: 是否有 pending 慢任务（安抚用）
   pendingTaskMessage?: string;     // O-007: pending 任务原始消息
 }
@@ -262,7 +263,8 @@ function parseClarifyQuestion(text: string): ClarifyQuestion | null {
 async function callFastModelWithTools(
   messages: ChatMessage[],
   lang: "zh" | "en",
-  reqApiKey?: string
+  reqApiKey?: string,
+  reqBaseUrl?: string
 ): Promise<{ reply: string; toolUsed?: string; command?: SlowModelCommand; clarifyQuestion?: ClarifyQuestion }> {
   const MAX_TOOL_ROUNDS = 5;
   let currentMessages = [...messages];
@@ -270,13 +272,15 @@ async function callFastModelWithTools(
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     let response: ModelResponse;
 
-    if (reqApiKey) {
+    const effectiveBaseUrl = reqBaseUrl || config.openaiBaseUrl || undefined;
+    if (reqApiKey || effectiveBaseUrl) {
       // 使用 callOpenAIWithOptions（已支持 tools）
+      const effectiveKey = reqApiKey || config.openaiApiKey;
       response = await callOpenAIWithOptions(
-        config.fastModel, currentMessages, reqApiKey, config.openaiBaseUrl || undefined, FAST_MODEL_TOOLS
+        config.fastModel, currentMessages, effectiveKey, effectiveBaseUrl, FAST_MODEL_TOOLS
       );
     } else {
-      // 无 reqApiKey 时，使用 callModelFull（已支持 tools 参数）
+      // 无 reqApiKey/reqBaseUrl 时，使用 callModelFull（已支持 tools 参数）
       response = await callModelFull(config.fastModel, currentMessages, FAST_MODEL_TOOLS);
     }
 
@@ -351,7 +355,7 @@ async function callFastModelWithTools(
 export async function orchestrator(input: OrchestratorInput): Promise<OrchestratorResult> {
   const {
     message, language,
-    user_id, session_id, history = [], reqApiKey,
+    user_id, session_id, history = [], reqApiKey, reqBaseUrl,
     hasPendingTask = false, pendingTaskMessage
   } = input;
 
@@ -369,8 +373,10 @@ export async function orchestrator(input: OrchestratorInput): Promise<Orchestrat
 
     let fastReply: string;
     try {
-      if (reqApiKey) {
-        const resp = await callOpenAIWithOptions(config.fastModel, messages, reqApiKey, config.openaiBaseUrl || undefined);
+      const effectiveBaseUrl = reqBaseUrl || config.openaiBaseUrl || undefined;
+      if (reqApiKey || effectiveBaseUrl) {
+        const effectiveKey = reqApiKey || config.openaiApiKey;
+        const resp = await callOpenAIWithOptions(config.fastModel, messages, effectiveKey, effectiveBaseUrl);
         fastReply = resp.content;
       } else {
         const resp = await callModelFull(config.fastModel, messages);
@@ -416,7 +422,7 @@ export async function orchestrator(input: OrchestratorInput): Promise<Orchestrat
   ];
 
   // Step 3: 调用 Fast 模型（带工具）
-  const { reply, toolUsed, command, clarifyQuestion } = await callFastModelWithTools(messages, language, reqApiKey);
+  const { reply, toolUsed, command, clarifyQuestion } = await callFastModelWithTools(messages, language, reqApiKey, reqBaseUrl);
 
   // Phase 1.5: Fast 请求澄清 → 直接返回
   if (clarifyQuestion) {
@@ -453,6 +459,7 @@ export async function orchestrator(input: OrchestratorInput): Promise<Orchestrat
       user_id,
       session_id,
       reqApiKey,
+      reqBaseUrl,
     }).catch((e) => console.error("[orchestrator] Slow model trigger failed:", e.message));
 
     return {
@@ -478,10 +485,11 @@ interface SlowModelBackgroundInput {
   user_id: string;
   session_id: string;
   reqApiKey?: string;
+  reqBaseUrl?: string;
 }
 
 export async function triggerSlowModelBackground(input: SlowModelBackgroundInput): Promise<void> {
-  const { taskId, message, command, user_id, session_id, reqApiKey } = input;
+  const { taskId, message, command, user_id, session_id, reqApiKey, reqBaseUrl } = input;
   const startTime = Date.now();
 
   try {
@@ -526,8 +534,10 @@ export async function triggerSlowModelBackground(input: SlowModelBackgroundInput
     ];
 
     let slowResult: string;
-    if (reqApiKey) {
-      const resp = await callOpenAIWithOptions(slowModel, slowMessages, reqApiKey, config.openaiBaseUrl || undefined);
+    const effectiveBaseUrl = reqBaseUrl || config.openaiBaseUrl || undefined;
+    if (reqApiKey || effectiveBaseUrl) {
+      const effectiveKey = reqApiKey || config.openaiApiKey;
+      const resp = await callOpenAIWithOptions(slowModel, slowMessages, effectiveKey, effectiveBaseUrl);
       slowResult = resp.content;
     } else {
       const resp = await callModelFull(slowModel, slowMessages);
@@ -812,7 +822,8 @@ Output only JSON, no explanation.`;
 export async function evaluateRouting(
   message: string,
   language: "zh" | "en" = "zh",
-  reqApiKey?: string
+  reqApiKey?: string,
+  reqBaseUrl?: string
 ): Promise<RoutingEvaluation> {
   const systemPrompt = language === "zh" ? EVAL_SYSTEM_PROMPT_ZH : EVAL_SYSTEM_PROMPT_EN;
   const messages: ChatMessage[] = [
@@ -822,8 +833,10 @@ export async function evaluateRouting(
 
   let raw = "";
   try {
-    if (reqApiKey) {
-      const resp = await callOpenAIWithOptions(config.fastModel, messages, reqApiKey, config.openaiBaseUrl || undefined);
+    const effectiveBaseUrl = reqBaseUrl || config.openaiBaseUrl || undefined;
+    if (reqApiKey || effectiveBaseUrl) {
+      const effectiveKey = reqApiKey || config.openaiApiKey;
+      const resp = await callOpenAIWithOptions(config.fastModel, messages, effectiveKey, effectiveBaseUrl);
       raw = resp.content;
     } else {
       const resp = await callModelFull(config.fastModel, messages);

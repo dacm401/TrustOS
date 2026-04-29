@@ -59,7 +59,8 @@ export { callOpenAIWithOptions } from "./providers/openai.js";
 export async function* callModelStream(
   model: string,
   messages: ChatMessage[],
-  reqApiKey?: string
+  reqApiKey?: string,
+  reqBaseUrl?: string
 ): AsyncGenerator<string> {
   if (model.startsWith("claude-")) {
     // Anthropic streaming path
@@ -87,15 +88,12 @@ export async function* callModelStream(
     }
   } else {
     // OpenAI-compatible streaming path (gpt-*, o1, o3, provider/model, etc.)
+    const effectiveBaseUrl = reqBaseUrl || config.openaiBaseUrl;
     const clientOptions: ConstructorParameters<typeof OpenAI>[0] = {
       apiKey: reqApiKey || config.openaiApiKey,
     };
-    if (!reqApiKey && config.openaiBaseUrl) {
-      clientOptions.baseURL = config.openaiBaseUrl;
-    } else if (reqApiKey && config.openaiBaseUrl) {
-      // When using a custom key, still use the configured base URL
-      // (e.g. SiliconFlow gateway). Only override if key is from the same gateway.
-      clientOptions.baseURL = config.openaiBaseUrl;
+    if (effectiveBaseUrl) {
+      clientOptions.baseURL = effectiveBaseUrl;
     }
     const openaiClient = new OpenAI(clientOptions);
 

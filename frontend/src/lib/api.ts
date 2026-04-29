@@ -2,23 +2,20 @@
 export function getApiConfig() {
   const DEFAULT_API_BASE = "http://localhost:3001";
   if (typeof window !== "undefined") {
-    // 强制纠正：不允许 api_url 指向外部 API，只能是本地后端
-    const storedUrl = localStorage.getItem("api_url");
-    if (storedUrl && storedUrl !== DEFAULT_API_BASE) {
-      localStorage.setItem("api_url", DEFAULT_API_BASE);
-    }
     return {
       apiBase: DEFAULT_API_BASE,
+      llmBaseUrl: localStorage.getItem("llm_base_url") || "",
       apiKey: localStorage.getItem("api_key") || "",
-      fastModel: localStorage.getItem("fast_model") || "Qwen/Qwen2.5-7B-Instruct",
-      slowModel: localStorage.getItem("slow_model") || "Qwen/Qwen2.5-72B-Instruct",
+      fastModel: localStorage.getItem("fast_model") || "",
+      slowModel: localStorage.getItem("slow_model") || "",
     };
   }
   return {
     apiBase: process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE,
+    llmBaseUrl: "",
     apiKey: "",
-    fastModel: "Qwen/Qwen2.5-7B-Instruct",
-    slowModel: "Qwen/Qwen2.5-72B-Instruct",
+    fastModel: "",
+    slowModel: "",
   };
 }
 
@@ -26,9 +23,10 @@ export function getApiConfig() {
 export const API_BASE = "http://localhost:3001";
 
 export async function sendMessage(message: string, history: any[], userId: string, sessionId: string) {
-  const { apiBase, apiKey, fastModel, slowModel } = getApiConfig();
+  const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = getApiConfig();
   const body: Record<string, any> = { user_id: userId, session_id: sessionId, message, history };
-  // 如果前端设置里有 Key / 模型，透传给后端覆盖环境变量
+  // 如果前端设置里有 Key / 模型 / LLM地址，透传给后端覆盖环境变量
+  if (llmBaseUrl) body.llm_base_url = llmBaseUrl;
   if (apiKey) body.api_key = apiKey;
   if (fastModel) body.fast_model = fastModel;
   if (slowModel) body.slow_model = slowModel;

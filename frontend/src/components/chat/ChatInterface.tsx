@@ -56,7 +56,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
   }, [messages, loading]);
 
   const sendStreaming = async (text: string, history: any[]): Promise<boolean> => {
-    const { apiBase, apiKey, fastModel, slowModel } = getApiConfig();
+    const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = getApiConfig();
     const body: Record<string, any> = {
       user_id: userId,
       session_id: sessionId,
@@ -64,6 +64,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
       history,
       stream: true,
     };
+    if (llmBaseUrl) body.llm_base_url = llmBaseUrl;
     if (apiKey) body.api_key = apiKey;
     if (fastModel) body.fast_model = fastModel;
     if (slowModel) body.slow_model = slowModel;
@@ -185,13 +186,14 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
   };
 
   const sendFallback = async (text: string, history: any[]) => {
-    const { apiBase, apiKey, fastModel, slowModel } = getApiConfig();
+    const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = getApiConfig();
     const body: Record<string, any> = {
       user_id: userId,
       session_id: sessionId,
       message: text,
       history,
     };
+    if (llmBaseUrl) body.llm_base_url = llmBaseUrl;
     if (apiKey) body.api_key = apiKey;
     if (fastModel) body.fast_model = fastModel;
     if (slowModel) body.slow_model = slowModel;

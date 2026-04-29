@@ -164,6 +164,7 @@ export interface LLMNativeRouterInput {
   history: ChatMessage[];
   language: "zh" | "en";
   reqApiKey?: string;
+  reqBaseUrl?: string;
 }
 
 export interface LLMNativeRouterResult {
@@ -190,10 +191,10 @@ export interface LLMNativeRouterResult {
 export async function routeWithManagerDecision(
   input: LLMNativeRouterInput
 ): Promise<LLMNativeRouterResult> {
-  const { message, user_id, session_id, history, language, reqApiKey } = input;
+  const { message, user_id, session_id, history, language, reqApiKey, reqBaseUrl } = input;
 
   // Step 1: 调用 Fast 模型，传递 Manager Prompt
-  const managerOutput = await callManagerModel({ message, history, language, reqApiKey });
+  const managerOutput = await callManagerModel({ message, history, language, reqApiKey, reqBaseUrl });
 
   // Step 2: 解析 JSON（Phase 0 使用正则解析）
   const decision = parseAndValidate(managerOutput);
@@ -211,7 +212,7 @@ export async function routeWithManagerDecision(
   }
 
   // Step 4: 按 decision_type 路由
-  return routeByDecision(decision, { message, user_id, session_id, language, reqApiKey, raw: managerOutput });
+  return routeByDecision(decision, { message, user_id, session_id, language, reqApiKey, reqBaseUrl, raw: managerOutput });
 }
 
 // ── Fast Manager 调用 ─────────────────────────────────────────────────────────
@@ -221,8 +222,9 @@ async function callManagerModel(input: {
   history: ChatMessage[];
   language: "zh" | "en";
   reqApiKey?: string;
+  reqBaseUrl?: string;
 }): Promise<string> {
-  const { message, history, language, reqApiKey } = input;
+  const { message, history, language, reqApiKey, reqBaseUrl } = input;
 
   const systemPrompt = buildManagerSystemPrompt(language);
   // 保留最近 6 轮对话作为上下文，不传全量 history（Manager 只读当前任务）
@@ -234,13 +236,16 @@ async function callManagerModel(input: {
     { role: "user", content: message },
   ];
 
+  const effectiveBaseUrl = reqBaseUrl || config.openaiBaseUrl || undefined;
+
   try {
-    if (reqApiKey) {
+    if (reqApiKey || effectiveBaseUrl) {
+      const effectiveKey = reqApiKey || config.openaiApiKey;
       const resp = await callOpenAIWithOptions(
         config.fastModel,
         messages,
-        reqApiKey,
-        config.openaiBaseUrl || undefined
+        effectiveKey,
+        effectiveBaseUrl
       );
       return resp.content;
     }
@@ -260,6 +265,7 @@ interface RouteContext {
   session_id: string;
   language: "zh" | "en";
   reqApiKey?: string;
+  reqBaseUrl?: string;
   raw: string;
 }
 
@@ -267,7 +273,7 @@ async function routeByDecision(
   decision: ManagerDecision,
   ctx: RouteContext
 ): Promise<LLMNativeRouterResult> {
-  const { message, user_id, session_id, language, reqApiKey, raw } = ctx;
+  const { message, user_id, session_id, language, reqApiKey, reqBaseUrl, raw } = ctx;
 
   switch (decision.decision_type) {
     case "direct_answer": {

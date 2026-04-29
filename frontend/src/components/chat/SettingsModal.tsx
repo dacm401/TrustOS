@@ -7,7 +7,7 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const [apiUrl, setApiUrl] = useState("");
+  const [llmBaseUrl, setLlmBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [fastModel, setFastModel] = useState("");
   const [slowModel, setSlowModel] = useState("");
@@ -15,7 +15,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   useEffect(() => {
     if (isOpen) {
-      setApiUrl(localStorage.getItem("api_url") || "");
+      setLlmBaseUrl(localStorage.getItem("llm_base_url") || "");
       setApiKey(localStorage.getItem("api_key") || "");
       setFastModel(localStorage.getItem("fast_model") || "");
       setSlowModel(localStorage.getItem("slow_model") || "");
@@ -24,7 +24,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   }, [isOpen]);
 
   const handleSave = () => {
-    localStorage.setItem("api_url", apiUrl);
+    localStorage.setItem("llm_base_url", llmBaseUrl);
     localStorage.setItem("api_key", apiKey);
     localStorage.setItem("fast_model", fastModel);
     localStorage.setItem("slow_model", slowModel);
@@ -38,21 +38,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-800">API 设置</h2>
+          <h2 className="text-xl font-bold text-gray-800">模型设置</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">API 地址</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">LLM API 地址</label>
             <input
               type="text"
-              value={apiUrl}
-              onChange={(e) => setApiUrl(e.target.value)}
-              placeholder="https://api.siliconflow.cn/v1"
+              value={llmBaseUrl}
+              onChange={(e) => setLlmBaseUrl(e.target.value)}
+              placeholder="https://openrouter.ai/api/v1"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
-            <p className="text-xs text-gray-500 mt-1">支持OpenAI兼容API，如硅基流动</p>
+            <p className="text-xs text-gray-500 mt-1">支持任意 OpenAI 兼容接口</p>
           </div>
 
           <div>
@@ -72,10 +72,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               type="text"
               value={fastModel}
               onChange={(e) => setFastModel(e.target.value)}
-              placeholder="Pro/deepseek-ai/DeepSeek-V2.5"
+              placeholder="qwen/qwen-2.5-72b-instruct"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
-            <p className="text-xs text-gray-500 mt-1">输入模型名称，如硅基流动的模型ID</p>
+            <p className="text-xs text-gray-500 mt-1">填写对应平台的模型 ID</p>
           </div>
 
           <div>
@@ -84,16 +84,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               type="text"
               value={slowModel}
               onChange={(e) => setSlowModel(e.target.value)}
-              placeholder="Qwen/Qwen2.5-72B-Instruct"
+              placeholder="qwen/qwen-2.5-72b-instruct"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
           <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
-            <p className="font-medium mb-1">💡 硅基流动配置示例：</p>
-            <p>API地址：<code className="bg-blue-100 px-1 rounded">https://api.siliconflow.cn/v1</code></p>
-            <p>快模型：<code className="bg-blue-100 px-1 rounded">Pro/deepseek-ai/DeepSeek-V2.5</code></p>
-            <p>慢模型：<code className="bg-blue-100 px-1 rounded">Qwen/Qwen2.5-72B-Instruct</code></p>
+            <p className="font-medium mb-1">💡 配置示例（OpenRouter）</p>
+            <p>API 地址：<code className="bg-blue-100 px-1 rounded">https://openrouter.ai/api/v1</code></p>
+            <p>快/慢模型：<code className="bg-blue-100 px-1 rounded">qwen/qwen-2.5-72b-instruct</code></p>
+            <p className="mt-1 font-medium">💡 配置示例（硅基流动）</p>
+            <p>API 地址：<code className="bg-blue-100 px-1 rounded">https://api.siliconflow.cn/v1</code></p>
+            <p>快/慢模型：<code className="bg-blue-100 px-1 rounded">Qwen/Qwen2.5-72B-Instruct</code></p>
           </div>
 
           <div className="pt-4 flex gap-3">

@@ -40,14 +40,17 @@ import { DelegationArchiveRepo } from "../db/repositories.js";
 
 const chatRouter = new Hono();
 
-/** 调用模型：若请求携带 api_key 则用请求级 client，否则走默认 provider */
+/** 调用模型：若请求携带 api_key/llm_base_url 则用请求级 client，否则走默认 provider */
 async function callModel(
   model: string,
   messages: ChatMessage[],
-  reqApiKey?: string
+  reqApiKey?: string,
+  reqBaseUrl?: string
 ) {
-  if (reqApiKey) {
-    return callOpenAIWithOptions(model, messages, reqApiKey, config.openaiBaseUrl || undefined);
+  if (reqApiKey || reqBaseUrl) {
+    const effectiveKey = reqApiKey || config.openaiApiKey;
+    const effectiveUrl = reqBaseUrl || config.openaiBaseUrl || undefined;
+    return callOpenAIWithOptions(model, messages, effectiveKey, effectiveUrl);
   }
   return callModelFull(model, messages);
 }
@@ -105,8 +108,9 @@ chatRouter.post("/chat", async (c) => {
     }
   }
 
-  // 请求级覆盖：前端设置里的 Key / 模型优先于环境变量
+  // 请求级覆盖：前端设置里的 Key / 模型 / BaseURL 优先于环境变量
   const reqApiKey = body.api_key || undefined;
+  const reqBaseUrl = body.llm_base_url || undefined;
   const effectiveFastModel = body.fast_model || config.fastModel;
   const effectiveSlowModel = body.slow_model || config.slowModel;
 
@@ -146,6 +150,7 @@ chatRouter.post("/chat", async (c) => {
             history: body.history ?? [],
             language: features.language as "zh" | "en",
             reqApiKey,
+            reqBaseUrl,
           });
         } catch (e: any) {
           console.warn("[stream-llm] routeWithManagerDecision failed:", e.message);
@@ -228,6 +233,7 @@ chatRouter.post("/chat", async (c) => {
           history: body.history ?? [],
           language: features.language as "zh" | "en",
           reqApiKey,
+          reqBaseUrl,
         });
       } catch (e: any) {
         // Manager 模型调用失败 → fallback 到旧 orchestrator
@@ -332,6 +338,7 @@ chatRouter.post("/chat", async (c) => {
         session_id: sessionId,
         history: body.history ?? [],
         reqApiKey,
+        reqBaseUrl,
         hasPendingTask,        // O-007: 安抚检测结果
         pendingTaskMessage,     // O-007: pending 任务信息
       });
@@ -593,6 +600,7 @@ chatRouter.post("/chat", async (c) => {
         session_id: sessionId,
         history: body.history ?? [],
         reqApiKey,
+        reqBaseUrl,
         hasPendingTask,
         pendingTaskMessage,
       });
@@ -694,7 +702,7 @@ chatRouter.post("/chat", async (c) => {
           const streamStartTime = Date.now();
 
           try {
-            for await (const chunk of callModelStream(orchSelectedModel, contextResult.final_messages, reqApiKey)) {
+            for await (const chunk of callModelStream(orchSelectedModel, contextResult.final_messages, reqApiKey, reqBaseUrl)) {
               fullContent += chunk;
               await s.write(`data: ${JSON.stringify({ type: "chunk", stream: chunk, routing_layer: routingLayer })}\n\n`);
             }
