@@ -23,6 +23,8 @@ import { createPermissionsRouter, createWorkspacesRouter } from "./api/permissio
 // Phase 3.0: 启动后台 Worker 轮询循环
 import { startSlowWorker } from "./services/phase3/slow-worker-loop.js";
 import { startExecuteWorker } from "./services/phase3/execute-worker-loop.js";
+// Optimization: Prometheus Metrics endpoint
+import { metricsRouter } from "./api/metrics.js";
 
 const app = new Hono();
 
@@ -47,6 +49,7 @@ app.route("/v1/prompt-templates", promptTemplatesRouter);
 app.route("/v1/sessions", sessionsRouter);
 app.route("/v1/permissions", createPermissionsRouter());
 app.route("/v1/workspaces", createWorkspacesRouter());
+app.route("/metrics", metricsRouter);
 
 console.log(`
 ╔══════════════════════════════════════════╗
