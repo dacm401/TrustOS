@@ -27,6 +27,7 @@ import type {
   ExecutionPlan,
   WorkerHint,
   DecisionFeatures,
+  AmbiguitySignal,
 } from "../types/index.js";
 import { DECISION_TO_LAYER } from "../types/index.js";
 import { parseAndValidate } from "./decision-validator.js";
@@ -149,12 +150,15 @@ function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: strin
 - delegate_to_slow: 委托慢模型（深度分析/多步推理/知识截止日期外内容）
 - execute_task: 执行任务（需要工具调用/代码执行/多步操作）
 
-【打分原则】
-- 每个动作独立打分（0.0~1.0），分数反映"该动作是否是最优选择"
-- 分数不是"该动作是否可能"，而是"相对其他动作是否最优"
-- direct_answer 和 ask_clarification 成本较低，可以较低阈值通过
-- delegate_to_slow 和 execute_task 成本较高（token/latency/风险），需要更高分数才值得
-- ask_clarification 不是零成本——它会打断用户、增加对话轮次
+【决策框架】（比硬编码列表更重要）
+- 成本思维：每个动作都有 token/latency/风险成本。分数反映"相对最优"而非"是否可能"
+- 澄清不是零成本：ask_clarification 会打断用户、增加对话轮次。当 direct_answer 分数接近 ask_clarification 时，倾向于直接回答
+- 尺度校准：confidence_hint ≥ 0.8 时相信自己；0.5~0.8 时倾向现有判断；< 0.5 时说明模型有较大不确定性，可适当提高 ask_clarification
+- 动作权衡：direct_answer 和 ask_clarification 成本低，较低阈值即可通过；delegate_to_slow 和 execute_task 成本高，需要更高分数
+
+【歧义情况处理】
+- 若最高两个动作分数差 < 0.15，或 confidence_hint < 0.5：主动降低 confidence_hint，在 rationale 中说明不确定性来源
+- 不要用 ask_clarification 来回避决策困难——当用户意图基本清楚但缺少细节时，才用 ask_clarification
 
 【决策特征】
 - missing_info: 请求是否缺少关键信息（目标/范围/格式不明确）
@@ -207,12 +211,15 @@ After understanding the user's request, score each of the four actions (0.0~1.0)
 - delegate_to_slow: Delegate to slow model (deep analysis/multi-step reasoning/knowledge cutoff)
 - execute_task: Execute task (needs tool calling/code execution/multi-step operations)
 
-【Scoring Principles】
-- Score each action independently (0.0~1.0), reflecting "is this the optimal choice"
-- Score reflects "relative optimal" not "is this possible"
-- direct_answer and ask_clarification have lower cost, can pass with lower thresholds
-- delegate_to_slow and execute_task have higher cost (token/latency/risk), need higher scores
-- ask_clarification is NOT zero-cost — it interrupts the user and increases conversation turns
+【Decision Framework】（more important than hardcoded lists）
+- Cost thinking: every action has token/latency/risk cost. Score reflects "relative optimal" not "is this possible"
+- Clarification is not zero-cost: ask_clarification interrupts the user and adds turns. When direct_answer is close to ask_clarification, prefer direct answer
+- Confidence calibration: confidence_hint ≥ 0.8 = trust yourself; 0.5~0.8 = lean toward existing judgment; < 0.5 = model is uncertain, may raise ask_clarification appropriately
+- Action trade-offs: direct_answer and ask_clarification are low-cost, lower thresholds acceptable; delegate_to_slow and execute_task are high-cost, need higher scores
+
+【Ambiguity Handling】
+- If top-2 action scores differ by < 0.15, or confidence_hint < 0.5: lower confidence_hint and explain the source of uncertainty in rationale
+- Do not use ask_clarification to dodge difficult decisions — only use it when user intent is basically clear but details are missing
 
 【Decision Features】
 - missing_info: Is key information missing (goal/scope/format unclear)
@@ -337,18 +344,11 @@ export async function routeWithManagerDecision(
   try {
     const memories = await retrieveMemoriesHybrid({
       userId: user_id,
-      context: {
-        userMessage: message,
-        sessionId: session_id,
-        language,
-        activeTaskId: undefined,
-        activeTaskObjective: undefined,
-        isContinuation: false,
-      },
+      context: { userMessage: message },
       categoryPolicy: {
-        instruction: { minImportance: 1, maxCount: 2 },
-        preference: { minImportance: 1, maxCount: 3 },
-        fact: { minImportance: 2, maxCount: 2 },
+        instruction: { minImportance: 1, maxCount: 2, alwaysInject: false },
+        preference: { minImportance: 1, maxCount: 3, alwaysInject: false },
+        fact: { minImportance: 2, maxCount: 2, alwaysInject: false },
         context: { minImportance: 1, maxCount: 2, alwaysInject: false },
       },
       maxTotalEntries: 5,
@@ -511,6 +511,53 @@ function parseGatedDecision(
   }
 }
 
+// P2 HITL: 歧义检测阈值
+const AMBIGUITY_CONFIDENCE_THRESHOLD = 0.5;
+const AMBIGUITY_SCORE_GAP_THRESHOLD = 0.15;
+
+/**
+ * P2 HITL: 检测决策歧义。
+ * 当 confidence_hint < 阈值 或 top-2 分数差 < 阈值时，返回 AmbiguitySignal。
+ */
+function detectDecisionAmbiguity(
+  llmScores: Record<ManagerDecisionType, number>,
+  llmConfidenceHint: number
+): AmbiguitySignal | undefined {
+  const sorted = (Object.entries(llmScores) as [ManagerDecisionType, number][])
+    .sort((a, b) => b[1] - a[1]);
+  const [topAction, topScore] = sorted[0];
+  const [secondAction, secondScore] = sorted[1];
+  const scoreGap = topScore - secondScore;
+
+  const lowConfidence = llmConfidenceHint < AMBIGUITY_CONFIDENCE_THRESHOLD;
+  const closeScores = scoreGap < AMBIGUITY_SCORE_GAP_THRESHOLD;
+
+  if (!lowConfidence && !closeScores) return undefined;
+
+  const reason: AmbiguitySignal["reason"] =
+    lowConfidence && closeScores ? "both" : lowConfidence ? "low_confidence" : "close_scores";
+
+  return {
+    reason,
+    llmConfidenceHint,
+    topScore,
+    secondScore,
+    secondAction,
+    zhNotice:
+      lowConfidence && closeScores
+        ? `（⚠️ 系统对该决策的置信度较低，且 top-2 候选动作（${topAction}=${topScore.toFixed(2)} vs ${secondAction}=${secondScore.toFixed(2)}）差距很小）`
+        : lowConfidence
+        ? `（⚠️ 系统对该决策的置信度较低）`
+        : `（⚠️ top-2 候选动作（${topAction}=${topScore.toFixed(2)} vs ${secondAction}=${secondScore.toFixed(2)}）差距很小，可能需要用户确认）`,
+    enNotice:
+      lowConfidence && closeScores
+        ? ` (⚠️ Low confidence and top-2 actions (${topAction}=${topScore.toFixed(2)} vs ${secondAction}=${secondScore.toFixed(2)}) are very close)`
+        : lowConfidence
+        ? ` (⚠️ Low decision confidence)`
+        : ` (⚠️ Top-2 actions (${topAction}=${topScore.toFixed(2)} vs ${secondAction}=${secondScore.toFixed(2)}) are very close — user confirmation may help)`,
+  };
+}
+
 // ── Gated Delegation: 按 Gated 结果路由 ──────────────────────────────────────
 
 interface GatedRouteContext {
@@ -533,6 +580,9 @@ async function routeByGatedDecision(
 ): Promise<LLMNativeRouterResult> {
   const { message, user_id, session_id, turn_id, task_id, language, reqApiKey, rawOutput, v2Decision } = ctx;
 
+  // P2 HITL: 歧义检测（适用于所有决策类型，不限于 ask_clarification）
+  const ambiguity = detectDecisionAmbiguity(gated.llmScores, gated.llmConfidenceHint);
+
   // 构建向后兼容的 V1 ManagerDecision（用于 SSE/Archive/旧逻辑）
   const decision: ManagerDecision = {
     schema_version: "manager_decision_v1",
@@ -545,7 +595,13 @@ async function routeByGatedDecision(
       ? { style: "natural" as const, content: (v2Decision?.direct_response as { content?: string })?.content || (language === "zh" ? "好的。" : "Got it.") }
       : undefined,
     clarification: gated.routedAction === "ask_clarification"
-      ? { question_id: "q1", question_text: (v2Decision?.clarification as { question_text?: string })?.question_text ?? (language === "zh" ? "能再具体一点吗？" : "Could you be more specific?"), clarification_reason: gated.features.query_too_vague ? "请求模糊" : "需要更多信息" }
+      ? {
+          question_id: "q1",
+          question_text: (v2Decision?.clarification as { question_text?: string })?.question_text ?? (language === "zh" ? "能再具体一点吗？" : "Could you be more specific?"),
+          clarification_reason: gated.features.query_too_vague ? "请求模糊" : "需要更多信息",
+          // P2 HITL: 将歧义信号注入 ClarifyQuestion，供 routeByDecision 使用
+          ambiguity,
+        }
       : undefined,
     command: (gated.routedAction === "delegate_to_slow" || gated.routedAction === "execute_task")
       ? {
@@ -642,9 +698,15 @@ async function routeByDecision(
     case "ask_clarification": {
       const cq = decision.clarification as ClarifyQuestion | undefined;
       const questionText = cq?.question_text ?? (language === "zh" ? "能再具体一点吗？" : "Could you be more specific?");
-      const clarifyingMessage = cq?.options?.length
-        ? `${questionText} ${cq.options.map((o) => `"${o.label}"`).join(" / ")}`
-        : questionText;
+      // P2 HITL: 有歧义时在问题前加入歧义说明
+      const ambiguityPrefix = cq?.ambiguity
+        ? (language === "zh" ? cq.ambiguity.zhNotice : cq.ambiguity.enNotice) + "\n\n"
+        : "";
+      const clarifyingMessage = ambiguityPrefix + (
+        cq?.options?.length
+          ? `${questionText} ${cq.options.map((o) => `"${o.label}"`).join(" / ")}`
+          : questionText
+      );
 
       // B39-02 fix: ask_clarification 写 task_archives，便于追踪 ClarifyQuestion 后续状态
       const clarifyingTaskId = uuid();

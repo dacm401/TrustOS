@@ -845,11 +845,31 @@ export interface ClarifyQuestion {
   allow_free_text?: boolean;
   clarification_reason: string;
   missing_fields?: string[];
+  /** P2 HITL: 决策歧义信号 */
+  ambiguity?: AmbiguitySignal;
 }
 
 export interface ClarifyOption {
   label: string;
   value: string;
+}
+
+/** P2 HITL: 决策歧义信号 — 当 confidence_hint < 阈值 或 top-2 分数接近时触发 */
+export interface AmbiguitySignal {
+  /** 触发原因 */
+  reason: "low_confidence" | "close_scores" | "both";
+  /** LLM 自报置信度 */
+  llmConfidenceHint: number;
+  /** 最高分 */
+  topScore: number;
+  /** 第二高分 */
+  secondScore: number;
+  /** 第二高分对应的动作 */
+  secondAction: string;
+  /** 中文歧义说明 */
+  zhNotice: string;
+  /** 英文歧义说明 */
+  enNotice: string;
 }
 
 // ── CommandPayload ─────────────────────────────────────────────────────────────
