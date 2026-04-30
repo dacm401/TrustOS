@@ -18,7 +18,8 @@ import { DelegationLogRepo } from "../../db/repositories.js";
 
 export interface SSEEvent {
   type: "status" | "result" | "error" | "done" | "chunk" | "fast_reply"
-       | "worker_completed" | "manager_synthesized"; // Phase 3.0
+       | "worker_completed" | "manager_synthesized" // Phase 3.0
+       | "thinking"; // Stream V2: thinking state visualization
   /** Sprint 73: 统一使用 content 字段，stream 保留兼容 */
   content?: string;
   stream?: string;
@@ -35,6 +36,10 @@ export interface SSEEvent {
   /** manager_synthesized 事件字段 */
   final_content?: string;
   confidence?: number;
+  /** Stream V2: thinking 事件字段 */
+  thinking_state?: "thinking" | "analyzing" | "routing" | "planning" | "executing" | "responding";
+  /** Stream V2: 时间戳 */
+  timestamp?: number;
 }
 
 // ── Manager Synthesis Prompt ───────────────────────────────────────────────────
@@ -172,6 +177,7 @@ function sleep(ms: number): Promise<void> {
 /**
  * 轮询 TaskArchive，感知状态变化，推送 SSE 事件
  * 嵌入用户体验安抚消息（30s/60s/120s 节点）
+ * Stream V2: 添加 thinking 状态事件
  * @param delegation_log_id G4: delegation_logs 主键 ID，用于异步回写 execution 结果
  * @param reqApiKey 可选的 API Key（用于流式 Manager Synthesis）
  */
@@ -181,6 +187,15 @@ export async function* pollArchiveAndYield(
   delegation_log_id?: string,
   reqApiKey?: string
 ): AsyncGenerator<SSEEvent> {
+  // Stream V2: 首先发送 executing thinking 状态
+  yield {
+    type: "thinking",
+    thinking_state: "executing",
+    content: lang === "zh" ? "⚙️ 任务执行中..." : "⚙️ Executing task...",
+    routing_layer: "L2",
+    timestamp: Date.now(),
+  };
+
   // 自适应轮询间隔
   const getPollInterval = (elapsedMs: number): number => {
     if (elapsedMs < 10000) return 2000;
@@ -302,6 +317,16 @@ export async function* pollArchiveAndYield(
 
         // Manager Synthesis — 流式输出，边生成边推送到前端
         sentResult = true;
+
+        // Stream V2: Thinking 状态 - 正在生成回复
+        yield {
+          type: "thinking",
+          thinking_state: "responding",
+          content: lang === "zh" ? "💬 正在生成回复..." : "💬 Generating response...",
+          routing_layer: "L2",
+          timestamp: Date.now(),
+        };
+
         try {
           // 发一个"开始整理"的提示
           yield {

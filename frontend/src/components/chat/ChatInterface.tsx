@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { v4 as uuid } from "uuid";
 import { MessageBubble } from "./MessageBubble";
 import { ModelSwitchAnim } from "./ModelSwitchAnim";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 import { getApiConfig } from "@/lib/api";
 
 interface Message {
@@ -49,6 +50,10 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
   // Phase 1.5/2.0: 临时状态消息（status/clarifying 不写入 messages）
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [clarifyQuestion, setClarifyQuestion] = useState<{ question_id: string; question_text: string; options?: string[] } | null>(null);
+  // Stream V2: thinking 状态
+  const [thinkingState, setThinkingState] = useState<"idle" | "thinking" | "analyzing" | "routing" | "planning" | "executing" | "responding" | "completed" | "error">("idle");
+  // Stream V2: 当前正在处理的任务 ID（用于取消）
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -82,6 +87,8 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
 
     if (!response.ok || !response.body) return false;
 
+    // Stream V2: 重置 thinking 状态
+    setThinkingState("thinking");
     const placeholderId = uuid();
     setMessages((prev) => [...prev, { id: placeholderId, role: "assistant", content: "", streaming: true }]);
 
@@ -140,6 +147,11 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
           } else if (data.type === "status") {
             // Phase 2.0: 慢模型处理中的安抚消息（临时状态，不写入消息列表）
             setStatusMsg(data.stream ?? null);
+          } else if (data.type === "thinking") {
+            // Stream V2: thinking 状态可视化
+            const state = data.thinking_state || data.state || "thinking";
+            setThinkingState(state);
+            setStatusMsg(data.content ?? data.stream ?? null);
           } else if (data.type === "result") {
             // Phase 2.0: 慢模型完成 → 追加新消息显示结果
             const resultContent = data.stream ?? "";
@@ -154,8 +166,12 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
               },
             ]);
           } else if (data.type === "done") {
+            setThinkingState("completed");
             setStatusMsg(null);
-            if (data.task_id) onTaskIdChange?.(data.task_id);
+            if (data.task_id) {
+              onTaskIdChange?.(data.task_id);
+              setActiveTaskId(data.task_id);
+            }
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
@@ -164,7 +180,9 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
               )
             );
           } else if (data.type === "error") {
+            setThinkingState("error");
             setStatusMsg(null);
+            setActiveTaskId(null);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
@@ -183,6 +201,26 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
     }
 
     return true;
+  };
+
+  // Stream V2: 取消正在执行的任务
+  const cancelTask = async () => {
+    if (!activeTaskId) return;
+    const { apiBase } = getApiConfig();
+    try {
+      const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(activeTaskId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-User-Id": userId },
+        body: JSON.stringify({ action: "cancel" }),
+      });
+      if (res.ok) {
+        setThinkingState("idle");
+        setActiveTaskId(null);
+        setStatusMsg("任务已取消");
+      }
+    } catch (error) {
+      console.error("Cancel task error:", error);
+    }
   };
 
   const sendFallback = async (text: string, history: any[]) => {
@@ -513,8 +551,40 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
           </div>
         )}
 
-        {/* Phase 2.0: 慢模型处理中状态消息（临时显示） */}
-        {statusMsg && (
+        {/* Stream V2: thinking 状态可视化 + 取消按钮 */}
+        {thinkingState !== "idle" && thinkingState !== "completed" && thinkingState !== "error" && (
+          <div className="mb-2 flex items-center justify-between">
+            <ThinkingIndicator state={thinkingState} message={statusMsg || undefined} />
+            <button
+              onClick={cancelTask}
+              className="px-3 py-1 text-xs rounded-md transition-colors"
+              style={{
+                backgroundColor: "rgba(239,68,68,0.1)",
+                border: "1px solid rgba(239,68,68,0.3)",
+                color: "var(--accent-red)",
+              }}
+              title="取消任务"
+            >
+              取消
+            </button>
+          </div>
+        )}
+
+        {/* Stream V2: completed/error 状态 */}
+        {thinkingState === "completed" && (
+          <div className="mb-2">
+            <ThinkingIndicator state="completed" message={statusMsg || undefined} />
+          </div>
+        )}
+
+        {thinkingState === "error" && (
+          <div className="mb-2">
+            <ThinkingIndicator state="error" message={statusMsg || undefined} />
+          </div>
+        )}
+
+        {/* Phase 2.0: 慢模型处理中状态消息（临时显示）- 回退兼容 */}
+        {statusMsg && thinkingState === "idle" && (
           <div className="flex items-center gap-2 mb-2 animate-fade-in-up">
             <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: "var(--accent-blue)" }} />
             <div className="text-sm" style={{ color: "var(--text-muted)" }}>{statusMsg}</div>
