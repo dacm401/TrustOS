@@ -69,6 +69,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            pg_isready -h localhost -p 5432 -U postgres && exit 0
+            echo "Waiting for PostgreSQL... ($i/30)"
+            sleep 2
+          done
+          exit 1
+
       - name: Run unit tests
         run: npx vitest run \
           tests/services/router.test.ts \
