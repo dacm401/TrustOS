@@ -80,16 +80,7 @@ jobs:
 
       - name: Run unit tests
         run: |
-          npx vitest run \
-            "tests/services/router.test.ts" \
-            "tests/services/complexity-scorer.test.ts" \
-            "tests/services/llm-native-router.test.ts" \
-            "tests/services/tool-executor.test.ts" \
-            "tests/middleware/jwt.test.ts" \
-            "tests/services/phase4.test.ts" \
-            "tests/services/orchestrator.test.ts" \
-            "tests/services/circuit-breaker.test.ts" \
-            "tests/services/error-translator.test.ts"
+          npx vitest run tests/services/router.test.ts tests/services/complexity-scorer.test.ts tests/services/llm-native-router.test.ts tests/services/tool-executor.test.ts tests/middleware/jwt.test.ts tests/services/phase4.test.ts tests/services/orchestrator.test.ts tests/services/circuit-breaker.test.ts tests/services/error-translator.test.ts
         env:
           NODE_ENV: test
           FAST_MODEL: Qwen/Qwen2.5-7B-Instruct
