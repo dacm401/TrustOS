@@ -154,9 +154,15 @@ export class Sanitizer {
     if (path.length === 0) return "[已删除]";
     const [head, ...rest] = path;
     if (this.isContainer(data)) {
-      const result = Array.isArray(data) ? [...data] : { ...data as Record<string, unknown> };
-      result[head as number | string] = this.redactAtPath(result[head as number | string], rest);
-      return result;
+      if (Array.isArray(data)) {
+        const result = [...data];
+        result[Number(head)] = this.redactAtPath(result[Number(head)], rest);
+        return result;
+      } else {
+        const result = { ...data as Record<string, unknown> };
+        result[head] = this.redactAtPath(result[head], rest);
+        return result;
+      }
     }
     return data;
   }
@@ -176,9 +182,15 @@ export class Sanitizer {
     }
     const [head, ...rest] = path;
     if (!this.isContainer(data)) return data;
-    const result = Array.isArray(data) ? [...data] : { ...data as Record<string, unknown> };
-    result[head as number | string] = this.maskAtPath(result[head as number | string], rest, maskChar);
-    return result;
+    if (Array.isArray(data)) {
+      const result = [...data];
+      result[Number(head)] = this.maskAtPath(result[Number(head)], rest, maskChar);
+      return result;
+    } else {
+      const result = { ...data as Record<string, unknown> };
+      result[head] = this.maskAtPath(result[head], rest, maskChar);
+      return result;
+    }
   }
 
   /**
@@ -190,9 +202,15 @@ export class Sanitizer {
     }
     const [head, ...rest] = path;
     if (!this.isContainer(data)) return data;
-    const result = Array.isArray(data) ? [...data] : { ...data as Record<string, unknown> };
-    result[head as number | string] = this.generalizeAtPath(result[head as number | string], rest);
-    return result;
+    if (Array.isArray(data)) {
+      const result = [...data];
+      result[Number(head)] = this.generalizeAtPath(result[Number(head)], rest);
+      return result;
+    } else {
+      const result = { ...data as Record<string, unknown> };
+      result[head] = this.generalizeAtPath(result[head], rest);
+      return result;
+    }
   }
 
   /**
@@ -202,9 +220,15 @@ export class Sanitizer {
     if (path.length === 0) return value;
     const [head, ...rest] = path;
     if (!this.isContainer(data)) return data;
-    const result = Array.isArray(data) ? [...data] : { ...data as Record<string, unknown> };
-    result[head as number | string] = this.setAtPath(result[head as number | string], rest, value);
-    return result;
+    if (Array.isArray(data)) {
+      const result = [...data];
+      result[Number(head)] = this.setAtPath(result[Number(head)], rest, value);
+      return result;
+    } else {
+      const result = { ...data as Record<string, unknown> };
+      result[head] = this.setAtPath(result[head], rest, value);
+      return result;
+    }
   }
 
   // ── 工具函数 ────────────────────────────────────────────────────────────────

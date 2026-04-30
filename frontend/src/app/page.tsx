@@ -1,5 +1,7 @@
 "use client";
 import { useState } from "react";
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '@/lib/query-client';
 import { ChatInterface } from "@/components/chat/ChatInterface";
 import { SettingsModal } from "@/components/chat/SettingsModal";
 import { TaskPanel } from "@/components/workbench/TaskPanel";
@@ -12,6 +14,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import MemoryView from "@/components/views/MemoryView";
 import DashboardView from "@/components/views/DashboardView";
 import TasksView from "@/components/views/TasksView";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 type NavView = "chat" | "tasks" | "memory" | "dashboard";
 
@@ -35,118 +38,138 @@ export default function HomePage() {
   ];
 
   return (
-    <div
-      className="flex flex-col h-screen overflow-hidden"
-      style={{ backgroundColor: "var(--bg-base)" }}
-    >
-      {/* Header */}
-      <Header
-        userId={userId}
-        onUserIdChange={setUserId}
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen((v) => !v)}
-      />
+    <QueryClientProvider client={queryClient}>
+      <div
+        className="flex flex-col h-screen overflow-hidden"
+        style={{ backgroundColor: "var(--bg-base)" }}
+      >
+        {/* Header */}
+        <Header
+          userId={userId}
+          onUserIdChange={setUserId}
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={() => setSidebarOpen((v) => !v)}
+        />
 
-      {/* Body: Sidebar + Chat + optional Workbench */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left: Sidebar */}
-        <Sidebar activeNav={activeNav} onNavChange={(id) => setActiveNav(id as NavView)} onSettingsClick={() => setShowSettings(true)} />
+        {/* Body: Sidebar + Chat + optional Workbench */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left: Sidebar */}
+          <Sidebar activeNav={activeNav} onNavChange={(id) => setActiveNav(id as NavView)} onSettingsClick={() => setShowSettings(true)} />
 
-        {/* Center: View Area */}
-        <main
-          className="flex-1 overflow-hidden"
-          style={{ maxWidth: sidebarOpen ? undefined : "100%" }}
-        >
-          {activeNav === "chat" && (
-            <ChatInterface
-              onTaskIdChange={setSelectedTaskId}
-              userId={userId}
-            />
-          )}
-
-          {activeNav === "tasks" && (
-            <TasksView userId={userId} />
-          )}
-
-          {activeNav === "memory" && (
-            <MemoryView userId={userId} />
-          )}
-
-          {activeNav === "dashboard" && (
-            <DashboardView userId={userId} />
-          )}
-        </main>
-
-        {/* Right: Workbench Sidebar */}
-        {sidebarOpen && (
-          <aside
-            className="w-96 flex-shrink-0 flex flex-col overflow-hidden"
-            style={{
-              backgroundColor: "var(--bg-surface)",
-              borderLeft: "1px solid var(--border-subtle)",
-            }}
+          {/* Center: View Area */}
+          <main
+            className="flex-1 overflow-hidden"
+            style={{ maxWidth: sidebarOpen ? undefined : "100%" }}
           >
-            {/* Task Panel: top fixed height */}
-            <div
-              className="flex-shrink-0 overflow-hidden"
-              style={{ height: 220, borderBottom: "1px solid var(--border-subtle)" }}
+            <ErrorBoundary fallback={null}>
+              {activeNav === "chat" && (
+                <ChatInterface
+                  onTaskIdChange={setSelectedTaskId}
+                  userId={userId}
+                />
+              )}
+            </ErrorBoundary>
+
+            <ErrorBoundary fallback={null}>
+              {activeNav === "tasks" && (
+                <TasksView userId={userId} />
+              )}
+            </ErrorBoundary>
+
+            <ErrorBoundary fallback={null}>
+              {activeNav === "memory" && (
+                <MemoryView userId={userId} />
+              )}
+            </ErrorBoundary>
+
+            <ErrorBoundary fallback={null}>
+              {activeNav === "dashboard" && (
+                <DashboardView userId={userId} />
+              )}
+            </ErrorBoundary>
+          </main>
+
+          {/* Right: Workbench Sidebar */}
+          {sidebarOpen && (
+            <aside
+              className="w-96 flex-shrink-0 flex flex-col overflow-hidden"
+              style={{
+                backgroundColor: "var(--bg-surface)",
+                borderLeft: "1px solid var(--border-subtle)",
+              }}
             >
-              <TaskPanel
-                userId={userId}
-                onTaskSelect={setSelectedTaskId}
-                selectedTaskId={selectedTaskId}
-              />
-            </div>
-
-            {/* Tab content area: flex-1 */}
-            <div className="flex flex-col flex-1 overflow-hidden">
-              {/* Tab bar */}
+              {/* Task Panel: top fixed height */}
               <div
-                className="flex flex-shrink-0"
-                style={{ borderBottom: "1px solid var(--border-subtle)" }}
+                className="flex-shrink-0 overflow-hidden"
+                style={{ height: 220, borderBottom: "1px solid var(--border-subtle)" }}
               >
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setWorkbenchTab(tab.id)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs transition-all relative"
-                    style={{
-                      color: workbenchTab === tab.id ? "var(--text-accent)" : "var(--text-muted)",
-                      backgroundColor: workbenchTab === tab.id ? "var(--bg-overlay)" : "transparent",
-                    }}
-                  >
-                    <span className="text-[11px]">{tab.icon}</span>
-                    <span className="hidden xl:inline">{tab.label}</span>
-                    {/* Active underline */}
-                    {workbenchTab === tab.id && (
-                      <span
-                        className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
-                        style={{ backgroundColor: "var(--accent-blue)" }}
-                      />
-                    )}
-                  </button>
-                ))}
+                <TaskPanel
+                  userId={userId}
+                  onTaskSelect={setSelectedTaskId}
+                  selectedTaskId={selectedTaskId}
+                />
               </div>
 
-              {/* Tab content */}
-              <div className="flex-1 overflow-hidden">
-                {workbenchTab === "evidence" && (
-                  <EvidencePanel taskId={selectedTaskId} userId={userId} />
-                )}
-                {workbenchTab === "trace" && (
-                  <TracePanel taskId={selectedTaskId} userId={userId} />
-                )}
-                {workbenchTab === "health" && <HealthPanel />}
-                {workbenchTab === "debug" && (
-                  <DebugPanel taskId={selectedTaskId} userId={userId} />
-                )}
+              {/* Tab content area: flex-1 */}
+              <div className="flex flex-col flex-1 overflow-hidden">
+                {/* Tab bar */}
+                <div
+                  className="flex flex-shrink-0"
+                  style={{ borderBottom: "1px solid var(--border-subtle)" }}
+                >
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setWorkbenchTab(tab.id)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs transition-all relative"
+                      style={{
+                        color: workbenchTab === tab.id ? "var(--text-accent)" : "var(--text-muted)",
+                        backgroundColor: workbenchTab === tab.id ? "var(--bg-overlay)" : "transparent",
+                      }}
+                    >
+                      <span className="text-[11px]">{tab.icon}</span>
+                      <span className="hidden xl:inline">{tab.label}</span>
+                      {/* Active underline */}
+                      {workbenchTab === tab.id && (
+                        <span
+                          className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
+                          style={{ backgroundColor: "var(--accent-blue)" }}
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tab content */}
+                <div className="flex-1 overflow-hidden">
+                  {workbenchTab === "evidence" && (
+                    <ErrorBoundary>
+                      <EvidencePanel taskId={selectedTaskId} userId={userId} />
+                    </ErrorBoundary>
+                  )}
+                  {workbenchTab === "trace" && (
+                    <ErrorBoundary>
+                      <TracePanel taskId={selectedTaskId} userId={userId} />
+                    </ErrorBoundary>
+                  )}
+                  {workbenchTab === "health" && (
+                    <ErrorBoundary>
+                      <HealthPanel />
+                    </ErrorBoundary>
+                  )}
+                  {workbenchTab === "debug" && (
+                    <ErrorBoundary>
+                      <DebugPanel taskId={selectedTaskId} userId={userId} />
+                    </ErrorBoundary>
+                  )}
+                </div>
               </div>
-            </div>
-          </aside>
-        )}
+            </aside>
+          )}
+        </div>
+
+        <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
       </div>
-
-      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
-    </div>
+    </QueryClientProvider>
   );
 }

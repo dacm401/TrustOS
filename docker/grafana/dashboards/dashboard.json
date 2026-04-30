@@ -1,0 +1,190 @@
+{
+  "dashboard": "TrustOS Runtime Monitor",
+  "description": "Complete monitoring dashboard for TrustOS AI Router",
+  "uid": "trustos-main",
+  "version": 1,
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "QPS (Requests/sec)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(http_requests_total[1m])",
+          "legendFormat": "QPS"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Response Latency (P95)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "P95 Latency"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "LLM Calls by Model",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(llm_calls_total[1m])",
+          "legendFormat": "{{model}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Cache Hit Ratio",
+      "type": "gauge",
+      "gridPos": { "x": 12, "y": 8, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(cache_operations_total{status=\"hit\"}[5m])) / sum(rate(cache_operations_total[5m]))",
+          "legendFormat": "Hit Ratio"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Active Tasks",
+      "type": "stat",
+      "gridPos": { "x": 20, "y": 8, "w": 4, "h": 8 },
+      "targets": [
+        {
+          "expr": "tasks_active_count",
+          "legendFormat": "Active Tasks"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "LLM Token Consumption",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(llm_tokens_total[1m])",
+          "legendFormat": "{{model}} {{type}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Circuit Breaker State",
+      "type": "table",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "circuit_breaker_state",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "Closed", "color": "green" } } },
+            { "type": "value", "options": { "1": { "text": "Open", "color": "red" } } },
+            { "type": "value", "options": { "2": { "text": "Half-Open", "color": "yellow" } } }
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Database Query Latency",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(database_query_duration_seconds_bucket[5m]))",
+          "legendFormat": "P95 Query Latency"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "SSE Streams",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sse_streams_active_count",
+          "legendFormat": "Active Streams"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Routing Accuracy",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 32, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "routing_accuracy_ratio{layer=\"L2\"}",
+          "legendFormat": "L2 Accuracy"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Cost Saved (USD)",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 32, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "cost_saved_usd{period=\"30d\"}",
+          "legendFormat": "Saved"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "x": 16, "y": 32, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "process_memory_used_bytes",
+          "legendFormat": "RSS Memory"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      }
+    }
+  ],
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "schemaVersion": 38
+}

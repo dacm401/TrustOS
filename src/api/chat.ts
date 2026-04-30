@@ -24,6 +24,10 @@ import { routeWithManagerDecision } from "../services/llm-native-router.js";
 import { buildCrossSessionContext } from "../services/cross-session-context.js";
 // Sprint 65: Permission 对话流 + Operation Auth Matrix
 import { handlePermissionResponseMessage } from "../services/permission-manager.js";
+// Stream V2: thinking state visualization
+import { createThinkingEvent } from "../services/phase3/stream-v2.js";
+// Stream V2: 轻量级意图分类器
+import { classifyIntent, shouldSkipLLMRouting, generateQuickResponse } from "../services/intent-classifier.js";
 const chatRouter = new Hono();
 
 chatRouter.post("/chat", async (c) => {
@@ -144,6 +148,43 @@ chatRouter.post("/chat", async (c) => {
       // ── SSE 流式分支 ───────────────────────────────────────────────────────────
       let llmNativeResult;
       try {
+        // Stream V2: 轻量级意图预分类（<10ms）
+        const intentStart = Date.now();
+        const intent = classifyIntent(body.message ?? "");
+        const intentTime = Date.now() - intentStart;
+        console.log(`[chat] Intent classification: ${intent.category} (${intentTime}ms, confidence: ${intent.confidence})`);
+
+        // 如果是高置信度的简单意图，可以快速返回
+        if (shouldSkipLLMRouting(intent)) {
+          const quickLang = features.language as "zh" | "en";
+          const quickResponse = generateQuickResponse(intent, quickLang);
+          if (quickResponse) {
+            console.log("[chat] Using quick response for intent:", intent.category);
+            c.header("Content-Type", "text/event-stream");
+            c.header("Cache-Control", "no-cache");
+            c.header("Connection", "keep-alive");
+            return stream(c, async (s) => {
+              await s.write(`data: ${JSON.stringify({
+                type: "thinking",
+                thinking_state: "completed",
+                content: quickLang === "zh" ? "✅ 完成" : "✅ Done",
+                routing_layer: "L0",
+                timestamp: Date.now(),
+              })}\n\n`);
+              await s.write(`data: ${JSON.stringify({
+                type: "fast_reply",
+                content: quickResponse,
+                routing_layer: "L0",
+              })}\n\n`);
+              await s.write(`data: ${JSON.stringify({
+                type: "done",
+                content: quickLang === "zh" ? "已返回答案" : "Answer ready",
+                routing_layer: "L0",
+              })}\n\n`);
+            });
+          }
+        }
+
         const cross = await buildCrossSessionContext({
           userId,
           sessionId,
@@ -205,8 +246,20 @@ chatRouter.post("/chat", async (c) => {
       return stream(c, async (s) => {
         console.log("[chat] SSE stream started, writing events...");
         try {
+          // Stream V2: Thinking 状态 - 分析问题
+          await s.write(`data: ${JSON.stringify({
+            ...createThinkingEvent("analyzing", lang),
+            routing_layer: llmNativeResult.routing_layer,
+          })}\n\n`);
+
           // Step 1: Manager 的安抚消息
           if (llmNativeResult.message) {
+            // Stream V2: Thinking 状态 - 路由决策完成
+            await s.write(`data: ${JSON.stringify({
+              ...createThinkingEvent("routing", lang),
+              routing_layer: llmNativeResult.routing_layer,
+            })}\n\n`);
+
             await s.write(`data: ${JSON.stringify({
               type: "manager_decision",
               decision_type: llmNativeResult.decision_type,
@@ -228,6 +281,12 @@ chatRouter.post("/chat", async (c) => {
 
           // Step 3: delegation
           if (llmNativeResult.delegation) {
+            // Stream V2: Thinking 状态 - 任务规划中
+            await s.write(`data: ${JSON.stringify({
+              ...createThinkingEvent("planning", lang),
+              routing_layer: llmNativeResult.routing_layer,
+            })}\n\n`);
+
             if (llmNativeResult.archive_id) {
               await s.write(`data: ${JSON.stringify({
                 type: "archive_written",
