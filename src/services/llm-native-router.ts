@@ -56,6 +56,8 @@ import { detectKnowledgeBoundarySignals } from "./gating/knowledge-boundary-sign
 import type { KnowledgeBoundarySignal } from "../types/index.js";
 // Sensitive Data Guard: 信息分发红线
 import { detectSensitiveData } from "./gating/sensitive-data-rule.js";
+// P4: Learning Layer — 用户记忆检索
+import { retrieveMemoriesHybrid, buildCategoryAwareMemoryText } from "./memory-retrieval.js";
 
 export interface GatedDelegationContext {
   llmScores: Record<ManagerDecisionType, number>;
@@ -135,7 +137,7 @@ export function runGatedDelegation(
 
 // ── Manager Prompt ────────────────────────────────────────────────────────────
 
-function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: string): string {
+function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: string, userMemories?: string): string {
   // 中文版 prompt
   const zhPrompt = `你是 SmartRouter Pro 的 Manager（管理模型）。
 
@@ -254,19 +256,31 @@ After understanding the user's request, score each of the four actions (0.0~1.0)
 - All fields are required`;
 
   const base = lang === "zh" ? zhPrompt : enPrompt;
-  if (!crossSessionContext) return base;
 
-  // Sprint 63: 追加跨会话上下文（供路由决策参考）
-  const contextSection = `
-
+  const sections: string[] = [];
+  if (crossSessionContext) {
+    sections.push(`
 【跨会话上下文】（以下信息来自历史对话，请参考）
 ${crossSessionContext}
 
 【决策影响】
 - 如果 context 显示有未完成任务或续写需求，请提高 delegate_to_slow 或 execute_task 的分数
-- 如果 context 显示用户偏好使用 fast 模型处理简单任务，可适当提高 direct_answer 分数`;
+- 如果 context 显示用户偏好使用 fast 模型处理简单任务，可适当提高 direct_answer 分数`);
+  }
 
-  return base + contextSection;
+  // P4: 用户记忆层 — 来自历史交互学习的行为偏好
+  if (userMemories) {
+    sections.push(`
+【用户偏好与习惯】（来自历史学习，请参考）
+${userMemories}
+
+【决策影响】
+- 如果 memory 表明用户倾向于快速回复，可适当提高 direct_answer 分数
+- 如果 memory 表明用户偏好详细分析，可适当提高 delegate_to_slow 分数
+- 如果 memory 表明某种任务类型用户经常拒绝，可提高 ask_clarification 分数`);
+  }
+
+  return base + sections.join("\n");
 }
 
 // ── 入参 ─────────────────────────────────────────────────────────────────────
@@ -318,8 +332,38 @@ export async function routeWithManagerDecision(
 ): Promise<LLMNativeRouterResult> {
   const { message, user_id, session_id, turn_id, history, language, reqApiKey, crossSessionContext } = input;
 
-  // Step 1: 调用 Fast 模型，传递 Manager Prompt（含 cross-session 上下文）
-  const managerOutput = await callManagerModel({ message, history, language, reqApiKey, crossSessionContext });
+  // P4: Learning Layer — 检索用户记忆，在调用 Manager 之前注入
+  let userMemories: string | undefined;
+  try {
+    const memories = await retrieveMemoriesHybrid({
+      userId: user_id,
+      context: {
+        userMessage: message,
+        sessionId: session_id,
+        language,
+        activeTaskId: undefined,
+        activeTaskObjective: undefined,
+        isContinuation: false,
+      },
+      categoryPolicy: {
+        instruction: { minImportance: 1, maxCount: 2 },
+        preference: { minImportance: 1, maxCount: 3 },
+        fact: { minImportance: 2, maxCount: 2 },
+        context: { minImportance: 1, maxCount: 2, alwaysInject: false },
+      },
+      maxTotalEntries: 5,
+    });
+    if (memories.length > 0) {
+      const formatted = buildCategoryAwareMemoryText(memories);
+      userMemories = formatted.combined;
+    }
+  } catch (e: any) {
+    // Learning Layer fail-open：检索失败不阻断路由流程
+    console.warn("[llm-native-router] Memory retrieval failed (fail-open):", e.message);
+  }
+
+  // Step 1: 调用 Fast 模型，传递 Manager Prompt（含 cross-session 上下文 + 用户记忆）
+  const managerOutput = await callManagerModel({ message, history, language, reqApiKey, crossSessionContext, userMemories });
 
   // Step 1.5 (KB-1): 检测知识边界信号
   // fail-open：检测异常不阻断主流程，只记录 warning
@@ -370,10 +414,12 @@ async function callManagerModel(input: {
   reqApiKey?: string;
   /** Sprint 63: cross-session context */
   crossSessionContext?: string;
+  /** P4: 用户记忆层 — 来自历史交互学习的行为偏好 */
+  userMemories?: string;
 }): Promise<string> {
-  const { message, history, language, reqApiKey, crossSessionContext } = input;
+  const { message, history, language, reqApiKey, crossSessionContext, userMemories } = input;
 
-  const systemPrompt = buildManagerSystemPrompt(language, crossSessionContext);
+  const systemPrompt = buildManagerSystemPrompt(language, crossSessionContext, userMemories);
   // 保留最近 6 轮对话作为上下文，不传全量 history（Manager 只读当前任务）
   const recentHistory = history.filter((m) => m.role !== "system").slice(-6);
 
