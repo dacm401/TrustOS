@@ -248,11 +248,32 @@ export async function* pollArchiveAndYield(
 
     if (task.status === "done") {
       if (!task.delivered) {
-        const execution: Record<string, unknown> = task.slow_execution ?? {};
-        const workerResult = typeof execution.result === "string"
-          ? execution.result
-          : "";
-        const workerConfidence = (execution.confidence as number) ?? 0.7;
+            const execution: Record<string, unknown> = task.slow_execution ?? {};
+            const workerResult = typeof execution.result === "string"
+              ? execution.result
+              : "";
+            const workerConfidence = (execution.confidence as number) ?? 0.7;
+
+            // Sprint 75: Detect empty results to prevent "silent success"
+            if (!workerResult.trim()) {
+                console.warn("[pollArchiveAndYield] Worker returned empty result for task:", taskId);
+                yield {
+                    type: "error",
+                    stream: "⚠️ Worker 执行完成但未返回有效结果。请检查 Slow Model 配置或 Worker 环境。",
+                    routing_layer: "L2",
+                };
+                // G4: Mark execution as failed in logs
+                if (delegation_log_id) {
+                    DelegationLogRepo.updateExecution(delegation_log_id, {
+                        execution_status: "failed",
+                        execution_correct: false,
+                        error_message: "Worker returned empty result",
+                    }).catch(() => {});
+                }
+                yield { type: "done", stream: lang === "zh" ? "执行异常" : "Execution error", routing_layer: "L2" };
+                await TaskArchiveRepo.markDelivered(taskId).catch(() => {});
+                break;
+            }
 
         // 写入 worker_completed 事件到 DB
         try {
