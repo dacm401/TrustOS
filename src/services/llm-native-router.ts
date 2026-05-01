@@ -277,101 +277,6 @@ After understanding the user's request, you need to complete two tasks:
   return systemPrompt;
 }
 
-【输出规则】
-- 只输出 JSON 对象，不输出其他文字
-- JSON 用代码块包裹：\`\`\`json ... \`\`\`
-- 必须包含所有字段`;
-
-  // 英文版 prompt
-  const enPrompt = `You are SmartRouter Pro's Manager model.
-
-After understanding the user's request, score each of the four actions (0.0~1.0), then output the complete decision JSON.
-
-【Four Actions】
-- direct_answer: Direct reply (lowest cost, for chat/simple Q&A/greetings)
-- ask_clarification: Request clarification (needs user to provide key info)
-- delegate_to_slow: Delegate to slow model (deep analysis/multi-step reasoning/knowledge cutoff)
-- execute_task: Execute task (needs tool calling/code execution/multi-step operations)
-
-【Decision Framework】（more important than hardcoded lists）
-- Cost thinking: every action has token/latency/risk cost. Score reflects "relative optimal" not "is this possible"
-- Clarification is not zero-cost: ask_clarification interrupts the user and adds turns. When direct_answer is close to ask_clarification, prefer direct answer
-- Confidence calibration: confidence_hint ≥ 0.8 = trust yourself; 0.5~0.8 = lean toward existing judgment; < 0.5 = model is uncertain, may raise ask_clarification appropriately
-- Action trade-offs: direct_answer and ask_clarification are low-cost, lower thresholds acceptable; delegate_to_slow and execute_task are high-cost, need higher scores
-
-【Ambiguity Handling】
-- If top-2 action scores differ by < 0.15, or confidence_hint < 0.5: lower confidence_hint and explain the source of uncertainty in rationale
-- Do not use ask_clarification to dodge difficult decisions — only use it when user intent is basically clear but details are missing
-
-【Decision Features】
-- missing_info: Is key information missing (goal/scope/format unclear)
-- needs_long_reasoning: Does it need long-chain reasoning or multi-step analysis
-- needs_external_tool: Does it need external tools (web_search/http_request/code execution)
-- high_risk_action: Does it involve high-risk operations (financial/medical/security)
-- query_too_vague: Is the request too vague to handle directly
-- requires_multi_step: Does it need multi-step operations or cross-file handling
-- is_continuation: Does the request reference a previous conversation or task (e.g. "continue", "continue from where we left off", "complete the code from before")
-
-【Output Format】（must use this exact JSON Schema）
-
-{
-  "schema_version": "manager_decision_v2",
-  "scores": {
-    "direct_answer": 0.0~1.0,
-    "ask_clarification": 0.0~1.0,
-    "delegate_to_slow": 0.0~1.0,
-    "execute_task": 0.0~1.0
-  },
-  "confidence_hint": 0.0~1.0,
-  "features": {
-    "missing_info": boolean,
-    "needs_long_reasoning": boolean,
-    "needs_external_tool": boolean,
-    "high_risk_action": boolean,
-    "query_too_vague": boolean,
-    "requires_multi_step": boolean,
-    "is_continuation": boolean
-  },
-  "rationale": "One-sentence decision reason",
-  "decision_type": "direct_answer|ask_clarification|delegate_to_slow|execute_task",
-  "direct_response": { "content": "Reply content when decision_type=direct_answer" },
-  "clarification": { "question_text": "Clarifying question when decision_type=ask_clarification" },
-  "command": { "task_brief": "Task summary when decision_type=delegate/execute", "constraints": ["constraint1"] }
-}
-
-【Output Rules】
-- Output JSON ONLY, no other text
-- Wrap JSON in code block: \`\`\`json ... \`\`\`
-- All fields are required`;
-
-  const base = lang === "zh" ? zhPrompt : enPrompt;
-
-  const sections: string[] = [];
-  if (crossSessionContext) {
-    sections.push(`
-【跨会话上下文】（以下信息来自历史对话，请参考）
-${crossSessionContext}
-
-【决策影响】
-- 如果 context 显示有未完成任务或续写需求，请提高 delegate_to_slow 或 execute_task 的分数
-- 如果 context 显示用户偏好使用 fast 模型处理简单任务，可适当提高 direct_answer 分数`);
-  }
-
-  // P4: 用户记忆层 — 来自历史交互学习的行为偏好
-  if (userMemories) {
-    sections.push(`
-【用户偏好与习惯】（来自历史学习，请参考）
-${userMemories}
-
-【决策影响】
-- 如果 memory 表明用户倾向于快速回复，可适当提高 direct_answer 分数
-- 如果 memory 表明用户偏好详细分析，可适当提高 delegate_to_slow 分数
-- 如果 memory 表明某种任务类型用户经常拒绝，可提高 ask_clarification 分数`);
-  }
-
-  return base + sections.join("\n");
-}
-
 // ── 入参 ─────────────────────────────────────────────────────────────────────
 
 export interface LLMNativeRouterInput {
@@ -720,7 +625,7 @@ async function routeByGatedDecision(
     clarification: gated.routedAction === "ask_clarification"
       ? {
           question_id: "q1",
-          question_text: ctx.userFacingText || (v2Decision?.clarification as { question_text?: string })?.question_text ?? (language === "zh" ? "能再具体一点吗？" : "Could you be more specific?"),
+          question_text: (ctx.userFacingText || (v2Decision?.clarification as { question_text?: string })?.question_text) ?? (language === "zh" ? "能再具体一点吗？" : "Could you be more specific?"),
           clarification_reason: gated.features.query_too_vague ? "请求模糊" : "需要更多信息",
           // P2 HITL: 将歧义信号注入 ClarifyQuestion，供 routeByDecision 使用
           ambiguity,
@@ -1224,5 +1129,18 @@ async function routeByDecision(
 // ── Test-only exports（仅供单元测试访问内部函数） ────────────────────────────────
 
 /** @internal — 仅供测试使用 */
+function tryParseV2Decision(text: string): Record<string, unknown> | null {
+  try {
+    const match =
+      text.match(/```json\s*([\s\S]*?)\s*```/)?.[1] ??
+      text.match(/```\s*([\s\S]*?)\s*```/)?.[1] ??
+      text.match(/(\{[\s\S]*\})/)?.[1];
+    if (!match) return null;
+    return JSON.parse(match.trim());
+  } catch {
+    return null;
+  }
+}
+
 export { tryParseV2Decision, parseGatedDecision };
 
