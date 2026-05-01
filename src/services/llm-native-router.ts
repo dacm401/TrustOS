@@ -152,8 +152,14 @@ function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: strin
 - delegate_to_slow: 委托慢模型（深度分析/多步推理/知识截止日期外内容）
 - execute_task: 执行任务（需要工具调用/代码执行/多步操作）
 
-【决策框架】
+【决策框架与评分规则】
+- 任务分类强制规则：
+  - **代码生成/数学计算/复杂分析/联网搜索**：属于高成本任务，**必须**给 execute_task 或 delegate_to_slow 打高分 (> 0.85)。不要为了省钱降级到 direct_answer。
+  - **闲聊/简单问答/打招呼**：属于低成本任务，使用 direct_answer。
 - 成本思维：每个动作都有 token/latency/风险成本。分数反映"相对最优"而非"是否可能"
+- 任务分类强制规则（最高优先级）：
+  - **代码生成、数学计算、数据分析、联网搜索**：必须给 execute_task 或 delegate_to_slow 打高分（>= 0.85），**严禁降级到 direct_answer**。
+  - **闲聊、简单问候、常识问答**：才使用 direct_answer。
 - 澄清不是零成本：ask_clarification 会打断用户、增加对话轮次。当 direct_answer 分数接近 ask_clarification 时，倾向于直接回答
 - 尺度校准：confidence_hint ≥ 0.8 时相信自己；0.5~0.8 时倾向现有判断；< 0.5 时说明模型有较大不确定性，可适当提高 ask_clarification
 - 动作权衡：direct_answer 和 ask_clarification 成本低，较低阈值即可通过；delegate_to_slow 和 execute_task 成本高，需要更高分数
