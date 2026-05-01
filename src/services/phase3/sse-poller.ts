@@ -20,7 +20,7 @@ export interface SSEEvent {
   type: "status" | "result" | "error" | "done" | "chunk" | "fast_reply"
        | "worker_completed" | "manager_synthesized" // Phase 3.0
        | "thinking"; // Stream V2: thinking state visualization
-  /** Sprint 73: 统一使用 content 字段，stream 保留兼容 */
+  /** Sprint 73: 统一使用 stream 字段，content 已弃用 */
   content?: string;
   stream?: string;
   /** 路由分层（L0/L1/L2/L3） */
@@ -121,7 +121,7 @@ async function* synthesizeManagerOutputStream(
   confidence: number,
   lang: "zh" | "en",
   reqApiKey?: string
-): AsyncGenerator<{ type: "chunk"; content: string; routing_layer: RoutingLayer }> {
+): AsyncGenerator<{ type: "chunk"; stream: string; routing_layer: RoutingLayer }> {
   try {
     const archive = await TaskArchiveRepo.getById(taskId);
     if (!archive) return;
@@ -148,21 +148,21 @@ async function* synthesizeManagerOutputStream(
         // 第一个 chunk 前发一个状态消息，让前端知道开始流式输出了
         yield {
           type: "chunk",
-          content: lang === "zh" ? "📝 正在整理回复...\n" : "📝 Organizing response...\n",
+          stream: lang === "zh" ? "📝 正在整理回复...\n" : "📝 Organizing response...\n",
           routing_layer: "L2",
         };
         firstChunk = false;
       }
-      yield { type: "chunk", content: chunk, routing_layer: "L2" };
+      yield { type: "chunk", stream: chunk, routing_layer: "L2" };
     }
 
     // 空结果降级为原始 worker 结果
     if (!buffer.trim()) {
-      yield { type: "chunk", content: `\n\n${workerResult}`, routing_layer: "L2" };
+      yield { type: "chunk", stream: `\n\n${workerResult}`, routing_layer: "L2" };
     }
   } catch (e: any) {
     console.warn("[synthesizeManagerOutputStream] Stream failed, falling back to raw result:", e.message);
-    yield { type: "chunk", content: `\n\n${workerResult}`, routing_layer: "L2" };
+    yield { type: "chunk", stream: `\n\n${workerResult}`, routing_layer: "L2" };
   }
 }
 
@@ -191,7 +191,7 @@ export async function* pollArchiveAndYield(
   yield {
     type: "thinking",
     thinking_state: "executing",
-    content: lang === "zh" ? "⚙️ 任务执行中..." : "⚙️ Executing task...",
+    stream: lang === "zh" ? "⚙️ 任务执行中..." : "⚙️ Executing task...",
     routing_layer: "L2",
     timestamp: Date.now(),
   };
@@ -322,34 +322,34 @@ export async function* pollArchiveAndYield(
         yield {
           type: "thinking",
           thinking_state: "responding",
-          content: lang === "zh" ? "💬 正在生成回复..." : "💬 Generating response...",
+          stream: lang === "zh" ? "💬 正在生成回复..." : "💬 Generating response...",
           routing_layer: "L2",
           timestamp: Date.now(),
         };
 
         try {
-          // 发一个"开始整理"的提示
-          yield {
-            type: "result",
-            content: `${msgs.done}\n\n`,
-            routing_layer: "L2",
-          };
+        // 发一个"开始整理"的提示
+        yield {
+          type: "result",
+          stream: `${msgs.done}\n\n`,
+          routing_layer: "L2",
+        };
 
-          // 流式 yield chunks，直接推给前端
-          for await (const chunkEvent of synthesizeManagerOutputStream(taskId, workerResult, workerConfidence, lang, reqApiKey)) {
-            yield chunkEvent;
-          }
-        } catch (e: any) {
-          console.warn("[pollArchiveAndYield] Manager synthesis failed, using raw result:", e.message);
-          yield {
-            type: "result",
-            content: `${msgs.done}\n\n${workerResult}`,
-            routing_layer: "L2",
-          };
+        // 流式 yield chunks，直接推给前端
+        for await (const chunkEvent of synthesizeManagerOutputStream(taskId, workerResult, workerConfidence, lang, reqApiKey)) {
+          yield chunkEvent;
         }
+      } catch (e: any) {
+        console.warn("[pollArchiveAndYield] Manager synthesis failed, using raw result:", e.message);
+        yield {
+          type: "result",
+          stream: `${msgs.done}\n\n${workerResult}`,
+          routing_layer: "L2",
+        };
+      }
 
-        // SSE1: 成功路径也发送 done 事件（与 failed/timeout 路径一致）
-        yield { type: "done", content: lang === "zh" ? "分析完成" : "Analysis complete", routing_layer: "L2" };
+      // SSE1: 成功路径也发送 done 事件（与 failed/timeout 路径一致）
+      yield { type: "done", stream: lang === "zh" ? "分析完成" : "Analysis complete", routing_layer: "L2" };
 
         await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
           console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
@@ -372,9 +372,9 @@ export async function* pollArchiveAndYield(
       const exec = task.slow_execution as Record<string, unknown> | null;
       const errors = (Array.isArray(exec?.errors) ? exec.errors : []) as string[];
       if (!sentResult) {
-        yield { type: "error", content: `任务执行失败: ${errors[0] ?? "Unknown error"}`, routing_layer: "L2" };
+        yield { type: "error", stream: `任务执行失败: ${errors[0] ?? "Unknown error"}`, routing_layer: "L2" };
       }
-      yield { type: "done", content: lang === "zh" ? "执行失败" : "Execution failed", routing_layer: "L2" };
+      yield { type: "done", stream: lang === "zh" ? "执行失败" : "Execution failed", routing_layer: "L2" };
       await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
         console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
       );
@@ -393,13 +393,13 @@ export async function* pollArchiveAndYield(
       if (!sentResult) {
         yield {
           type: "error",
-          content: lang === "zh"
+          stream: lang === "zh"
             ? "⏱ 任务执行超时（180s），请稍后重试或简化问题"
             : "⏱ Task execution timed out (180s), please retry or simplify your request",
           routing_layer: "L2",
         };
       }
-      yield { type: "done", content: lang === "zh" ? "任务超时" : "Task timed out", routing_layer: "L2" };
+      yield { type: "done", stream: lang === "zh" ? "任务超时" : "Task timed out", routing_layer: "L2" };
       await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
         console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
       );

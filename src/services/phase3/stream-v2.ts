@@ -23,7 +23,7 @@ export interface ThinkingStep {
 export interface SSEThinkingEvent {
   type: "thinking";
   state: ThinkingState;
-  content?: string;
+  stream?: string;
   routing_layer?: string;
   timestamp: number;
 }
@@ -65,7 +65,7 @@ export function createThinkingEvent(
   return {
     type: "thinking",
     state,
-    content: getThinkingMessage(state, lang),
+    stream: getThinkingMessage(state, lang),
     routing_layer: routingLayer,
     timestamp: Date.now(),
   };

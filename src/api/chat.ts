@@ -252,7 +252,7 @@ chatRouter.post("/chat", async (c) => {
             routing_layer: llmNativeResult.routing_layer,
           })}\n\n`);
 
-          // Step 1: Manager 的安抚消息
+          // Step 1: Manager 决策
           if (llmNativeResult.message) {
             // Stream V2: Thinking 状态 - 路由决策完成
             await s.write(`data: ${JSON.stringify({
@@ -260,12 +260,21 @@ chatRouter.post("/chat", async (c) => {
               routing_layer: llmNativeResult.routing_layer,
             })}\n\n`);
 
-            await s.write(`data: ${JSON.stringify({
-              type: "manager_decision",
-              decision_type: llmNativeResult.decision_type,
-              routing_layer: llmNativeResult.routing_layer,
-              content: llmNativeResult.message,
-            })}\n\n`);
+            if (llmNativeResult.decision_type === "direct_answer") {
+              // 直接回答 → fast_reply（前端直接渲染气泡）
+              await s.write(`data: ${JSON.stringify({
+                type: "fast_reply",
+                stream: llmNativeResult.message,
+                routing_layer: llmNativeResult.routing_layer,
+              })}\n\n`);
+            } else {
+              // 其他动作 → status（安抚消息，不占气泡）
+              await s.write(`data: ${JSON.stringify({
+                type: "status",
+                stream: llmNativeResult.message,
+                routing_layer: llmNativeResult.routing_layer,
+              })}\n\n`);
+            }
           }
 
           // Step 2: Clarifying
@@ -289,66 +298,63 @@ chatRouter.post("/chat", async (c) => {
             })}\n\n`);
 
             if (llmNativeResult.archive_id) {
+              // 任务存档 → status（进度消息）
               await s.write(`data: ${JSON.stringify({
-                type: "archive_written",
-                task_id: taskId,
-                archive_id: llmNativeResult.archive_id,
-                decision_type: llmNativeResult.decision_type ?? "delegate_to_slow",
+                type: "status",
+                stream: lang === "zh" ? "📋 任务已记录，等待 Worker 执行..." : "Task archived, waiting for Worker...",
                 routing_layer: llmNativeResult.routing_layer,
-                timestamp: new Date().toISOString(),
               })}\n\n`);
             } else {
-              // delegation 触发但 archive 未创建 → 发 error + done 后立即返回，不进入 pollArchiveAndYield
+              // delegation 触发但 archive 未创建 → 发 error + done 后立即返回
               await s.write(`data: ${JSON.stringify({
                 type: "error",
-                content: llmNativeResult.message ?? "任务无法触发，请重试",
+                stream: llmNativeResult.message ?? "任务无法触发，请重试",
                 routing_layer: llmNativeResult.routing_layer,
               })}\n\n`);
               await s.write(`data: ${JSON.stringify({
                 type: "done",
-                content: "任务失败",
+                stream: lang === "zh" ? "任务失败" : "Task failed",
                 routing_layer: llmNativeResult.routing_layer,
               })}\n\n`);
               return;
             }
             if (llmNativeResult.command_id) {
+              // Worker 启动状态
               await s.write(`data: ${JSON.stringify({
-                type: "worker_started",
-                task_id: taskId,
-                command_id: llmNativeResult.command_id,
-                worker_role: llmNativeResult.decision_type === "execute_task" ? "execute_worker" : "slow_worker",
+                type: "status",
+                stream: lang === "zh" ? "🤖 Worker 已启动..." : "Worker started...",
                 routing_layer: llmNativeResult.routing_layer,
-                timestamp: new Date().toISOString(),
               })}\n\n`);
             }
-            await s.write(`data: ${JSON.stringify({
-              type: "command_issued",
-              task_id: taskId,
-              routing_layer: llmNativeResult.routing_layer,
-            })}\n\n`);
 
             console.log("[chat] entering pollArchiveAndYield for task:", taskId);
             for await (const event of pollArchiveAndYield(taskId, lang, llmNativeResult.delegation_log_id, reqApiKey)) {
               console.log("[chat] pollArchiveAndYield event:", event.type);
-              await s.write(`data: ${JSON.stringify({
+              // 统一字段名：content → stream
+              const normalizedEvent = {
                 ...event,
                 routing_layer: event.routing_layer ?? llmNativeResult.routing_layer,
-              })}\n\n`);
+              };
+              if (normalizedEvent.content && !normalizedEvent.stream) {
+                normalizedEvent.stream = normalizedEvent.content;
+                delete normalizedEvent.content;
+              }
+              await s.write(`data: ${JSON.stringify(normalizedEvent)}\n\n`);
             }
           }
 
+          // Done
           await s.write(`data: ${JSON.stringify({
             type: "done",
-            content: llmNativeResult.delegation
-              ? (lang === "zh" ? "分析完成" : "Analysis complete")
+            stream: llmNativeResult.delegation
+              ? (lang === "zh" ? "✅ 完成" : "✅ Done")
               : (lang === "zh" ? "已返回答案" : "Answer ready"),
             routing_layer: llmNativeResult.routing_layer,
-            archive_id: llmNativeResult.archive_id,
             task_id: taskId,
           })}\n\n`);
         } catch (e: any) {
           console.warn("[stream-llm] SSE error:", e.message);
-          await s.write(`data: ${JSON.stringify({ type: "error", content: e.message, routing_layer: llmNativeResult.routing_layer })}\n\n`);
+          await s.write(`data: ${JSON.stringify({ type: "error", stream: e.message, routing_layer: llmNativeResult.routing_layer })}\n\n`);
         }
       });
     }
