@@ -167,18 +167,18 @@ chatRouter.post("/chat", async (c) => {
               await s.write(`data: ${JSON.stringify({
                 type: "thinking",
                 thinking_state: "completed",
-                content: quickLang === "zh" ? "✅ 完成" : "✅ Done",
+                stream: quickLang === "zh" ? "✅ 完成" : "✅ Done",
                 routing_layer: "L0",
                 timestamp: Date.now(),
               })}\n\n`);
               await s.write(`data: ${JSON.stringify({
                 type: "fast_reply",
-                content: quickResponse,
+                stream: quickResponse,
                 routing_layer: "L0",
               })}\n\n`);
               await s.write(`data: ${JSON.stringify({
                 type: "done",
-                content: quickLang === "zh" ? "已返回答案" : "Answer ready",
+                stream: quickLang === "zh" ? "已返回答案" : "Answer ready",
                 routing_layer: "L0",
               })}\n\n`);
             });
