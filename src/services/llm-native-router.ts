@@ -398,11 +398,24 @@ export async function routeWithManagerDecision(
   // Manager 输出包含 "人话回复" + "JSON 决策"
   const parsedOutput = splitManagerOutput(managerOutput);
 
-  // 如果是直接回答，直接使用 Manager 生成的“人话”
+  // 强制委派逻辑：如果模型强烈建议委派，无视系统的“省钱”策略
+  // 这是一个关键的路由覆盖点，用于确保复杂任务不被错误降级
+  const modelJson = parsedOutput.jsonPart ? JSON.parse(parsedOutput.jsonPart) : {};
+  const modelScores = modelJson?.scores || {};
+  const execScore = modelScores.execute_task || 0;
+  const delegateScore = modelScores.delegate_to_slow || 0;
+
+  if ((execScore > 0.85 || delegateScore > 0.85) && gatedResult.routedAction === "direct_answer") {
+    console.log(`[llm-native-router] 🚀 Forcing delegation: Model strongly suggests it (exec=${execScore}, del=${delegateScore})`);
+    gatedResult.routedAction = execScore > delegateScore ? "execute_task" : "delegate_to_slow";
+    gatedResult.finalAction = gatedResult.routedAction;
+    // 同步更新 context 中的 message，确保下游逻辑能拿到安抚语
+    // 注意：此时 parsedOutput.userFacingText 应该是模型的安抚语
+  }
+
+  // 检测模型意图与系统路由是否冲突：如果模型原本打算委派，但被降级了（且分数不够高，没触发上面的强制逻辑）
+  // 此时必须调用 callDirectReplyModel 生成真实回复，不能只展示安抚语
   if (gatedResult.routedAction === "direct_answer") {
-    // 检测模型意图与系统路由是否冲突：如果模型原本打算委派，它生成的文本只是占位符
-    // 此时必须调用 callDirectReplyModel 重新生成真实回复
-    const modelJson = parsedOutput.jsonPart ? JSON.parse(parsedOutput.jsonPart) : {};
     const modelIntent = modelJson?.decision_type || "";
     const isDelegateIntent = modelIntent === "execute_task" || modelIntent === "delegate_to_slow";
 
@@ -411,6 +424,7 @@ export async function routeWithManagerDecision(
       const realReply = await callDirectReplyModel({
         message, history, language, reqApiKey, crossSessionContext
       });
+      console.log(`[llm-native-router] Fallback reply generated, length: ${realReply.length}`);
       return {
         message: realReply,
         decision: null,

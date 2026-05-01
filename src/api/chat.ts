@@ -217,7 +217,8 @@ chatRouter.post("/chat", async (c) => {
       }
 
       const lang = features.language as "zh" | "en";
-      const taskId = llmNativeResult.delegation?.task_id || uuid();
+      // Phase 3.0 fix: 使用 archive_id 而非 delegation.task_id，因为 task_archives 表的主键是 archive_id
+      const archiveId = llmNativeResult.archive_id || llmNativeResult.delegation?.task_id || uuid();
 
       // Sprint 68: Phase 2.0 L2 Rollout
       // Sprint 72: 修复 stream 对齐 bug —— stream=true 时必须走 SSE，不能退化到 JSON
@@ -327,8 +328,8 @@ chatRouter.post("/chat", async (c) => {
               })}\n\n`);
             }
 
-            console.log("[chat] entering pollArchiveAndYield for task:", taskId);
-            for await (const event of pollArchiveAndYield(taskId, lang, llmNativeResult.delegation_log_id, reqApiKey)) {
+            console.log("[chat] entering pollArchiveAndYield for task:", archiveId);
+            for await (const event of pollArchiveAndYield(archiveId, lang, llmNativeResult.delegation_log_id, reqApiKey)) {
               console.log("[chat] pollArchiveAndYield event:", event.type);
               // 统一字段名：content → stream
               const normalizedEvent = {
@@ -350,7 +351,7 @@ chatRouter.post("/chat", async (c) => {
               ? (lang === "zh" ? "✅ 完成" : "✅ Done")
               : (lang === "zh" ? "已返回答案" : "Answer ready"),
             routing_layer: llmNativeResult.routing_layer,
-            task_id: taskId,
+            task_id: archiveId,
           })}\n\n`);
         } catch (e: any) {
           console.warn("[stream-llm] SSE error:", e.message);
@@ -391,7 +392,7 @@ chatRouter.post("/chat", async (c) => {
       return c.json({ error: "Manager returned null decision" }, 500);
     }
 
-    const taskId = llmNativeResult.delegation?.task_id || uuid();
+    const archiveId = llmNativeResult.archive_id || llmNativeResult.delegation?.task_id || uuid();
 
     // 记录 decision log
     await logDecision({
@@ -446,7 +447,7 @@ chatRouter.post("/chat", async (c) => {
       decision_type: llmNativeResult.decision_type,
       routing_layer: llmNativeResult.routing_layer,
       clarifying: llmNativeResult.clarifying,
-      task_id: taskId,
+      task_id: archiveId,
       delegation: llmNativeResult.delegation
         ? { task_id: llmNativeResult.delegation.task_id, status: "triggered" }
         : undefined,
