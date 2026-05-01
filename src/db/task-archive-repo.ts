@@ -33,13 +33,12 @@ export const TaskArchiveRepo = {
     const id = uuid();
     await query(
       `INSERT INTO task_archives
-        (id, task_id, session_id, user_id, manager_decision, command,
+        (id, session_id, user_id, manager_decision, command,
          user_input, task_brief, goal, state, status, constraints,
          fast_observations, slow_execution)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'delegated','pending','{}','[]','{}')`,
       [
         id,
-        input.task_id ?? null,
         input.session_id,
         input.user_id,
         JSON.stringify(input.decision),
