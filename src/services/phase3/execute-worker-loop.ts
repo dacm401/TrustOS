@@ -132,7 +132,6 @@ async function executePlanCommand(
         error_message: err.message,
       });
       await TaskArchiveRepo.updateState(archive_id, "failed");
-      await TaskArchiveRepo.updateState(archive_id, "failed");
       await TaskArchiveRepo.setSlowExecution(archive_id, {
         result: "",
         errors: [err.message],

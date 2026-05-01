@@ -304,6 +304,18 @@ export const TaskWorkerResultRepo = {
     );
     return result.rows.map(mapResultRow);
   },
+
+  /**
+   * 按 archive_id 读取结果（SSE Poller 回写 delegation_logs 时调用）。
+   */
+  async getByArchiveId(archiveId: string): Promise<TaskWorkerResultRecord | null> {
+    const result = await query(
+      `SELECT * FROM task_worker_results WHERE archive_id = $1 LIMIT 1`,
+      [archiveId]
+    );
+    if (!result.rows[0]) return null;
+    return mapResultRow(result.rows[0]);
+  },
 } as const;
 
 // ── TaskArchiveEventRepo ───────────────────────────────────────────────────────

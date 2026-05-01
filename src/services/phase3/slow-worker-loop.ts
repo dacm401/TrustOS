@@ -164,10 +164,7 @@ async function executeDelegateCommand(
 
     // 更新 task_commands 状态为 completed
     await TaskCommandRepo.updateStatus(id, "completed", { finished_at: new Date() });
-    // 更新 task_archives status = done（供 pollArchiveAndYield 轮询感知）
-    // 注意：pollArchiveAndYield 读的是 status 字段，不是 state 字段
-    await TaskArchiveRepo.updateState(archive_id, "done");
-    // 更新 task_archives state = done（语义对齐）
+    // 更新 task_archives state = done（供 pollArchiveAndYield 轮询感知）
     await TaskArchiveRepo.updateState(archive_id, "done");
 
     console.log(`[slow-worker] Completed task ${task_id} in ${totalMs}ms, ${inputTokens}+${outputTokens} tokens`);
@@ -178,7 +175,6 @@ async function executeDelegateCommand(
         finished_at: new Date(),
         error_message: err.message,
       });
-      await TaskArchiveRepo.updateState(archive_id, "failed");
       await TaskArchiveRepo.updateState(archive_id, "failed");
       await TaskArchiveRepo.setSlowExecution(archive_id, {
         result: "",
