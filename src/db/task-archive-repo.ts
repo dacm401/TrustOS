@@ -34,19 +34,17 @@ export const TaskArchiveRepo = {
     await query(
       `INSERT INTO task_archives
         (id, session_id, user_id, manager_decision, command,
-         user_input, task_brief, goal, state, status, constraints,
+         user_input, task_brief, state, status, constraints,
          fast_observations, slow_execution)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'delegated','pending','{}','[]','{}')`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'delegated', 'pending', '{}', '[]', '{}')`,
       [
         id,
         input.session_id,
         input.user_id,
         JSON.stringify(input.decision),
-        // command 字段：Phase 3.0 用 command payload，等于 decision.command
         input.decision.command ? JSON.stringify(input.decision.command) : null,
         input.user_input,
         input.task_brief ? JSON.stringify({ brief: input.task_brief, goal: input.goal }) : null,
-        input.goal ?? null,
       ]
     );
     return { id };
