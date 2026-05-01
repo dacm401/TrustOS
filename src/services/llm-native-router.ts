@@ -142,7 +142,9 @@ function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: strin
   // 中文版 prompt
   const zhPrompt = `你是 SmartRouter Pro 的 Manager（管理模型）。
 
-理解用户请求后，对四个动作分别打分（0.0~1.0），然后输出完整决策 JSON。
+理解用户请求后，你需要完成两个任务：
+1. **回复用户（人话）**：如果可以直接回答，请直接给出高质量的自然语言回复。如果无法直接回答（需要工具或深度推理），请给出简短的安抚语（例如："好的，正在为您分析..."）。
+2. **系统决策（机器语）**：在回复之后，对四个动作分别打分（0.0~1.0），然后输出完整决策 JSON。
 
 【四种动作】
 - direct_answer: 直接回答（最低成本，用于闲聊/简单问答/打招呼）
@@ -150,7 +152,7 @@ function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: strin
 - delegate_to_slow: 委托慢模型（深度分析/多步推理/知识截止日期外内容）
 - execute_task: 执行任务（需要工具调用/代码执行/多步操作）
 
-【决策框架】（比硬编码列表更重要）
+【决策框架】
 - 成本思维：每个动作都有 token/latency/风险成本。分数反映"相对最优"而非"是否可能"
 - 澄清不是零成本：ask_clarification 会打断用户、增加对话轮次。当 direct_answer 分数接近 ask_clarification 时，倾向于直接回答
 - 尺度校准：confidence_hint ≥ 0.8 时相信自己；0.5~0.8 时倾向现有判断；< 0.5 时说明模型有较大不确定性，可适当提高 ask_clarification
@@ -158,7 +160,6 @@ function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: strin
 
 【歧义情况处理】
 - 若最高两个动作分数差 < 0.15，或 confidence_hint < 0.5：主动降低 confidence_hint，在 rationale 中说明不确定性来源
-- 不要用 ask_clarification 来回避决策困难——当用户意图基本清楚但缺少细节时，才用 ask_clarification
 
 【决策特征】
 - missing_info: 请求是否缺少关键信息（目标/范围/格式不明确）
@@ -167,12 +168,13 @@ function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: strin
 - high_risk_action: 是否涉及高风险操作（金融决策/医疗建议/安全相关）
 - query_too_vague: 请求是否过于模糊，无法直接处理
 - requires_multi_step: 是否需要多步骤操作或跨文件处理
-- is_continuation: 请求是否引用了之前的对话或任务（如"继续""接着上次的""把之前的XX补充完整"）
+- is_continuation: 请求是否引用了之前的对话或任务
 
-【输出格式】（必须严格使用此 JSON Schema）
+【输出格式】（必须严格使用此 JSON Schema，放在回复的最后）
 
+\`\`\`json
 {
-  "schema_version": "manager_decision_v2",
+  "schema_version": "manager_decision_v3",
   "scores": {
     "direct_answer": 0.0~1.0,
     "ask_clarification": 0.0~1.0,
@@ -186,13 +188,93 @@ function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: strin
     "needs_external_tool": boolean,
     "high_risk_action": boolean,
     "query_too_vague": boolean,
-    "requires_multi_step": boolean
+    "requires_multi_step": boolean,
+    "is_continuation": boolean
   },
   "rationale": "一句话决策理由",
-  "decision_type": "四个动作之一（与最高分对应）",
-  "direct_response": { "content": "当 decision_type=direct_answer 时的回复内容" },
-  "clarification": { "question_text": "当 decision_type=ask_clarification 时的澄清问题" },
+  "decision_type": "四个动作之一",
   "command": { "task_brief": "当 decision_type=delegate/execute 时的任务摘要", "constraints": ["约束1"] }
+}
+\`\`\`
+
+【输出规则】
+- **先说人话，后给 JSON**。JSON 必须用代码块包裹。
+- JSON 中**不要**包含 direct_response 或 clarification 内容，直接用你前面的自然语言回复即可。
+- 必须包含所有字段`;
+
+  // 英文版 prompt
+  const enPrompt = `You are SmartRouter Pro's Manager model.
+
+After understanding the user's request, you need to complete two tasks:
+1. **Reply to user (Human)**: If you can answer directly, give a high-quality natural language response. If not (needs tools/deep reasoning), give a brief reassurance (e.g., "OK, analyzing for you...").
+2. **System Decision (Machine)**: After your reply, score each of the four actions (0.0~1.0), then output the complete decision JSON.
+
+【Four Actions】
+- direct_answer: Direct reply (lowest cost, for chat/simple Q&A/greetings)
+- ask_clarification: Request clarification (needs user to provide key info)
+- delegate_to_slow: Delegate to slow model (deep analysis/multi-step reasoning/knowledge cutoff)
+- execute_task: Execute task (needs tool calling/code execution/multi-step operations)
+
+【Decision Framework】
+- Cost thinking: every action has token/latency/risk cost. Score reflects "relative optimal" not "is this possible"
+- Clarification is not zero-cost: ask_clarification interrupts the user and adds turns. When direct_answer is close to ask_clarification, prefer direct answer
+- Confidence calibration: confidence_hint ≥ 0.8 = trust yourself; 0.5~0.8 = lean toward existing judgment; < 0.5 = model is uncertain, may raise ask_clarification appropriately
+- Action trade-offs: direct_answer and ask_clarification are low-cost, lower thresholds acceptable; delegate_to_slow and execute_task are high-cost, need higher scores
+
+【Ambiguity Handling】
+- If top-2 action scores differ by < 0.15, or confidence_hint < 0.5: lower confidence_hint and explain the source of uncertainty in rationale
+
+【Decision Features】
+- missing_info: Is key information missing (goal/scope/format unclear)
+- needs_long_reasoning: Does it need long-chain reasoning or multi-step analysis
+- needs_external_tool: Does it need external tools (web_search/http_request/code execution)
+- high_risk_action: Does it involve high-risk operations (financial/medical/security)
+- query_too_vague: Is the request too vague to handle directly
+- requires_multi_step: Does it need multi-step operations or cross-file handling
+- is_continuation: Does the request reference a previous conversation or task
+
+【Output Format】（must use this exact JSON Schema, placed at the very end of your response）
+
+\`\`\`json
+{
+  "schema_version": "manager_decision_v3",
+  "scores": {
+    "direct_answer": 0.0~1.0,
+    "ask_clarification": 0.0~1.0,
+    "delegate_to_slow": 0.0~1.0,
+    "execute_task": 0.0~1.0
+  },
+  "confidence_hint": 0.0~1.0,
+  "features": {
+    "missing_info": boolean,
+    "needs_long_reasoning": boolean,
+    "needs_external_tool": boolean,
+    "high_risk_action": boolean,
+    "query_too_vague": boolean,
+    "requires_multi_step": boolean,
+    "is_continuation": boolean
+  },
+  "rationale": "One-line rationale",
+  "decision_type": "one of the four actions",
+  "command": { "task_brief": "Task summary when decision_type=delegate/execute", "constraints": ["constraint1"] }
+}
+\`\`\`
+
+【Output Rules】
+- **Speak human first, then give JSON**. JSON must be in a code block.
+- JSON must **NOT** contain direct_response or clarification content; use your preceding natural language reply instead.
+- Must include all fields`;
+
+  const systemPrompt = lang === "zh" ? zhPrompt : enPrompt;
+  
+  if (userMemories) {
+    return systemPrompt + `\n\n【用户记忆】\n${userMemories}`;
+  }
+  if (crossSessionContext) {
+    return systemPrompt + `\n\n【跨会话上下文】\n${crossSessionContext}`;
+  }
+
+  return systemPrompt;
 }
 
 【输出规则】
@@ -403,28 +485,31 @@ export async function routeWithManagerDecision(
   // Step 4: 按 Gated Delegation 最终结果路由（KB signals 已在 gatedResult.knowledgeBoundarySignals 中）
   const v2Decision = tryParseV2Decision(managerOutput);
 
-  // Sprint 74 fix: Manager 仅负责路由判断，回复内容交由 Fast 模型直接生成
-  // 避免 Manager JSON 解析失败或内容空洞（如“好的。”）导致回复质量差
+  // Sprint 74: 使用新的 Text + JSON 模式
+  // Manager 输出包含 "人话回复" + "JSON 决策"
+  const parsedOutput = splitManagerOutput(managerOutput);
+
+  // 如果是直接回答，直接使用 Manager 生成的“人话”
   if (gatedResult.routedAction === "direct_answer") {
-    console.log("[llm-native-router] Direct answer route detected, generating reply via fast model");
-    const realReply = await callDirectReplyModel({ 
-        message, 
-        history, 
-        language, 
-        reqApiKey, 
-        crossSessionContext 
-    });
+    console.log("[llm-native-router] Direct answer route detected, using Manager's natural language reply");
     return {
-        message: realReply,
-        decision: null,
-        routing_layer: "L0",
-        decision_type: "direct_answer",
-        raw_manager_output: managerOutput,
-        delegation_log_id: undefined,
+      message: parsedOutput.userFacingText || (language === "zh" ? "好的。" : "Got it."),
+      decision: null,
+      routing_layer: "L0",
+      decision_type: "direct_answer",
+      raw_manager_output: managerOutput,
+      delegation_log_id: undefined,
     };
   }
 
-  return routeByGatedDecision(gatedResult, { message, user_id, session_id, turn_id, language, reqApiKey, rawOutput: managerOutput, v2Decision });
+  // 对于其他路由动作，使用“人话”作为安抚语，或根据 decision_type 构建澄清/任务消息
+  // 这里我们将 parsedOutput.userFacingText 传入 routeByGatedDecision
+  return routeByGatedDecision(gatedResult, { 
+      message: parsedOutput.userFacingText || message, 
+      userFacingText: parsedOutput.userFacingText,
+      user_id, session_id, turn_id, language, reqApiKey, 
+      rawOutput: managerOutput, v2Decision 
+  });
 }
 
 // ── Fast Manager 调用 ─────────────────────────────────────────────────────────
@@ -469,60 +554,33 @@ async function callManagerModel(input: {
   }
 }
 
-// ── 直接回答模型调用 ─────────────────────────────────────────────────────────
-/**
- * 专门用于生成直接回答（Direct Answer）的内容。
- * 不使用 Manager Prompt，只使用通用的 System Prompt。
- */
-async function callDirectReplyModel(input: {
-  message: string;
-  history: ChatMessage[];
-  language: "zh" | "en";
-  reqApiKey?: string;
-  crossSessionContext?: string;
-}): Promise<string> {
-  const { message, history, language, reqApiKey, crossSessionContext } = input;
-
-  const systemPrompt = language === "zh"
-    ? "你是一个智能助手。请直接、详细地回答用户的问题。"
-    : "You are a smart assistant. Please answer the user's question directly and in detail.";
-
-  const recentHistory = history.filter((m) => m.role !== "system").slice(-6);
-  const userContent = crossSessionContext ? `${crossSessionContext}\n\n${message}` : message;
-
-  const messages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
-    ...recentHistory,
-    { role: "user", content: userContent },
-  ];
-
-  try {
-    if (reqApiKey) {
-      const resp = await callOpenAIWithOptions(config.fastModel, messages, reqApiKey, config.openaiBaseUrl || undefined);
-      return resp.content;
-    }
-    const resp = await callModelFull(config.fastModel, messages);
-    return resp.content;
-  } catch (e: any) {
-    console.error("[llm-native-router] Direct reply model call failed:", e.message);
-    throw e;
-  }
-}
-
 // ── Gated Delegation: 解析 v2 格式 ───────────────────────────────────────────
 
-/** 尝试解析 v2 decision JSON（用于路由字段提取） */
-function tryParseV2Decision(text: string): Record<string, unknown> | null {
-  try {
-    const match =
-      text.match(/```json\s*([\s\S]*?)\s*```/)?.[1] ??
-      text.match(/```\s*([\s\S]*?)\s*```/)?.[1] ??
-      text.match(/(\{[\s\S]*\})/)?.[1];
-    if (!match) return null;
-    return JSON.parse(match.trim());
-  } catch {
-    return null;
+/**
+ * Sprint 74: 将 Manager 的输出拆分为“用户可见文本”和“JSON 决策”
+ * 格式: [Natural Language Reply]\n\n```json { ... } ```
+ */
+function splitManagerOutput(output: string): { userFacingText: string; jsonPart: string } {
+  // 匹配 ```json 块
+  const jsonMatch = output.match(/```json\s*([\s\S]*?)\s*```/);
+  
+  if (jsonMatch) {
+    const jsonPart = jsonMatch[1];
+    // 获取 JSON 之前的部分作为用户可见文本
+    const userFacingText = output.slice(0, jsonMatch.index).trim();
+    return { userFacingText, jsonPart };
   }
+
+  // 如果没有找到 JSON 块，尝试匹配裸 JSON
+  const bareJsonMatch = output.match(/(\{[\s\S]*\})/);
+  if (bareJsonMatch) {
+    const jsonPart = bareJsonMatch[1];
+    const userFacingText = output.slice(0, bareJsonMatch.index).trim();
+    return { userFacingText, jsonPart };
+  }
+
+  // 如果没有 JSON，整个文本都视为用户可见文本
+  return { userFacingText: output.trim(), jsonPart: "" };
 }
 
 function parseGatedDecision(
@@ -634,6 +692,8 @@ interface GatedRouteContext {
   rawOutput: string;
   /** 解析后的 v2 decision（用于路由字段） */
   v2Decision: Record<string, unknown> | null;
+  /** Sprint 74: Manager 生成的自然语言回复（用户可见） */
+  userFacingText?: string;
 }
 
 async function routeByGatedDecision(
@@ -653,13 +713,14 @@ async function routeByGatedDecision(
     reason: `Gated: ${gated.routedAction} (G1 score=${gated.llmScores[gated.routedAction]?.toFixed(2)}, G2 adjusted, system_conf=${gated.systemConfidence.toFixed(2)})`,
     confidence: gated.systemConfidence,
     needs_archive: gated.routedAction !== "direct_answer",
+    // Sprint 74: 使用 Manager 的自然语言回复，不再依赖 JSON 内的 direct_response 字段
     direct_response: gated.routedAction === "direct_answer"
-      ? { style: "natural" as const, content: (v2Decision?.direct_response as { content?: string })?.content || (language === "zh" ? "好的。" : "Got it.") }
+      ? { style: "natural" as const, content: ctx.userFacingText || (language === "zh" ? "好的。" : "Got it.") }
       : undefined,
     clarification: gated.routedAction === "ask_clarification"
       ? {
           question_id: "q1",
-          question_text: (v2Decision?.clarification as { question_text?: string })?.question_text ?? (language === "zh" ? "能再具体一点吗？" : "Could you be more specific?"),
+          question_text: ctx.userFacingText || (v2Decision?.clarification as { question_text?: string })?.question_text ?? (language === "zh" ? "能再具体一点吗？" : "Could you be more specific?"),
           clarification_reason: gated.features.query_too_vague ? "请求模糊" : "需要更多信息",
           // P2 HITL: 将歧义信号注入 ClarifyQuestion，供 routeByDecision 使用
           ambiguity,
