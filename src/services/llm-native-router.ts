@@ -372,13 +372,11 @@ export async function routeWithManagerDecision(
       return routeByDecision(decision, { message, user_id, session_id, language, reqApiKey, raw: managerOutput });
     }
     // Sprint 72 fix: LLM 有时返回截断/乱码 JSON（如 scores 字段不完整），直接吐出 JSON 是错误的
-    // 改为：如果 managerOutput 看起来像 JSON（非自然语言），使用 fallback
-    const trimmed = managerOutput.trim();
-    const looksLikeJSON = trimmed.startsWith("{") || trimmed.startsWith("```") || trimmed.startsWith("json");
-    const fallbackMsg = language === "zh" ? "好的，让我看看。" : "Got it, let me check.";
-    console.warn("[llm-native-router] ManagerDecision parse failed, fallback to direct_answer. looksLikeJSON:", looksLikeJSON);
+    // 改为：使用 splitManagerOutput 提取人话回复
+    console.warn("[llm-native-router] ManagerDecision parse failed, fallback to direct_answer");
+    const parsedOutput = splitManagerOutput(managerOutput);
     return {
-      message: looksLikeJSON ? fallbackMsg : (trimmed || fallbackMsg),
+      message: parsedOutput.userFacingText || (language === "zh" ? "好的，让我看看。" : "Got it, let me check."),
       decision: null,
       routing_layer: "L0",
       decision_type: "direct_answer",
@@ -501,9 +499,8 @@ function parseGatedDecision(
     if (!match) return null;
     const raw = JSON.parse(match.trim());
 
-    // Sprint 72 fix: 同时接受 v1 和 v2
-    // 模型偶尔输出 v1（仅含 scores/features）而非要求的 v2（全量决策字段）
-    if (!["manager_decision_v2", "manager_decision_v1"].includes(raw.schema_version)) return null;
+    // Sprint 72 fix: 同时接受 v1、v2 和 v3 (v3 为 Text+JSON 模式)
+    if (!["manager_decision_v3", "manager_decision_v2", "manager_decision_v1"].includes(raw.schema_version)) return null;
 
     // v1/v2 共用 scores 字段结构，直接取用
     const scores: Record<ManagerDecisionType, number> = {
