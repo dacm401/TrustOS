@@ -402,6 +402,28 @@ export async function routeWithManagerDecision(
 
   // Step 4: 按 Gated Delegation 最终结果路由（KB signals 已在 gatedResult.knowledgeBoundarySignals 中）
   const v2Decision = tryParseV2Decision(managerOutput);
+
+  // Sprint 74 fix: Manager 仅负责路由判断，回复内容交由 Fast 模型直接生成
+  // 避免 Manager JSON 解析失败或内容空洞（如“好的。”）导致回复质量差
+  if (gatedResult.routedAction === "direct_answer") {
+    console.log("[llm-native-router] Direct answer route detected, generating reply via fast model");
+    const realReply = await callDirectReplyModel({ 
+        message, 
+        history, 
+        language, 
+        reqApiKey, 
+        crossSessionContext 
+    });
+    return {
+        message: realReply,
+        decision: null,
+        routing_layer: "L0",
+        decision_type: "direct_answer",
+        raw_manager_output: managerOutput,
+        delegation_log_id: undefined,
+    };
+  }
+
   return routeByGatedDecision(gatedResult, { message, user_id, session_id, turn_id, language, reqApiKey, rawOutput: managerOutput, v2Decision });
 }
 
@@ -443,6 +465,46 @@ async function callManagerModel(input: {
     return resp.content;
   } catch (e: any) {
     console.error("[llm-native-router] Manager model call failed:", e.message);
+    throw e;
+  }
+}
+
+// ── 直接回答模型调用 ─────────────────────────────────────────────────────────
+/**
+ * 专门用于生成直接回答（Direct Answer）的内容。
+ * 不使用 Manager Prompt，只使用通用的 System Prompt。
+ */
+async function callDirectReplyModel(input: {
+  message: string;
+  history: ChatMessage[];
+  language: "zh" | "en";
+  reqApiKey?: string;
+  crossSessionContext?: string;
+}): Promise<string> {
+  const { message, history, language, reqApiKey, crossSessionContext } = input;
+
+  const systemPrompt = language === "zh"
+    ? "你是一个智能助手。请直接、详细地回答用户的问题。"
+    : "You are a smart assistant. Please answer the user's question directly and in detail.";
+
+  const recentHistory = history.filter((m) => m.role !== "system").slice(-6);
+  const userContent = crossSessionContext ? `${crossSessionContext}\n\n${message}` : message;
+
+  const messages: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    ...recentHistory,
+    { role: "user", content: userContent },
+  ];
+
+  try {
+    if (reqApiKey) {
+      const resp = await callOpenAIWithOptions(config.fastModel, messages, reqApiKey, config.openaiBaseUrl || undefined);
+      return resp.content;
+    }
+    const resp = await callModelFull(config.fastModel, messages);
+    return resp.content;
+  } catch (e: any) {
+    console.error("[llm-native-router] Direct reply model call failed:", e.message);
     throw e;
   }
 }
