@@ -271,7 +271,8 @@ chatRouter.post("/chat", async (c) => {
           // Step 2: Clarifying
           if (llmNativeResult.clarifying) {
             await s.write(`data: ${JSON.stringify({
-              type: "clarifying_needed",
+              type: "clarifying",
+              stream: llmNativeResult.clarifying.question_text,
               routing_layer: "L0",
               question_text: llmNativeResult.clarifying.question_text,
               options: llmNativeResult.clarifying.options,
