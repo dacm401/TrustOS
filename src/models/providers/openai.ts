@@ -6,6 +6,7 @@ import { config } from "../../config.js";
 // 默认 client（使用环境变量配置）
 const defaultClientOptions: ConstructorParameters<typeof OpenAI>[0] = {
   apiKey: config.openaiApiKey,
+  timeout: 30_000, // 30s timeout，防止 API 挂死导致 Worker 永久阻塞
 };
 if (config.openaiBaseUrl) {
   defaultClientOptions.baseURL = config.openaiBaseUrl;

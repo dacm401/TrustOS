@@ -381,6 +381,7 @@ export async function routeWithManagerDecision(
     // 改为：使用 splitManagerOutput 提取人话回复
     console.warn("[llm-native-router] ManagerDecision parse failed, fallback to direct_answer");
     const parsedOutput = splitManagerOutput(managerOutput);
+
     return {
       message: parsedOutput.userFacingText || (language === "zh" ? "好的，让我看看。" : "Got it, let me check."),
       decision: null,
@@ -413,29 +414,9 @@ export async function routeWithManagerDecision(
     // 注意：此时 parsedOutput.userFacingText 应该是模型的安抚语
   }
 
-  // 检测模型意图与系统路由是否冲突：如果模型原本打算委派，但被降级了（且分数不够高，没触发上面的强制逻辑）
-  // 此时必须调用 callDirectReplyModel 生成真实回复，不能只展示安抚语
+  // direct_answer：直接使用 Manager 一次调用产生的自然语言回复，不再调第二个模型
   if (gatedResult.routedAction === "direct_answer") {
-    const modelIntent = modelJson?.decision_type || "";
-    const isDelegateIntent = modelIntent === "execute_task" || modelIntent === "delegate_to_slow";
-
-    if (isDelegateIntent) {
-      console.log("[llm-native-router] Route downgrade detected: model intended to delegate, generating real reply via fallback model");
-      const realReply = await callDirectReplyModel({
-        message, history, language, reqApiKey, crossSessionContext
-      });
-      console.log(`[llm-native-router] Fallback reply generated, length: ${realReply.length}`);
-      return {
-        message: realReply,
-        decision: null,
-        routing_layer: "L0",
-        decision_type: "direct_answer",
-        raw_manager_output: managerOutput,
-        delegation_log_id: undefined,
-      };
-    }
-
-    console.log("[llm-native-router] Direct answer route detected, using Manager's natural language reply");
+    console.log("[llm-native-router] Direct answer, using Manager's single-call reply");
     return {
       message: parsedOutput.userFacingText || (language === "zh" ? "好的。" : "Got it."),
       decision: null,
@@ -498,48 +479,7 @@ async function callManagerModel(input: {
   }
 }
 
-// ── 直接回答模型调用 (Direct Reply Model) ─────────────────────────────────
-/**
- * Sprint 74: 专门用于生成直接回答（Direct Answer）的内容。
- * 当 Manager 决定委派但系统降级为直接回答时，调用此函数生成高质量回复。
- * 不使用 Manager Prompt（避免逻辑干扰），只使用通用的 System Prompt。
- */
-async function callDirectReplyModel(input: {
-  message: string;
-  history: ChatMessage[];
-  language: "zh" | "en";
-  reqApiKey?: string;
-  crossSessionContext?: string;
-}): Promise<string> {
-  const { message, history, language, reqApiKey, crossSessionContext } = input;
-
-  const systemPrompt = language === "zh"
-    ? "你是一个智能助手。请直接、详细地回答用户的问题。"
-    : "You are a smart assistant. Please answer the user's question directly and in detail.";
-
-  const recentHistory = history.filter((m) => m.role !== "system").slice(-6);
-  const userContent = crossSessionContext ? `${crossSessionContext}\n\n${message}` : message;
-
-  const messages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
-    ...recentHistory,
-    { role: "user", content: userContent },
-  ];
-
-  try {
-    if (reqApiKey) {
-      const resp = await callOpenAIWithOptions(config.fastModel, messages, reqApiKey, config.openaiBaseUrl || undefined);
-      return resp.content;
-    }
-    const resp = await callModelFull(config.fastModel, messages);
-    return resp.content;
-  } catch (e: any) {
-    console.error("[llm-native-router] Direct reply model call failed:", e.message);
-    throw e;
-  }
-}
-
-// ── Gated Delegation: 解析 v2 格式 ───────────────────────────────────────────
+// ── Gated Delegation: 解析 v2/v3 格式 ───────────────────────────────────────────
 
 /**
  * Sprint 74: 将 Manager 的输出拆分为“用户可见文本”和“JSON 决策”
@@ -790,8 +730,8 @@ async function routeByDecision(
 
   switch (decision.decision_type) {
     case "direct_answer": {
-      const dr = decision.direct_response as DirectResponse | undefined;
-      const reply = dr?.content || (language === "zh" ? "好的。" : "Got it.");
+      // 直接使用 ctx.message（Manager 一次调用产生的自然语言回复），不再依赖 direct_response.content
+      const reply = message || (language === "zh" ? "好的。" : "Got it.");
       return {
         message: reply,
         decision,

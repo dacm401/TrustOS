@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:3001/health)",
+      "Bash(wget -q -O- http://localhost:3001/health)",
+      "Bash(curl -s http://localhost:3001/api/chat -X POST -H \"Content-Type: application/json\" -d '{\"user_id\":\"test\",\"session_id\":\"s1\",\"message\":\"hello\",\"use_llm_native_routing\":true}')",
+      "Bash(python3 -m json.tool)",
+      "Bash(cmd.exe *)",
+      "Bash(python3 *)",
+      "Bash(node *)",
+      "Bash(npx tsx *)",
+      "Bash(curl *)"
+    ]
+  }
+}
