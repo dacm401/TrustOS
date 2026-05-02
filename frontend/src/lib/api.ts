@@ -45,13 +45,17 @@ export async function sendMessage(message: string, history: any[], userId: strin
 
 export async function getDashboard(userId: string) {
   const { apiBase } = getApiConfig();
-  const res = await fetch(`${apiBase}/api/dashboard/${userId}`);
+  const res = await fetch(`${apiBase}/api/dashboard/${userId}`, {
+    headers: { "X-User-Id": userId },
+  });
   return res.json();
 }
 
 export async function getGrowth(userId: string) {
   const { apiBase } = getApiConfig();
-  const res = await fetch(`${apiBase}/api/growth/${userId}`);
+  const res = await fetch(`${apiBase}/api/growth/${userId}`, {
+    headers: { "X-User-Id": userId },
+  });
   return res.json();
 }
 
@@ -222,7 +226,9 @@ export interface CostStats {
 
 export async function fetchCostStats(userId: string): Promise<CostStats> {
   const { apiBase } = getApiConfig();
-  const res = await fetch(`${apiBase}/api/cost-stats/${encodeURIComponent(userId)}`);
+  const res = await fetch(`${apiBase}/api/cost-stats/${encodeURIComponent(userId)}`, {
+    headers: { "X-User-Id": userId },
+  });
   if (!res.ok) throw new Error(`加载成本统计失败 (${res.status})`);
   return res.json() as Promise<CostStats>;
 }

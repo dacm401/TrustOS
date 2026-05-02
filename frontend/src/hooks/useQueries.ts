@@ -126,7 +126,9 @@ export function useCostStats(userId: string) {
   return useQuery({
     queryKey: ['cost-stats', userId],
     queryFn: async (): Promise<CostStats> => {
-      const res = await fetch(`http://localhost:3001/api/cost-stats/${encodeURIComponent(userId)}`);
+      const res = await fetch(`http://localhost:3001/api/cost-stats/${encodeURIComponent(userId)}`, {
+        headers: { "X-User-Id": userId },
+      });
       if (!res.ok) throw new Error(`加载成本统计失败 (${res.status})`);
       return res.json();
     },
