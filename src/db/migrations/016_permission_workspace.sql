@@ -76,6 +76,6 @@ CREATE TABLE IF NOT EXISTS scoped_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_st_token    ON scoped_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_st_task     ON scoped_tokens(task_id);
-CREATE INDEX IF NOT EXISTS idx_st_expires  ON scoped_tokens(expires_at) WHERE expires_at > NOW();
+CREATE INDEX IF NOT EXISTS idx_st_expires  ON scoped_tokens(expires_at);
 
 COMMIT;
