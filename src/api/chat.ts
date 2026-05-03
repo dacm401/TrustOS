@@ -218,7 +218,8 @@ chatRouter.post("/chat", async (c) => {
 
       const lang = features.language as "zh" | "en";
       // Phase 3.0 fix: 使用 archive_id 而非 delegation.task_id，因为 task_archives 表的主键是 archive_id
-      const archiveId = llmNativeResult.archive_id || llmNativeResult.delegation?.task_id || uuid();
+      // Bug3 fix: direct_answer 时没有真实 archive，不能用随机 UUID（前端会去查 404）
+      const archiveId = llmNativeResult.archive_id || llmNativeResult.delegation?.task_id;
 
       // Sprint 68: Phase 2.0 L2 Rollout
       // Sprint 72: 修复 stream 对齐 bug —— stream=true 时必须走 SSE，不能退化到 JSON
@@ -329,7 +330,7 @@ chatRouter.post("/chat", async (c) => {
             }
 
             console.log("[chat] entering pollArchiveAndYield for task:", archiveId);
-            for await (const event of pollArchiveAndYield(archiveId, lang, llmNativeResult.delegation_log_id, reqApiKey)) {
+            for await (const event of pollArchiveAndYield(archiveId!, lang, llmNativeResult.delegation_log_id, reqApiKey)) {
               console.log("[chat] pollArchiveAndYield event:", event.type);
               // 统一字段名：content → stream
               const normalizedEvent = {
@@ -392,7 +393,7 @@ chatRouter.post("/chat", async (c) => {
       return c.json({ error: "Manager returned null decision" }, 500);
     }
 
-    const archiveId = llmNativeResult.archive_id || llmNativeResult.delegation?.task_id || uuid();
+    const archiveId = llmNativeResult.archive_id || llmNativeResult.delegation?.task_id;
 
     // 记录 decision log
     await logDecision({

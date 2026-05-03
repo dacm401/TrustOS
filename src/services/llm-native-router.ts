@@ -382,13 +382,39 @@ export async function routeWithManagerDecision(
     console.warn("[llm-native-router] ManagerDecision parse failed, fallback to direct_answer");
     const parsedOutput = splitManagerOutput(managerOutput);
 
+    // Dashboard fix: parse failed 时仍写一条 delegation_log，确保今日数据可见
+    let fallbackLogId: string | undefined;
+    try {
+      const zeroScores = { direct_answer: 0, ask_clarification: 0, delegate_to_slow: 0, execute_task: 0 };
+      const fallbackLog = await DelegationLogRepo.save({
+        user_id,
+        session_id,
+        turn_id,
+        routing_version: "fallback-v0",
+        llm_scores: { ...zeroScores, direct_answer: 1 },
+        llm_confidence: 0.5,
+        system_confidence: 0.5,
+        calibrated_scores: { ...zeroScores, direct_answer: 1 },
+        policy_overrides: [],
+        g2_final_action: "direct_answer",
+        did_rerank: false,
+        rerank_rules: [],
+        routed_action: "direct_answer",
+        routing_reason: "manager_parse_failed",
+        routing_layer: "L0",
+      });
+      fallbackLogId = fallbackLog.id;
+    } catch (e: any) {
+      console.warn("[llm-native-router] Fallback delegation_log write failed (non-critical):", e.message);
+    }
+
     return {
       message: parsedOutput.userFacingText || (language === "zh" ? "好的，让我看看。" : "Got it, let me check."),
       decision: null,
       routing_layer: "L0",
       decision_type: "direct_answer",
       raw_manager_output: managerOutput,
-      delegation_log_id: undefined,
+      delegation_log_id: fallbackLogId,
     };
   }
 
