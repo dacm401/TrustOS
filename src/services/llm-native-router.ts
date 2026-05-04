@@ -400,7 +400,10 @@ export async function routeWithManagerDecision(
   }
 
   // Step 2: 解析 G1 多动作打分格式（manager_decision_v2）
+  // Debug: 打印 Manager 原始输出，排查 parse 失败
+  console.log(`[llm-native-router] [DEBUG] Manager output (first 600 chars):\n---\n${managerOutput.slice(0, 600)}\n---`);
   const gatedResult = parseGatedDecision(managerOutput, kbSignals);
+  console.log(`[llm-native-router] [DEBUG] parseGatedDecision result: ${gatedResult ? "SUCCESS (routedAction=" + gatedResult.routedAction + ")" : "NULL"}`);
 
   // Step 3: 不合法 → fallback，返回 L0 direct_answer
   if (!gatedResult) {
@@ -499,7 +502,7 @@ export async function routeWithManagerDecision(
       policy_overrides: gatedResult.policyOverrides,
       g2_final_action: gatedResult.finalAction,
       did_rerank: Boolean(gatedResult.rerankResult),
-      rerank_gap: null,
+      rerank_gap: undefined,
       rerank_rules: gatedResult.rerankResult ? [gatedResult.rerankResult.reason ?? "reranked"] : [],
       g3_final_action: gatedResult.rerankResult ? gatedResult.routedAction : undefined,
       routed_action: "direct_answer",
@@ -603,13 +606,27 @@ function parseGatedDecision(
   kbSignals?: KnowledgeBoundarySignal[]
 ): GatedDelegationContext | null {
   try {
+    // Debug: 打印原始文本（前 300 字符），看是否能匹配到 JSON
+    console.log(`[parseGatedDecision] [DEBUG] Input text (first 300): ${text.slice(0, 300)}`);
+    
+    const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+    const bareMatch = text.match(/```\s*([\s\S]*?)\s*```/);
+    const braceMatch = text.match(/(\{[\s\S]*\})/);
+    
+    console.log(`[parseGatedDecision] [DEBUG] jsonMatch: ${jsonMatch ? "YES" : "NO"}, bareMatch: ${bareMatch ? "YES" : "NO"}, braceMatch: ${braceMatch ? "YES(len=" + braceMatch[1].length + ")" : "NO"}`);
+    
     const match =
-      text.match(/```json\s*([\s\S]*?)\s*```/)?.[1] ??
-      text.match(/```\s*([\s\S]*?)\s*```/)?.[1] ??
-      text.match(/(\{[\s\S]*\})/)?.[1];
+      jsonMatch?.[1] ??
+      bareMatch?.[1] ??
+      braceMatch?.[1];
 
-    if (!match) return null;
+    if (!match) {
+      console.log(`[parseGatedDecision] [DEBUG] No JSON match found in text`);
+      return null;
+    }
+    console.log(`[parseGatedDecision] [DEBUG] Matched JSON (first 200): ${match.slice(0, 200)}`);
     const raw = JSON.parse(match.trim());
+    console.log(`[parseGatedDecision] [DEBUG] Parsed raw.schema_version: ${raw.schema_version}`);
 
     // Sprint 72 fix: 同时接受 v1、v2 和 v3 (v3 为 Text+JSON 模式)
     if (!["manager_decision_v3", "manager_decision_v2", "manager_decision_v1"].includes(raw.schema_version)) return null;

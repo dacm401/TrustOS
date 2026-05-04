@@ -22,9 +22,10 @@ import type { ExecutionPlan, ExecutionStep } from "../types/index.js";
 import { callModelWithTools } from "../models/model-gateway.js";
 import { toolRegistry } from "../tools/registry.js";
 import { TaskRepo } from "../db/repositories.js";
+import { config } from "../config.js";
 
-/** Planning model: defaults to slow (capable) model for reliable structured output */
-const DEFAULT_PLANNER_MODEL = "gpt-4o";
+/** Planning model: uses slow model from .env config (OpenRouter format) */
+const DEFAULT_PLANNER_MODEL = config.slowModel || "qwen/qwen-2.5-72b-instruct";
 
 /** The tool name the model calls to submit a plan */
 const PLANNER_TOOL_NAME = "plan_task";

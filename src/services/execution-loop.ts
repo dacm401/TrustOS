@@ -26,12 +26,13 @@ import { callModelWithTools, callModelFull } from "../models/model-gateway.js";
 import { toolRegistry } from "../tools/registry.js";
 import { toolExecutor, type ToolHandlerContext } from "../tools/executor.js";
 import { TaskRepo } from "../db/repositories.js";
+import { config } from "../config.js";
 
 // ── Loop configuration ────────────────────────────────────────────────────────
 
 const DEFAULT_MAX_STEPS = 10;
 const DEFAULT_MAX_TOOL_CALLS = 20;
-const DEFAULT_SLOW_MODEL = "gpt-4o";
+const DEFAULT_SLOW_MODEL = config.slowModel || "qwen/qwen-2.5-72b-instruct";
 
 /** Context for a single execution run */
 export interface LoopContext {
