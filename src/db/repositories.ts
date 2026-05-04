@@ -64,47 +64,30 @@ export const DecisionRepo = {
   },
 
   async getTodayStats(userId: string): Promise<any> {
+    // 读 delegation_logs（TrustOS 实时写入的事实表）
+    // 时区：PG session = Etc/UTC，但用户在北京（UTC+8）
+    //   CURRENT_DATE AT TIME ZONE 'Asia/Shanghai' → 北京时间今日 00:00 的 UTC 等价
     const result = await query(
-      `WITH base AS (
-        SELECT
-          d.id,
-          d.selected_role,
-          d.exec_input_tokens,
-          d.exec_output_tokens,
-          d.total_cost_usd,
-          d.latency_ms,
-          d.did_fallback,
-          d.cost_saved_vs_slow,
-          d.feedback_score,
-          fe.signal_level,
-          -- L1 signal: feedback_events.signal_level <= 1,
-          -- OR legacy: no feedback_events record but decision_logs.feedback_score IS NOT NULL
-          CASE
-            WHEN fe.signal_level IS NOT NULL AND fe.signal_level <= 1 THEN true
-            WHEN fe.signal_level IS NULL AND d.feedback_score IS NOT NULL THEN true
-            ELSE false
-          END as has_l1_signal
-        FROM decision_logs d
-        LEFT JOIN feedback_events fe ON fe.decision_id = d.id AND fe.user_id = d.user_id
-        WHERE d.user_id = $1 AND d.created_at >= CURRENT_DATE
-      )
-      SELECT
-        COUNT(*)::int as total_requests,
-        COUNT(*) FILTER (WHERE selected_role = 'fast')::int as fast_count,
-        COUNT(*) FILTER (WHERE selected_role = 'slow')::int as slow_count,
-        COUNT(*) FILTER (WHERE did_fallback = true)::int as fallback_count,
-        COALESCE(SUM(exec_input_tokens + exec_output_tokens), 0)::int as total_tokens,
-        COALESCE(SUM(total_cost_usd), 0)::float as total_cost,
-        COALESCE(SUM(cost_saved_vs_slow), 0)::float as saved_cost,
-        COALESCE(AVG(latency_ms), 0)::int as avg_latency,
-        CASE WHEN COUNT(*) FILTER (WHERE has_l1_signal = true) > 0
-          THEN ROUND(
-            COUNT(*) FILTER (WHERE has_l1_signal = true AND base.feedback_score > 0)::float /
-            COUNT(*) FILTER (WHERE has_l1_signal = true)::float * 100
-          )
-          ELSE 0 END as satisfaction_rate
-      FROM base
-      WHERE has_l1_signal = true OR has_l1_signal = false`,
+      `SELECT
+        COUNT(*)::int                                                          AS total_requests,
+        COUNT(*) FILTER (WHERE routed_action IN ('direct_answer','ask_clarification'))::int
+                                                                               AS fast_count,
+        COUNT(*) FILTER (WHERE routed_action IN ('delegate_to_slow','execute_task'))::int
+                                                                               AS slow_count,
+        0::int                                                                 AS fallback_count,
+        0::int                                                                 AS total_tokens,
+        COALESCE(SUM(cost_usd), 0)::float                                     AS total_cost,
+        0::float                                                               AS saved_cost,
+        COALESCE(AVG(latency_ms), 0)::int                                     AS avg_latency,
+        COALESCE(
+          ROUND(
+            COUNT(*) FILTER (WHERE user_success = true)::float /
+            NULLIF(COUNT(*) FILTER (WHERE user_success IS NOT NULL), 0)::float * 100
+          ), 0
+        )::int                                                                 AS satisfaction_rate
+      FROM delegation_logs
+      WHERE user_id = $1
+        AND created_at >= (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::timestamptz`,
       [userId]
     );
     return result.rows[0];
@@ -514,7 +497,7 @@ export const GrowthRepo = {
     const history = await DecisionRepo.getRoutingAccuracyHistory(userId);
     const memories = await MemoryRepo.getBehavioralMemories(userId);
 
-    const totalResult = await query(`SELECT COUNT(*)::int as total FROM decision_logs WHERE user_id=$1`, [userId]);
+    const totalResult = await query(`SELECT COUNT(*)::int as total FROM delegation_logs WHERE user_id=$1`, [userId]);
     const totalInteractions = totalResult.rows[0]?.total || 0;
 
     let currentLevel = GROWTH_LEVELS[0];
@@ -524,7 +507,9 @@ export const GrowthRepo = {
     const nextLevel = GROWTH_LEVELS.find((l) => l.level === currentLevel.level + 1) || currentLevel;
     const progress = nextLevel === currentLevel ? 100 : Math.round(((totalInteractions - currentLevel.min_interactions) / (nextLevel.min_interactions - currentLevel.min_interactions)) * 100);
 
-    const savedResult = await query(`SELECT COALESCE(SUM(cost_saved_vs_slow), 0)::float as total_saved FROM decision_logs WHERE user_id=$1`, [userId]);
+    // TODO: delegation_logs 没有 cost_saved_vs_slow 列，需要额外计算 baseline cost
+    // 暂时返回 0，后面 sprint 实现
+    const total_saved_usd = 0;
     const milestonesResult = await query(`SELECT title, created_at FROM growth_milestones WHERE user_id=$1 ORDER BY created_at DESC LIMIT 10`, [userId]);
 
     const recentMemories = memories.sort((a, b) => b.created_at - a.created_at).slice(0, 5);
@@ -534,7 +519,7 @@ export const GrowthRepo = {
       routing_accuracy: stats.satisfaction_rate || 0,  // was pulled from fake routing_correct history; now honest satisfaction proxy
       satisfaction_history: history,  // honest proxy: daily satisfaction rate (positive feedback / all feedback)
       cost_saving_rate: stats.total_cost > 0 ? Math.round((stats.saved_cost / (stats.total_cost + stats.saved_cost)) * 100) : 0,
-      total_saved_usd: savedResult.rows[0]?.total_saved || 0,
+      total_saved_usd: total_saved_usd,
       satisfaction_rate: stats.satisfaction_rate || 0, total_interactions: totalInteractions,
       behavioral_memories_count: memories.length,
       milestones: milestonesResult.rows.map((r: any) => ({ date: new Date(r.created_at).toISOString().split("T")[0], event: r.title })),
