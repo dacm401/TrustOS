@@ -33,12 +33,12 @@ export const HARD_POLICY_RULES: HardPolicyRule[] = [
     target: "execute_task",
   },
   {
-    id: "delegate_blocked_without_goal",
-    description: "信息缺失时强烈不建议 delegate_to_slow（50% 惩罚）",
+    id: "delegate_penalty_without_goal",
+    description: "信息缺失时轻微惩罚 delegate_to_slow（20% 惩罚，原 50% 太激进）",
     condition: (f) => f.missing_info,
     action: "penalize",
     target: "delegate_to_slow",
-    penalty: 0.5,
+    penalty: 0.2,
   },
   {
     id: "high_risk_blocks_execute",

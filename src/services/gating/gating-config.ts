@@ -15,7 +15,7 @@ export const DEFAULT_GATING_CONFIG: GatingConfig = {
   thresholds: {
     direct_answer: 0.55,
     ask_clarification: 0.60,  // 稍高：clarification 打断用户
-    delegate_to_slow: 0.75,  // Sprint 51: 0.72→0.75（更保守，减少不必要 slow 调用）
+    delegate_to_slow: 0.65,  // Sprint 75: 0.75→0.65（原阈值太高，模型很难打到，导致委托从未发生）
     execute_task: 0.80,       // 最高：工具执行风险最大
   },
 

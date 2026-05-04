@@ -140,26 +140,58 @@ export function runGatedDelegation(
 
 function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: string, userMemories?: string): string {
   // 中文版 prompt
-  const zhPrompt = `你是 SmartRouter Pro 的 Manager（管理模型）。
+  const zhPrompt = `你是 SmartRouter Pro 的 Manager（快模型，如 Qwen2.5-72B）。
+
+你的核心职责：判断用户请求应该**由你直接回答**，还是**委托给慢模型**（如 DeepSeek-V3）处理。
 
 理解用户请求后，你需要完成两个任务：
-1. **回复用户（人话）**：如果可以直接回答，请直接给出高质量的自然语言回复。如果无法直接回答（需要工具或深度推理），请给出简短的安抚语（例如："好的，正在为您分析..."）。
+1. **回复用户（人话）**：如果你判断自己直接回答（direct_answer）就够了，请直接给出高质量的自然语言回复。如果你判断需要委托给慢模型（delegate_to_slow），请给出简短的安抚语（例如："好的，正在为您深入分析..."）。
 2. **系统决策（机器语）**：在回复之后，对四个动作分别打分（0.0~1.0），然后输出完整决策 JSON。
 
-【四种动作】
-- direct_answer: 直接回答（最低成本，用于闲聊/简单问答/打招呼）
-- ask_clarification: 请求澄清（需要用户补充关键信息）
-- delegate_to_slow: 委托慢模型（深度分析/多步推理/知识截止日期外内容）
-- execute_task: 执行任务（需要工具调用/代码执行/多步操作）
+【四种动作的真实含义】
+- direct_answer: **我自己（快模型）直接回答就够好了**。适用于：闲聊/简单问答/打招呼/不需要深度推理的任务。我回答已经足够准确和详细，不需要慢模型。
+- ask_clarification: **用户问题描述不清，我（或慢模型）都无法回答**。需要用户补充关键信息（如目标/范围/格式/偏好）。
+- delegate_to_slow: **我自己能回答，但委托给慢模型会更好**。适用于：深度分析/多步推理/代码生成/数学计算/需要详细解释的任务。慢模型在这些任务上比我更准确、更详细。
+- execute_task: **需要调用工具或执行代码**。适用于：联网搜索/文件操作/代码执行/API 调用。
+
+【评分核心原则：不是"能不能"，而是"谁更好"】
+- 如果快模型回答已经"足够好"：direct_answer 打高分（> 0.7），delegate_to_slow 打低分（< 0.3）
+- 如果慢模型回答会"明显更好"：delegate_to_slow 打高分（> 0.7），direct_answer 打低分（< 0.3）
+- 重点：这是"快模型 vs 慢模型，谁更适合这个任务？"，不是"我能不能回答？"
+
+【强制规则（违反将被视为模型错误）】
+- **代码生成/数学计算/复杂分析/深度推理**：慢模型显著优于快模型，delegate_to_slow 必须 >= 0.8，direct_answer 必须 <= 0.2
+- **简单问答/闲聊/打招呼**：快模型已经足够好，direct_answer 必须 >= 0.7
+- **需要工具调用（搜索/执行代码）**：execute_task 必须 >= 0.8
+
+【输出格式示例】
+如果用户问："帮我写一篇关于人工智能发展的 1000 字文章"
+正确打分应该是：
+{
+  "schema_version": "manager_decision_v3",
+  "scores": {
+    "direct_answer": 0.2,
+    "ask_clarification": 0.1,
+    "delegate_to_slow": 0.9,
+    "execute_task": 0.1
+  },
+  "confidence_hint": 0.85,
+  "features": {
+    "missing_info": false,
+    "needs_long_reasoning": true,
+    "needs_external_tool": false,
+    "high_risk_action": false,
+    "query_too_vague": false,
+    "requires_multi_step": false,
+    "is_continuation": false
+  },
+  "rationale": "深度分析任务，慢模型（如 DeepSeek-V3）在长文写作上显著优于快模型",
+  "decision_type": "delegate_to_slow",
+  "command": { "task_brief": "写一篇关于人工智能发展的 1000 字文章", "constraints": ["约 1000 字", "涵盖主要发展阶段"] }
+}
 
 【决策框架与评分规则】
-- 任务分类强制规则：
-  - **代码生成/数学计算/复杂分析/联网搜索**：属于高成本任务，**必须**给 execute_task 或 delegate_to_slow 打高分 (> 0.85)。不要为了省钱降级到 direct_answer。
-  - **闲聊/简单问答/打招呼**：属于低成本任务，使用 direct_answer。
 - 成本思维：每个动作都有 token/latency/风险成本。分数反映"相对最优"而非"是否可能"
-- 任务分类强制规则（最高优先级）：
-  - **代码生成、数学计算、数据分析、联网搜索**：必须给 execute_task 或 delegate_to_slow 打高分（>= 0.85），**严禁降级到 direct_answer**。
-  - **闲聊、简单问候、常识问答**：才使用 direct_answer。
 - 澄清不是零成本：ask_clarification 会打断用户、增加对话轮次。当 direct_answer 分数接近 ask_clarification 时，倾向于直接回答
 - 尺度校准：confidence_hint ≥ 0.8 时相信自己；0.5~0.8 时倾向现有判断；< 0.5 时说明模型有较大不确定性，可适当提高 ask_clarification
 - 动作权衡：direct_answer 和 ask_clarification 成本低，较低阈值即可通过；delegate_to_slow 和 execute_task 成本高，需要更高分数
@@ -425,14 +457,20 @@ export async function routeWithManagerDecision(
   // Manager 输出包含 "人话回复" + "JSON 决策"
   const parsedOutput = splitManagerOutput(managerOutput);
 
-  // 强制委派逻辑：如果模型强烈建议委派，无视系统的“省钱”策略
+  // 强制委派逻辑：如果模型强烈建议委派，无视系统的"省钱"策略
   // 这是一个关键的路由覆盖点，用于确保复杂任务不被错误降级
   const modelJson = parsedOutput.jsonPart ? JSON.parse(parsedOutput.jsonPart) : {};
   const modelScores = modelJson?.scores || {};
   const execScore = modelScores.execute_task || 0;
   const delegateScore = modelScores.delegate_to_slow || 0;
 
-  if ((execScore > 0.85 || delegateScore > 0.85) && gatedResult.routedAction === "direct_answer") {
+  // Debug: 打印模型原始输出分数，排查委托为什么不发生
+  console.log(`[llm-native-router] [DEBUG] Model raw scores: DA=${modelScores.direct_answer}, AC=${modelScores.ask_clarification}, DEL=${delegateScore}, EXEC=${execScore}; confidence_hint=${modelJson?.confidence_hint}`);
+  console.log(`[llm-native-router] [DEBUG] Gating result: system_conf=${gatedResult.systemConfidence.toFixed(3)}, finalAction=${gatedResult.finalAction}, routedAction=${gatedResult.routedAction}`);
+  console.log(`[llm-native-router] [DEBUG] Calibrated scores:`, gatedResult.calibratedScores);
+
+  // Sprint 75: 降低阈值从 0.85 到 0.75，与 Gating 阈值一致，让更多合理委托被放行
+  if ((execScore > 0.75 || delegateScore > 0.75) && gatedResult.routedAction === "direct_answer") {
     console.log(`[llm-native-router] 🚀 Forcing delegation: Model strongly suggests it (exec=${execScore}, del=${delegateScore})`);
     gatedResult.routedAction = execScore > delegateScore ? "execute_task" : "delegate_to_slow";
     gatedResult.finalAction = gatedResult.routedAction;
@@ -443,17 +481,43 @@ export async function routeWithManagerDecision(
   // direct_answer：直接使用 Manager 一次调用产生的自然语言回复，不再调第二个模型
   if (gatedResult.routedAction === "direct_answer") {
     console.log("[llm-native-router] Direct answer, using Manager's single-call reply");
+
+    // Sprint 75: 正常 direct_answer 路径也要写 delegation_logs（Dashboard 今日统计依赖此数据）
+    const directAnswerLogId = uuid();
+    console.log(`[llm-native-router] [DEBUG] Writing delegation_log (normal direct_answer), id=${directAnswerLogId}, user_id=${user_id}`);
+    DelegationLogRepo.save({
+      id: directAnswerLogId,
+      user_id,
+      session_id,
+      turn_id: turn_id ?? 0,
+      task_id: undefined,
+      routing_version: "v2",
+      llm_scores: gatedResult.llmScores,
+      llm_confidence: gatedResult.llmConfidenceHint,
+      system_confidence: gatedResult.systemConfidence,
+      calibrated_scores: gatedResult.calibratedScores,
+      policy_overrides: gatedResult.policyOverrides,
+      g2_final_action: gatedResult.finalAction,
+      did_rerank: Boolean(gatedResult.rerankResult),
+      rerank_gap: null,
+      rerank_rules: gatedResult.rerankResult ? [gatedResult.rerankResult.reason ?? "reranked"] : [],
+      g3_final_action: gatedResult.rerankResult ? gatedResult.routedAction : undefined,
+      routed_action: "direct_answer",
+      routing_reason: `Gated: direct_answer (sys_conf=${gatedResult.systemConfidence.toFixed(3)})`,
+      routing_layer: "L0",
+    }).catch((e: Error) => console.error("[llm-native-router] delegation_log write FAILED (normal direct_answer):", e.message, e.stack));
+
     return {
       message: parsedOutput.userFacingText || (language === "zh" ? "好的。" : "Got it."),
       decision: null,
       routing_layer: "L0",
       decision_type: "direct_answer",
       raw_manager_output: managerOutput,
-      delegation_log_id: undefined,
+      delegation_log_id: directAnswerLogId,
     };
   }
 
-  // 对于其他路由动作，使用“人话”作为安抚语，或根据 decision_type 构建澄清/任务消息
+  // 对于其他路由动作，使用"人话"作为安抚语，或根据 decision_type 构建澄清/任务消息
   // 这里我们将 parsedOutput.userFacingText 传入 routeByGatedDecision
   return routeByGatedDecision(gatedResult, { 
       message: parsedOutput.userFacingText || message, 
@@ -508,7 +572,7 @@ async function callManagerModel(input: {
 // ── Gated Delegation: 解析 v2/v3 格式 ───────────────────────────────────────────
 
 /**
- * Sprint 74: 将 Manager 的输出拆分为“用户可见文本”和“JSON 决策”
+ * Sprint 74: 将 Manager 的输出拆分为"用户可见文本"和"JSON 决策"
  * 格式: [Natural Language Reply]\n\n```json { ... } ```
  */
 function splitManagerOutput(output: string): { userFacingText: string; jsonPart: string } {
