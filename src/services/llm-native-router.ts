@@ -33,6 +33,7 @@ import { DECISION_TO_LAYER } from "../types/index.js";
 import { parseAndValidate } from "./decision-validator.js";
 import { taskPlanner } from "./task-planner.js";
 import { DelegationLogRepo } from "../db/repositories.js";
+import { TaskArchiveRepo } from "../db/task-archive-repo.js";
 
 // Phase 4: Permission Layer + Redaction imports (lazy loaded to avoid circular deps)
 let phase4Module: typeof import("./phase4/index.js") | null = null;
@@ -423,8 +424,37 @@ export async function routeWithManagerDecision(
       console.error(
         `[llm-native-router] 🔥 PROTOCOL_VIOLATION detected — code=${err.code}, textSnippet=${err.textSnippet?.slice(0, 200)}, matchedJson=${err.matchedJson?.slice(0, 200)}, jsonMatch=${err.jsonMatch}, bareMatch=${err.bareMatch}, braceMatch=${err.braceMatch}`
       );
-      // 写 delegation_logs error（如果此时已有 log_id）
-      // 返回错误结果 → 上层 chat.ts 应写入 archive state='failed'
+
+      // Phase 3.2 修复：把错误写入 archive → SSE poller 能看到 failed 状态 → diagnose 脚本可诊断
+      let failedArchiveId: string | undefined;
+      try {
+        const mockDecision = {
+          schema_version: "manager_decision_v1" as const,
+          decision_type: "direct_answer" as const,
+          routing_layer: "L0" as const,
+          reason: `PROTOCOL_VIOLATION: ${err.code} — ${err.message}`,
+          confidence: 0,
+          needs_archive: false,
+          raw_output: managerOutput.slice(0, 500),
+        };
+        const archive = await TaskArchiveRepo.create({
+          session_id: session_id ?? "unknown",
+          user_id: user_id ?? "unknown",
+          decision: mockDecision,
+          user_input: message.slice(0, 200),
+        });
+        failedArchiveId = archive.id;
+        await TaskArchiveRepo.updateState(archive.id, "failed");
+        await TaskArchiveRepo.setSlowExecution(archive.id, {
+          errors: [`${err.code}: ${err.message}`],
+          protocol_violation: true,
+          matched_json_len: err.braceMatch ?? 0,
+        });
+        console.log(`[llm-native-router] PROTOCOL_VIOLATION archive created: ${archive.id}, state=failed`);
+      } catch (archiveErr: any) {
+        console.error("[llm-native-router] Failed to create protocol violation archive:", archiveErr.message);
+      }
+
       return {
         message: language === "zh"
           ? "⚠️ Manager 路由协议错误，请检查模型输出格式。"
@@ -434,6 +464,7 @@ export async function routeWithManagerDecision(
         decision_type: "direct_answer",
         raw_manager_output: managerOutput,
         delegation_log_id: undefined,
+        archive_id: failedArchiveId,
       };
     }
     // 其他未知异常重新抛出
