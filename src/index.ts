@@ -79,8 +79,75 @@ try {
   process.exit(1);
 }
 
+// ── Phase 2.2: 启动必检项 ────────────────────────────────────────────────────────
+
+// ① 关键委托表存在检查（非阻塞，warn）
+const REQUIRED_DELEGATION_TABLES = [
+  "task_commands",
+  "task_archives",
+  "task_worker_results",
+  "delegation_logs",
+  "task_archive_events",
+];
+
+try {
+  const result = await query(`
+    SELECT table_name FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = ANY($1)
+  `, [REQUIRED_DELEGATION_TABLES]);
+  const found = new Set(result.rows.map((r: any) => r.table_name));
+  const missing = REQUIRED_DELEGATION_TABLES.filter((t) => !found.has(t));
+  if (missing.length > 0) {
+    console.warn(`  ⚠️  Missing delegation tables: ${missing.join(", ")}`);
+    console.warn(`     Run migrations. Delegation features will FAIL without these.\n`);
+  } else {
+    console.log(`  ✅ Delegation tables: ${REQUIRED_DELEGATION_TABLES.join(", ")}`);
+  }
+} catch (err) {
+  console.warn(`  ⚠️  Could not verify delegation tables: ${err instanceof Error ? err.message : err}\n`);
+}
+
+// ② LLM API 连通性检查（8s 超时，非阻塞 warn）
+const FAST_MODEL = config.fastModel || "Qwen/Qwen2.5-72B-Instruct";
+const BASE_URL = config.openaiBaseUrl || "https://api.siliconflow.cn/v1";
+const API_KEY = config.openaiApiKey || "";
+
+if (API_KEY && API_KEY !== "dummy") {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`${BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: FAST_MODEL,
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 5,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      console.log(`  ✅ LLM API (${FAST_MODEL}): reachable`);
+    } else {
+      console.warn(`  ⚠️  LLM API HTTP ${res.status} — delegation may fail\n`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`  ⚠️  LLM API unreachable: ${msg} — delegation will fail\n`);
+  }
+} else {
+  console.warn(`  ⚠️  OPENAI_API_KEY not set — LLM routing disabled\n`);
+}
+
+// ── 启动 HTTP 服务 ──────────────────────────────────────────────────────────────
+
 serve({ fetch: app.fetch, port: config.port });
 
 // Phase 3.0: 启动后台 Worker（独立轮询循环，不阻塞 HTTP 请求）
+console.log("  ✅ Workers starting in background...\n");
 startSlowWorker();
 startExecuteWorker();
