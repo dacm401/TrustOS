@@ -120,8 +120,20 @@ async function executePlanCommand(
 
     // 更新 task_commands 状态为 completed
     await TaskCommandRepo.updateStatus(id, "completed", { finished_at: new Date() });
-    // 更新 task_archives 状态为 done
-    await TaskArchiveRepo.updateState(archive_id, "completed" as TaskState);
+    // Phase 3.3: 使用带完整性校验的 updateStateWithIntegrity
+    try {
+      await TaskArchiveRepo.updateStateWithIntegrity(archive_id, "completed");
+    } catch (validErr: any) {
+      if (validErr.code === "INTEGRITY_VIOLATION") {
+        console.warn(`[execute-worker] ⚠️ INTEGRITY_VIOLATION marking ${archive_id} done:`, validErr.message);
+        await TaskArchiveRepo.setSlowExecution(archive_id, {
+          result: "",
+          errors: [`INTEGRITY_VIOLATION: ${validErr.message}`],
+          completed_at: new Date().toISOString(),
+        });
+      }
+      throw validErr;
+    }
 
     console.log(`[execute-worker] Completed task ${task_id} in ${totalMs}ms, ${completedSteps}/${planStepCount} steps`);
   } catch (err: any) {
@@ -131,7 +143,7 @@ async function executePlanCommand(
         finished_at: new Date(),
         error_message: err.message,
       });
-      await TaskArchiveRepo.updateState(archive_id, "failed" as TaskState);
+      await TaskArchiveRepo.updateStateWithIntegrity(archive_id, "failed");
       await TaskArchiveRepo.setSlowExecution(archive_id, {
         result: "",
         errors: [err.message],

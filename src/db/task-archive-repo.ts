@@ -79,6 +79,58 @@ export const TaskArchiveRepo = {
   },
 
   /**
+   * Phase 3.3: 带完整性校验的状态更新。
+   * 校验失败时抛出 INTEGRITY_VIOLATION，上层应 catch 后写入 failed + error_message。
+   *
+   * 校验规则：
+   * 1) archive_id 一致性：写入前确认 archive 存在
+   * 2) done 状态最小完整性：确认有执行结果（slow_execution.result 非空 或 task_worker_results 有记录）
+   */
+  async updateStateWithIntegrity(
+    archiveId: string,
+    newState: TaskState
+  ): Promise<void> {
+    // 校验 1: archive 存在
+    const archive = await query(
+      `SELECT id, slow_execution FROM task_archives WHERE id = $1`,
+      [archiveId]
+    ) as { rowCount: number; rows: Array<{ slow_execution: Record<string, unknown> | null }> };
+    if (archive.rowCount === 0) {
+      const err = new Error(`Archive ${archiveId} does not exist — cannot update state to ${newState}`);
+      (err as any).code = "INTEGRITY_VIOLATION";
+      (err as any).archiveId = archiveId;
+      throw err;
+    }
+
+    // 校验 2: done 状态最小完整性
+    if (newState === "completed" || newState === "cancelled") {
+      const exec = archive.rows[0]?.slow_execution;
+      const hasResult = !!(exec && typeof (exec as any).result === "string" && (exec as any).result.trim());
+      const hasWorkerResult = await query(
+        `SELECT id FROM task_worker_results WHERE archive_id = $1 LIMIT 1`,
+        [archiveId]
+      ).then(r => (r.rowCount ?? 0) > 0);
+
+      if (!hasResult && !hasWorkerResult) {
+        const err = new Error(
+          `Cannot mark archive ${archiveId} as ${newState}: no execution result found. ` +
+          `slow_execution.result is empty and task_worker_results has no row.`
+        );
+        (err as any).code = "INTEGRITY_VIOLATION";
+        (err as any).archiveId = archiveId;
+        (err as any).violation = "DONE_WITHOUT_RESULT";
+        console.warn(`[TaskArchiveRepo] ⚠️ INTEGRITY_VIOLATION: ${err.message}`);
+        throw err;
+      }
+    }
+
+    await query(
+      `UPDATE task_archives SET state = $1 WHERE id = $2`,
+      [newState, archiveId]
+    );
+  },
+
+  /**
    * 更新 state（Phase 3.0 状态机）。
    * Phase 3.0 states: new / clarifying / delegated / executing /
    *                    waiting_result / synthesizing / completed / failed / cancelled
