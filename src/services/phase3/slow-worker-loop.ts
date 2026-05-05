@@ -13,7 +13,7 @@
 import { config } from "../../config.js";
 import { callModelFull, callOpenAIWithOptions } from "../../models/model-gateway.js";
 import { TaskArchiveRepo, TaskCommandRepo, TaskWorkerResultRepo } from "../../db/task-archive-repo.js";
-import type { ChatMessage, CommandPayload, WorkerResult } from "../../types/index.js";
+import type { ChatMessage, CommandPayload, TaskState, WorkerResult } from "../../types/index.js";
 
 // 自适应轮询间隔
 function getPollInterval(elapsedMs: number): number {
@@ -62,7 +62,7 @@ async function executeDelegateCommand(
 
   // 更新状态为 running
   await TaskCommandRepo.updateStatus(id, "running", { started_at: new Date() });
-  await TaskArchiveRepo.updateState(archive_id, "running");
+  await TaskArchiveRepo.updateState(archive_id, "running" as TaskState);
 
   try {
     // 构造 Worker Prompt：只读 Archive + Command，不读 history
@@ -165,7 +165,7 @@ async function executeDelegateCommand(
     // 更新 task_commands 状态为 completed
     await TaskCommandRepo.updateStatus(id, "completed", { finished_at: new Date() });
     // 更新 task_archives state = done（供 pollArchiveAndYield 轮询感知）
-    await TaskArchiveRepo.updateState(archive_id, "done");
+    await TaskArchiveRepo.updateState(archive_id, "completed" as TaskState);
 
     console.log(`[slow-worker] Completed task ${task_id} in ${totalMs}ms, ${inputTokens}+${outputTokens} tokens`);
   } catch (err: any) {
@@ -175,7 +175,7 @@ async function executeDelegateCommand(
         finished_at: new Date(),
         error_message: err.message,
       });
-      await TaskArchiveRepo.updateState(archive_id, "failed");
+      await TaskArchiveRepo.updateState(archive_id, "failed" as TaskState);
       await TaskArchiveRepo.setSlowExecution(archive_id, {
         result: "",
         errors: [err.message],

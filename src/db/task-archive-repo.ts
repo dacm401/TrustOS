@@ -11,6 +11,7 @@ import type {
   TaskCommandRecord,
   TaskWorkerResultRecord,
   CommandStatus,
+  TaskState,
 } from "../types/index.js";
 
 // ── TaskArchiveRepo ────────────────────────────────────────────────────────────
@@ -84,7 +85,7 @@ export const TaskArchiveRepo = {
    */
   async updateState(
     archiveId: string,
-    newState: string
+    newState: TaskState
   ): Promise<void> {
     await query(
       `UPDATE task_archives SET state = $1 WHERE id = $2`,
@@ -125,7 +126,7 @@ export const TaskArchiveRepo = {
    */
   async markDelivered(archiveId: string): Promise<void> {
     await query(
-      `UPDATE task_archives SET delivered = true, state = 'completed' WHERE id = $1`,
+      `UPDATE task_archives SET delivered = true, state = 'completed'::text WHERE id = $1`,
       [archiveId]
     );
   },

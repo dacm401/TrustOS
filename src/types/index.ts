@@ -1232,8 +1232,8 @@ export interface TaskArchiveRecord {
   manager_decision: Record<string, unknown> | null;
   fast_observations: Record<string, unknown>[];
   slow_execution: Record<string, unknown> | null;
-  state: string;
-  status: string;
+  state: TaskState;
+  status: CommandStatus;
   delivered: boolean;
   created_at: string;
   updated_at: string;
@@ -1262,6 +1262,18 @@ export interface TaskCommandRecord {
 export type CommandStatus =
   | "queued"
   | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+/** Phase 3.1: task_archives.state 枚举（写入侧强类型） */
+export type TaskState =
+  | "new"
+  | "clarifying"
+  | "delegated"
+  | "executing"
+  | "waiting_result"
+  | "synthesizing"
   | "completed"
   | "failed"
   | "cancelled";

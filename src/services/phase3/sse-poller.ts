@@ -234,7 +234,7 @@ export async function* pollArchiveAndYield(
     const currentState = task.state || task.status;
 
     // 安抚消息（30s / 60s / 120s 节点）
-    if (currentState === "running" || currentState === "pending" || currentState === "delegated" || currentState === "executing") {
+    if (currentState === "executing" || currentState === "delegated" || currentState === "waiting_result" || currentState === "synthesizing") {
       if (elapsed > 30000 && elapsed < 31000 && lastStatusTime < 30000) {
         yield { type: "status", stream: msgs.running30s, routing_layer: "L2" };
         lastStatusTime = Date.now();
@@ -250,7 +250,7 @@ export async function* pollArchiveAndYield(
       }
     }
 
-    if (currentState === "done") {
+    if (currentState === "completed" || currentState === "cancelled") {
       if (!task.delivered) {
             const execution: Record<string, unknown> = task.slow_execution ?? {};
             const workerResult = typeof execution.result === "string"
@@ -383,6 +383,7 @@ export async function* pollArchiveAndYield(
       break;
     }
 
+    // Phase 3.1: "failed" is now a terminal TaskState (extracted from the old combined block)
     if (currentState === "failed") {
       // G4: 回写 delegation_logs execution 结果（failed）
       if (delegation_log_id) {
@@ -407,7 +408,7 @@ export async function* pollArchiveAndYield(
     }
 
     // G4: 超时检测（超过 180s 未完成，标记为 timeout）
-    if (elapsed > 180_000 && (currentState === "running" || currentState === "pending" || currentState === "delegated" || currentState === "executing")) {
+    if (elapsed > 180_000 && (currentState === "executing" || currentState === "delegated" || currentState === "waiting_result" || currentState === "synthesizing")) {
       if (delegation_log_id) {
         DelegationLogRepo.updateExecution(delegation_log_id, {
           execution_status: "timeout",
