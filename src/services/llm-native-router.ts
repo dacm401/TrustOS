@@ -412,8 +412,35 @@ export async function routeWithManagerDecision(
   // Step 2: 解析 G1 多动作打分格式（manager_decision_v2）
   // Debug: 打印 Manager 原始输出，排查 parse 失败
   console.log(`[llm-native-router] [DEBUG] Manager output (first 600 chars):\n---\n${managerOutput.slice(0, 600)}\n---`);
-  const gatedResult = parseGatedDecision(managerOutput, kbSignals);
-  console.log(`[llm-native-router] [DEBUG] parseGatedDecision result: ${gatedResult ? "SUCCESS (routedAction=" + gatedResult.routedAction + ")" : "NULL"}`);
+
+  // Phase 3.2: parseGatedDecision 不再返回 null，schema_version 缺失/未知时直接 throw PROTOCOL_VIOLATION
+  let gatedResult: ReturnType<typeof parseGatedDecision>;
+  try {
+    gatedResult = parseGatedDecision(managerOutput, kbSignals);
+  } catch (err: any) {
+    // PROTOCOL_VIOLATION: 立刻失败，打结构化日志，不走 L0 fallback 拖超时
+    if (err.code === "SCHEMA_VERSION_MISSING" || err.code === "SCHEMA_VERSION_UNKNOWN") {
+      console.error(
+        `[llm-native-router] 🔥 PROTOCOL_VIOLATION detected — code=${err.code}, textSnippet=${err.textSnippet?.slice(0, 200)}, matchedJson=${err.matchedJson?.slice(0, 200)}, jsonMatch=${err.jsonMatch}, bareMatch=${err.bareMatch}, braceMatch=${err.braceMatch}`
+      );
+      // 写 delegation_logs error（如果此时已有 log_id）
+      // 返回错误结果 → 上层 chat.ts 应写入 archive state='failed'
+      return {
+        message: language === "zh"
+          ? "⚠️ Manager 路由协议错误，请检查模型输出格式。"
+          : "⚠️ Manager routing protocol error, please check model output format.",
+        decision: null,
+        routing_layer: "L0",
+        decision_type: "direct_answer",
+        raw_manager_output: managerOutput,
+        delegation_log_id: undefined,
+      };
+    }
+    // 其他未知异常重新抛出
+    throw err;
+  }
+
+  console.log(`[llm-native-router] [DEBUG] parseGatedDecision result: SUCCESS (routedAction=${gatedResult!.routedAction})`);
 
   // Step 3: 不合法 → fallback，返回 L0 direct_answer
   if (!gatedResult) {
@@ -422,7 +449,7 @@ export async function routeWithManagerDecision(
     if (decision) {
       return routeByDecision(decision, { message, user_id, session_id, language, reqApiKey, raw: managerOutput });
     }
-    // Sprint 72 fix: LLM 有时返回截断/乱码 JSON（如 scores 字段不完整），直接吐出 JSON 是错误的
+    // Sprint 72 fix: LLM 有时返回截断/乱码 JSON，直接吐出 JSON 是错误的
     // 改为：使用 splitManagerOutput 提取人话回复
     console.warn("[llm-native-router] ManagerDecision parse failed, fallback to direct_answer");
     const parsedOutput = splitManagerOutput(managerOutput);
@@ -672,8 +699,34 @@ function parseGatedDecision(
     const raw = JSON.parse(match.trim());
     console.log(`[parseGatedDecision] [DEBUG] Parsed raw.schema_version: ${raw.schema_version}`);
 
+    if (!raw.schema_version) {
+      // Phase 3.2: 协议缺失 → 立刻失败，不降级拖到超时
+      throw Object.assign(
+        new Error("[parseGatedDecision] PROTOCOL_VIOLATION: schema_version missing"),
+        {
+          code: "SCHEMA_VERSION_MISSING",
+          textSnippet: text.slice(0, 500),
+          matchedJson: match.slice(0, 300),
+          jsonMatch: !!jsonMatch,
+          bareMatch: !!bareMatch,
+          braceMatch: !!braceMatch,
+        }
+      );
+    }
+
     // Sprint 72 fix: 同时接受 v1、v2 和 v3 (v3 为 Text+JSON 模式)
-    if (!["manager_decision_v3", "manager_decision_v2", "manager_decision_v1"].includes(raw.schema_version)) return null;
+    if (!["manager_decision_v3", "manager_decision_v2", "manager_decision_v1"].includes(raw.schema_version)) {
+      // Phase 3.2: 协议版本未知 → 立刻失败，不降级拖到超时
+      throw Object.assign(
+        new Error(`[parseGatedDecision] PROTOCOL_VIOLATION: unknown schema_version "${raw.schema_version}"`),
+        {
+          code: "SCHEMA_VERSION_UNKNOWN",
+          schema_version: raw.schema_version,
+          textSnippet: text.slice(0, 500),
+          matchedJson: match.slice(0, 300),
+        }
+      );
+    }
 
     // v1/v2 共用 scores 字段结构，直接取用
     const scores: Record<ManagerDecisionType, number> = {
