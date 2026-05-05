@@ -18,8 +18,7 @@ import { DelegationLogRepo } from "../../db/repositories.js";
 
 export interface SSEEvent {
   type: "status" | "result" | "error" | "done" | "chunk" | "fast_reply"
-       | "worker_completed" | "manager_synthesized" // Phase 3.0
-       | "thinking"; // Stream V2: thinking state visualization
+       | "manager_synthesized"; // Phase 3.0
   /** Sprint 73: 统一使用 stream 字段，content 已弃用 */
   content?: string;
   stream?: string;
@@ -28,18 +27,9 @@ export interface SSEEvent {
   /** Clarifying 事件可选字段 */
   options?: string[];
   question_id?: string;
-  /** worker_completed 事件字段 */
-  task_id?: string;
-  command_id?: string;
-  worker_type?: string;
-  summary?: string;
   /** manager_synthesized 事件字段 */
   final_content?: string;
   confidence?: number;
-  /** Stream V2: thinking 事件字段 */
-  thinking_state?: "thinking" | "analyzing" | "routing" | "planning" | "executing" | "responding";
-  /** Stream V2: 时间戳 */
-  timestamp?: number;
 }
 
 // ── Manager Synthesis Prompt ───────────────────────────────────────────────────
@@ -139,20 +129,10 @@ async function* synthesizeManagerOutputStream(
       { role: "user", content: `用户原始问题：${userInput}\n\n${userPrompt}` },
     ];
 
-    let firstChunk = true;
     let buffer = "";
 
     for await (const chunk of callModelStream(config.fastModel, messages, reqApiKey)) {
       buffer += chunk;
-      if (firstChunk) {
-        // 第一个 chunk 前发一个状态消息，让前端知道开始流式输出了
-        yield {
-          type: "chunk",
-          stream: lang === "zh" ? "📝 正在整理回复...\n" : "📝 Organizing response...\n",
-          routing_layer: "L2",
-        };
-        firstChunk = false;
-      }
       yield { type: "chunk", stream: chunk, routing_layer: "L2" };
     }
 
@@ -187,15 +167,6 @@ export async function* pollArchiveAndYield(
   delegation_log_id?: string,
   reqApiKey?: string
 ): AsyncGenerator<SSEEvent> {
-  // Stream V2: 首先发送 executing thinking 状态
-  yield {
-    type: "thinking",
-    thinking_state: "executing",
-    stream: lang === "zh" ? "⚙️ 任务执行中..." : "⚙️ Executing task...",
-    routing_layer: "L2",
-    timestamp: Date.now(),
-  };
-
   // 自适应轮询间隔
   const getPollInterval = (elapsedMs: number): number => {
     if (elapsedMs < 10000) return 2000;
@@ -296,16 +267,6 @@ export async function* pollArchiveAndYield(
           console.warn("[pollArchiveAndYield] worker_completed event write failed:", e.message);
         }
 
-        // 推送 worker_completed SSE 事件
-        yield {
-          type: "worker_completed",
-          task_id: taskId,
-          command_id: taskId,
-          worker_type: execution.worker_role as any ?? "slow_worker",
-          summary: workerResult.substring(0, 200),
-          routing_layer: "L2",
-        };
-
         // G4: 回写 delegation_logs execution 结果
         if (delegation_log_id) {
           let cost_usd: number | null = null;
@@ -342,15 +303,6 @@ export async function* pollArchiveAndYield(
 
         // Manager Synthesis — 流式输出，边生成边推送到前端
         sentResult = true;
-
-        // Stream V2: Thinking 状态 - 正在生成回复
-        yield {
-          type: "thinking",
-          thinking_state: "responding",
-          stream: lang === "zh" ? "💬 正在生成回复..." : "💬 Generating response...",
-          routing_layer: "L2",
-          timestamp: Date.now(),
-        };
 
         try {
         // 发一个"开始整理"的提示
