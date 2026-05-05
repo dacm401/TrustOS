@@ -7,9 +7,12 @@ export async function calculateDashboard(userId: string): Promise<DashboardData>
     GrowthRepo.getProfile(userId),
   ]);
 
-  // today's rows
+  // today's rows — use UTC dates to avoid timezone mismatch
+  const todayUTC = new Date(
+    Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
+  ).toISOString().slice(0, 10);
   const todayRows = recentLogs.filter(
-    (r) => new Date(r.created_at).toDateString() === new Date().toDateString()
+    (r) => new Date(r.created_at).toISOString().slice(0, 10) === todayUTC
   );
   const total_requests = todayRows.length;
   const fast_count = todayRows.filter(

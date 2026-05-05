@@ -231,13 +231,18 @@ function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: strin
   },
   "rationale": "一句话决策理由",
   "decision_type": "四个动作之一",
-  "command": { "task_brief": "当 decision_type=delegate/execute 时的任务摘要", "constraints": ["约束1"] }
+  "command": { "task_brief": "当 decision_type=delegate/execute 时的任务摘要", "constraints": ["约束1"] },
+  "clarification": {
+    "question_text": "当 decision_type=ask_clarification 时的具体澄清问题（用中文）",
+    "reason": "为什么需要澄清"
+  }
 }
 \`\`\`
 
 【输出规则】
 - **先说人话，后给 JSON**。JSON 必须用代码块包裹。
-- JSON 中**不要**包含 direct_response 或 clarification 内容，直接用你前面的自然语言回复即可。
+- **重要**：当 decision_type=ask_clarification 时，**自然语言部分必须是真正的中文澄清问题**（如"您想了解哪个城市的天气？"），**不要**输出"好的，正在分析"这种安抚语。如果不安抚，JSON 里的 clarification.question_text 会直接展示给用户。
+- JSON 中的 clarification.question_text 用于提取澄清问题，**必须用中文**（用户说中文）。
 - 必须包含所有字段`;
 
   // 英文版 prompt
@@ -294,13 +299,18 @@ After understanding the user's request, you need to complete two tasks:
   },
   "rationale": "One-line rationale",
   "decision_type": "one of the four actions",
-  "command": { "task_brief": "Task summary when decision_type=delegate/execute", "constraints": ["constraint1"] }
-}
+    "command": { "task_brief": "Task summary when decision_type=delegate/execute", "constraints": ["constraint1"] },
+    "clarification": {
+      "question_text": "Specific clarification question when decision_type=ask_clarification",
+      "reason": "Why clarification is needed"
+    }
+  }
 \`\`\`
 
 【Output Rules】
 - **Speak human first, then give JSON**. JSON must be in a code block.
-- JSON must **NOT** contain direct_response or clarification content; use your preceding natural language reply instead.
+- **Important**: When decision_type=ask_clarification, the **natural language MUST be the actual clarification question** (in Chinese if user writes Chinese, e.g. "您想了解哪个城市？" instead of "OK, analyzing..."). If you don't ask the question naturally, the JSON's clarification.question_text will be shown to the user directly.
+- JSON's clarification.question_text is used to extract the clarification question, **must match the natural language question**.
 - Must include all fields`;
 
   const systemPrompt = lang === "zh" ? zhPrompt : enPrompt;
@@ -416,40 +426,13 @@ export async function routeWithManagerDecision(
     // 改为：使用 splitManagerOutput 提取人话回复
     console.warn("[llm-native-router] ManagerDecision parse failed, fallback to direct_answer");
     const parsedOutput = splitManagerOutput(managerOutput);
-
-    // Dashboard fix: parse failed 时仍写一条 delegation_log，确保今日数据可见
-    let fallbackLogId: string | undefined;
-    try {
-      const zeroScores = { direct_answer: 0, ask_clarification: 0, delegate_to_slow: 0, execute_task: 0 };
-      const fallbackLog = await DelegationLogRepo.save({
-        user_id,
-        session_id,
-        turn_id,
-        routing_version: "fallback-v0",
-        llm_scores: { ...zeroScores, direct_answer: 1 },
-        llm_confidence: 0.5,
-        system_confidence: 0.5,
-        calibrated_scores: { ...zeroScores, direct_answer: 1 },
-        policy_overrides: [],
-        g2_final_action: "direct_answer",
-        did_rerank: false,
-        rerank_rules: [],
-        routed_action: "direct_answer",
-        routing_reason: "manager_parse_failed",
-        routing_layer: "L0",
-      });
-      fallbackLogId = fallbackLog.id;
-    } catch (e: any) {
-      console.warn("[llm-native-router] Fallback delegation_log write failed (non-critical):", e.message);
-    }
-
     return {
       message: parsedOutput.userFacingText || (language === "zh" ? "好的，让我看看。" : "Got it, let me check."),
       decision: null,
       routing_layer: "L0",
       decision_type: "direct_answer",
       raw_manager_output: managerOutput,
-      delegation_log_id: fallbackLogId,
+      delegation_log_id: undefined,
     };
   }
 
@@ -481,10 +464,9 @@ export async function routeWithManagerDecision(
     // 注意：此时 parsedOutput.userFacingText 应该是模型的安抚语
   }
 
-  // direct_answer：直接使用 Manager 一次调用产生的自然语言回复，不再调第二个模型
+  // 检测模型意图与系统路由是否冲突：如果模型原本打算委派，但被降级了（且分数不够高，没触发上面的强制逻辑）
+  // 此时必须调用 callDirectReplyModel 生成真实回复，不能只展示安抚语
   if (gatedResult.routedAction === "direct_answer") {
-    console.log("[llm-native-router] Direct answer, using Manager's single-call reply");
-
     // Sprint 75: 正常 direct_answer 路径也要写 delegation_logs（Dashboard 今日统计依赖此数据）
     const directAnswerLogId = uuid();
     console.log(`[llm-native-router] [DEBUG] Writing delegation_log (normal direct_answer), id=${directAnswerLogId}, user_id=${user_id}`);
@@ -510,6 +492,27 @@ export async function routeWithManagerDecision(
       routing_layer: "L0",
     }).catch((e: Error) => console.error("[llm-native-router] delegation_log write FAILED (normal direct_answer):", e.message, e.stack));
 
+    // 检测模型意图是否原本想委派（降级回退处理）
+    const modelIntent = modelJson?.decision_type || "";
+    const isDelegateIntent = modelIntent === "execute_task" || modelIntent === "delegate_to_slow";
+
+    if (isDelegateIntent) {
+      console.log("[llm-native-router] Route downgrade detected: model intended to delegate, generating real reply via fallback model");
+      const realReply = await callDirectReplyModel({
+        message, history, language, reqApiKey, crossSessionContext
+      });
+      console.log(`[llm-native-router] Fallback reply generated, length: ${realReply.length}`);
+      return {
+        message: realReply,
+        decision: null,
+        routing_layer: "L0",
+        decision_type: "direct_answer",
+        raw_manager_output: managerOutput,
+        delegation_log_id: directAnswerLogId,
+      };
+    }
+
+    console.log("[llm-native-router] Direct answer, using Manager's single-call reply");
     return {
       message: parsedOutput.userFacingText || (language === "zh" ? "好的。" : "Got it."),
       decision: null,
@@ -572,7 +575,48 @@ async function callManagerModel(input: {
   }
 }
 
-// ── Gated Delegation: 解析 v2/v3 格式 ───────────────────────────────────────────
+// ── 直接回答模型调用 (Direct Reply Model) ─────────────────────────────────
+/**
+ * Sprint 74: 专门用于生成直接回答（Direct Answer）的内容。
+ * 当 Manager 决定委派但系统降级为直接回答时，调用此函数生成高质量回复。
+ * 不使用 Manager Prompt（避免逻辑干扰），只使用通用的 System Prompt。
+ */
+async function callDirectReplyModel(input: {
+  message: string;
+  history: ChatMessage[];
+  language: "zh" | "en";
+  reqApiKey?: string;
+  crossSessionContext?: string;
+}): Promise<string> {
+  const { message, history, language, reqApiKey, crossSessionContext } = input;
+
+  const systemPrompt = language === "zh"
+    ? "你是一个智能助手。请直接、详细地回答用户的问题。"
+    : "You are a smart assistant. Please answer the user's question directly and in detail.";
+
+  const recentHistory = history.filter((m) => m.role !== "system").slice(-6);
+  const userContent = crossSessionContext ? `${crossSessionContext}\n\n${message}` : message;
+
+  const messages: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    ...recentHistory,
+    { role: "user", content: userContent },
+  ];
+
+  try {
+    if (reqApiKey) {
+      const resp = await callOpenAIWithOptions(config.fastModel, messages, reqApiKey, config.openaiBaseUrl || undefined);
+      return resp.content;
+    }
+    const resp = await callModelFull(config.fastModel, messages);
+    return resp.content;
+  } catch (e: any) {
+    console.error("[llm-native-router] Direct reply model call failed:", e.message);
+    throw e;
+  }
+}
+
+// ── Gated Delegation: 解析 v2 格式 ───────────────────────────────────────────
 
 /**
  * Sprint 74: 将 Manager 的输出拆分为"用户可见文本"和"JSON 决策"
@@ -751,7 +795,7 @@ async function routeByGatedDecision(
     clarification: gated.routedAction === "ask_clarification"
       ? {
           question_id: "q1",
-          question_text: (ctx.userFacingText || (v2Decision?.clarification as { question_text?: string })?.question_text) ?? (language === "zh" ? "能再具体一点吗？" : "Could you be more specific?"),
+          question_text: ((v2Decision?.clarification as { question_text?: string })?.question_text || ctx.userFacingText) ?? (language === "zh" ? "能再具体一点吗？" : "Could you be more specific?"),
           clarification_reason: gated.features.query_too_vague ? "请求模糊" : "需要更多信息",
           // P2 HITL: 将歧义信号注入 ClarifyQuestion，供 routeByDecision 使用
           ambiguity,
@@ -837,8 +881,8 @@ async function routeByDecision(
 
   switch (decision.decision_type) {
     case "direct_answer": {
-      // 直接使用 ctx.message（Manager 一次调用产生的自然语言回复），不再依赖 direct_response.content
-      const reply = message || (language === "zh" ? "好的。" : "Got it.");
+      const dr = decision.direct_response as DirectResponse | undefined;
+      const reply = dr?.content || (language === "zh" ? "好的。" : "Got it.");
       return {
         message: reply,
         decision,
@@ -1039,7 +1083,7 @@ async function routeByDecision(
         if (processedCommand) {
           commandRecord = await TaskCommandRepo.create({
             task_id: taskId,
-            archive_id: taskId,
+            archive_id: archiveRecord?.id ?? taskId,
             user_id,
             command_type: processedCommand.command_type,
             worker_hint: processedCommand.worker_hint,
@@ -1048,7 +1092,7 @@ async function routeByDecision(
           });
           // Phase 3.0: worker_started 事件
           await TaskArchiveEventRepo.create({
-            archive_id: taskId,
+            archive_id: archiveRecord?.id ?? taskId,
             task_id: taskId,
             event_type: "worker_started",
             payload: { worker_role: processedCommand.worker_hint ?? "slow_worker", command_id: commandRecord.id },
@@ -1180,7 +1224,7 @@ async function routeByDecision(
         if (processedCommand) {
           commandRecord2 = await TaskCommandRepo.create({
             task_id: taskId,
-            archive_id: taskId,
+            archive_id: archiveRecord2?.id ?? taskId,
             user_id,
             command_type: processedCommand.command_type ?? "execute_plan",
             worker_hint: processedCommand.worker_hint ?? "execute_worker",
@@ -1189,7 +1233,7 @@ async function routeByDecision(
             timeout_sec: processedCommand.timeout_sec,
           });
           await TaskArchiveEventRepo.create({
-            archive_id: taskId,
+            archive_id: archiveRecord2?.id ?? taskId,
             task_id: taskId,
             event_type: "worker_started",
             payload: { worker_role: processedCommand.worker_hint ?? "execute_worker", command_id: commandRecord2.id },

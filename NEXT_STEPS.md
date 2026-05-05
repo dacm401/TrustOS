@@ -1,0 +1,115 @@
+# TrustOS 下一步计划（2026-05-05）
+
+> 基于委托链路修复经验 + 工程效率评价整理  
+> 执行原则：**Phase 1 阻塞性修复未清零前，不动 Phase 5 策略性优化**
+
+---
+
+## 故障分类参考（排查时先判断类别）
+
+| # | 类别 | 典型症状 |
+|---|------|---------|
+| 1 | 路由/模型输出 | selected_role 缺失、JSON parse 失败、降级逻辑触发 |
+| 2 | 状态机/字段契约 | state vs status 混用、done 事件漏发 |
+| 3 | 任务队列/轮询 | command_id/archive_id 用错、重复更新 |
+| 4 | SSE/传输协议 | 流式 reader 挂起、done 事件单路径 |
+| 5 | DB 结构/迁移 | schema 没跑、列缺失、JSONB cast、索引 |
+| 6 | 数据一致性 | UUID/外键/关联键语义不一致 |
+
+---
+
+## 🔴 Phase 1 — 阻塞性修复收口（最高优先级）
+
+**目标**：委托链路端到端跑通，不依赖运气。
+
+- [x] **1.1** 补全 `archive_id` 贯穿全链路打印（llm-native-router → worker-loop → sse-poller）→ 故障类 #3
+- [x] **1.2** 确认 poll 查 archive_id 与 worker 写 archive_id 完全一致（**根本 Bug 修复**）→ #3 + #6
+- [x] **1.3** Worker 成功路径写 `state='done'` 后 SSE done 事件必然发出（链路已通） → #4
+- [x] **1.4** 跑 migration 010~018 全量状态检查，8 张关键表全部存在 → #5
+
+---
+
+## 🟡 Phase 2 — 观测性基础设施（本周内，可与 Phase 1 并行）
+
+**目标**：故障定位时间从 20 分钟降到 2 分钟。
+
+- [x] **2.1** 写诊断脚本 `diagnose.cjs <archive_id>` ✅
+  - 输出：task_commands（按 archive_id 查）/ task_archives / task_worker_results / task_archive_events
+  - 关键修复：delegation_logs 里没有 decision_type 列（有 routed_action/g2_final_action）
+  - 成功诊断输出见下方「Phase 2 诊断输出摘要」
+- [x] **2.2** TraceId 观测（部分完成）
+  - task_archive_events.payload 里有 decision_type 和 command_type
+  - 下次重启后端时贴出 manager → command 写入 → worker done → SSE done 的关键日志
+- [x] **2.3** 启动必检项 ✅（commit 89cc0cc）
+  - index.ts：关键委托表存在检查（task_commands/archives/worker_results/delegation_logs/archive_events）
+  - index.ts：LLM API 连通性检查（8s 超时，非阻塞 warn）
+  - DB 连接检查已有（Sprint 69），现在新增上面两项
+
+---
+
+## 🟢 Phase 3 — 字段契约固化（下周）
+
+**目标**：类型错误在编译期或第一秒就爆，不再靠 180s 超时才发现。
+
+- [ ] **3.1** 定义 `TaskState` 枚举（`'queued'|'running'|'done'|'failed'`），全局替换裸字符串
+- [ ] **3.2** `parseGatedDecision` 找不到 `schema_version` 直接 throw + 打日志，不降级继续
+- [ ] **3.3** repo 写入层加 runtime 校验：写 done 时字段完整性检查
+
+---
+
+## 🔵 Phase 4 — 回归用例沉淀（滚动，每次修复 +1）
+
+**目标**：防止同类 bug 复发。
+
+- [ ] **4.1** archive_id 一致性用例：创建→路由→worker写入 三步 archive_id 完全一致
+- [ ] **4.2** SSE done 必发用例：streaming=true 时 done 在 10s 内必须出现
+- [ ] **4.3** DB migration 探针用例：插入 task_archives + task_commands 不报 FK 错误
+- [ ] **4.4** 状态机终态用例：worker 成功路径后 `task_archives.state='done'`
+
+---
+
+## ⚪ Phase 5 — 策略性优化（阻塞性清零后）
+
+- [ ] 路由评分阈值调整（L2/L3 分界）
+- [ ] Manager Prompt v4（更精准委托意图识别）
+- [ ] P2 HITL 歧义检测灵敏度调优
+
+---
+
+## 进度记录
+
+| 日期 | 完成项 | 备注 |
+|------|--------|------|
+| 2026-05-05 | 计划建立 | 基于 260501-fix-poll-state-bug 分支修复经验整理 |
+| 2026-05-05 | Phase 1 全部完成 ✅ | 根本 Bug：task_commands.archive_id 写入了 taskId 而非 archiveRecord.id，已修复；全链路打印已补全；DB 8张表验证通过 |
+| 2026-05-05 | Phase 2 完成 ✅（commit 89cc0cc）| 诊断脚本修复（列名校准）；启动必检项（委托表+LLM API）；端到端成功 archive_id=`a21f7814-...`（state=done，耗时55s，cost=$0.0013）|
+
+
+---
+
+## Phase 2 诊断输出摘要（archive_id = a21f7814-6ae0-4cdb-8ab9-f59f211249a6）
+
+**端到端成功**：task_archives.state = `done`，耗时 55s，cost = $0.0013
+
+### task_archives
+- id: a21f7814-6ae0-4cdb-8ab9-f59f211249a6
+- task_type: analysis
+- state: done ✅
+
+### task_commands
+- id: 1146261e-c738-496b-bc2c-bb55d8beaae3（内部 UUID）
+- archive_id: a21f7814-...（= task_archives.id）✅ 一致
+- status: completed ✅
+
+### task_worker_results
+- worker_role: slow_analyst
+- status: completed ✅
+- tokens: 127 in / 587 out
+- started_at → completed_at: 55s
+
+### task_archive_events
+- archive_created → worker_started ✅ 链路完整
+
+---
+
+_横着走，但按优先级走。_ 🦀

@@ -165,7 +165,7 @@ CREATE INDEX IF NOT EXISTS idx_ts_task ON task_summaries(task_id);
 -- Task traces (FC-003)
 CREATE TABLE IF NOT EXISTS task_traces (
   id        VARCHAR(36) PRIMARY KEY,
-  task_id   VARCHAR(36) NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  task_id   VARCHAR(36) NOT NULL,
   type      VARCHAR(30) NOT NULL,
   detail    TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -210,7 +210,7 @@ CREATE INDEX IF NOT EXISTS memory_entries_embedding_idx
 -- and tied to the specific source that produced it (read-only provenance).
 CREATE TABLE IF NOT EXISTS evidence (
   evidence_id     VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid(),
-  task_id         VARCHAR(36) NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  task_id         VARCHAR(36) NOT NULL,
   user_id         VARCHAR(36) NOT NULL,
   source          VARCHAR(50) NOT NULL DEFAULT 'manual',
   content         TEXT NOT NULL,

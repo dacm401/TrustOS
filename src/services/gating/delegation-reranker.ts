@@ -73,7 +73,7 @@ export function ruleBasedRerank(
   }
 
   // 规则 2：delegate 和 direct_answer 接近，且问题简短明确 → direct_answer
-  // 注意：如果 selectedAction 是 execute_task 且有明确工具需求，由规则 3 接管，此处不拦截
+  // 注意：如果 selectedAction 是 execute_task，由规则 1/默认规则接管，此处不拦截
   if (
     selectedAction !== "execute_task" &&
     !features.missing_info &&
@@ -87,18 +87,9 @@ export function ruleBasedRerank(
     };
   }
 
-  // 规则 3：execute_task 无明确工具需求时，降级为 direct_answer
-  if (
-    selectedAction === "execute_task" &&
-    !features.needs_external_tool &&
-    !features.requires_multi_step
-  ) {
-    return {
-      reranked: true,
-      reason: "execute_task无明确工具/多步需求，rerank至direct_answer",
-      finalAction: "direct_answer",
-    };
-  }
+  // 规则 3：删除了（Rule 3 过于激进：所有无工具的 execute_task 都被降级，
+  // 导致写快排这种复杂代码任务也被 rerank 成 direct_answer。
+  // 复杂代码任务应保持 execute_task，由阈值过滤来控制）
 
   // 规则 4：clarification 和 direct 接近，且问题模糊 → clarification
   if (

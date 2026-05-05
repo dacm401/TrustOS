@@ -6,6 +6,8 @@ const { Pool } = pg;
 /** Always read DATABASE_URL fresh — safe for vitest where env is set before pool use. */
 function makePool(): pg.Pool {
   const url = process.env.DATABASE_URL ?? config.databaseUrl;
+  // Sprint 05 fix: 打印实际连接的 DB URL（脱敏密码）
+  console.log(`[DB] Connecting to: ${url.replace(/:[^:@]+@/, ':***@')}`);
   const p = new Pool({ connectionString: url, max: 20, idleTimeoutMillis: 30000 });
   p.on("error", (err) => {
     console.error("Unexpected database error:", err);

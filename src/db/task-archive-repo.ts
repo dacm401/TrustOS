@@ -42,7 +42,7 @@ export const TaskArchiveRepo = {
         input.session_id,
         input.user_id,
         JSON.stringify(input.decision),
-        input.decision.command ? JSON.stringify(input.decision.command) : null,
+        input.decision.command ? JSON.stringify(input.decision.command) : '{}',
         input.user_input,
         input.task_brief ? JSON.stringify({ brief: input.task_brief, goal: input.goal }) : null,
       ]
