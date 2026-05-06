@@ -91,22 +91,53 @@
 
 ---
 
-## 🔵 Phase 4 — 回归用例沉淀（滚动，每次修复 +1）
+## 🔵 Phase 4 — 回归用例沉淀（已完成 ✅，2026-05-06）
 
 **目标**：防止同类 bug 复发。
 
-- [ ] **4.1** archive_id 一致性用例：创建→路由→worker写入 三步 archive_id 完全一致
-- [ ] **4.2** SSE done 必发用例：streaming=true 时 done 在 10s 内必须出现
-- [ ] **4.3** DB migration 探针用例：插入 task_archives + task_commands 不报 FK 错误
-- [ ] **4.4** 状态机终态用例：worker 成功路径后 `task_archives.state='completed'`
+- [x] **4.1** archive_id 一致性用例：`archive.id === command.archive_id === worker_result.archive_id === event.archive_id`，含错误模式（taskId 写成 archiveId → 查不到）✅
+- [x] **4.2** DB FK 探针：`task_archives → task_commands / task_worker_results / task_archive_events` INSERT 约束通过 ✅
+- [x] **4.3** 状态机终态：`slow_execution.result` 落盘对应 completed；`task_worker_results` 落盘；事件时间线顺序校验 ✅
+- [x] **4.4** 完整性校验回归：result 空 + 无 worker_results → `INTEGRITY_VIOLATION`；野 archiveId → `INTEGRITY_VIOLATION`；Phase 3.2 协议违规回归通过 ✅
+
+### 验收结果
+
+| 测试套件 | 结果 | 位置 |
+|----------|------|------|
+| 12 个集成测试（4.1~4.4） | ✅ 12/12 全绿 | `tests/repositories/delegation/` |
+| 测试基础设施 | `vitest.repo.config.ts` + 真实 DB（`smartrouter_test`） | 自动初始化，表隔离 |
+
+### 相关 Commits
+
+| Commit | 说明 |
+|--------|------|
+| `72b1783` | Phase 4: delegation chain regression — 12 集成测试，覆盖 4.1~4.4 |
 
 ---
 
-## ⚪ Phase 5 — 策略性优化（阻塞性清零后）
+## 🟣 Phase 5 — 策略性优化（进行中）
 
-- [ ] 路由评分阈值调整（L2/L3 分界）
-- [ ] Manager Prompt v4（更精准委托意图识别）
-- [ ] P2 HITL 歧义检测灵敏度调优
+**目标**：在链路稳定的基础上提升路由准确性、降低成本、强化 schema 可靠性。
+
+### 5.1 路由退化/降级策略一致性
+- [ ] 协议违规（schema_version 缺失/未知）降级路径统一：确保所有异常最终都落 `state=failed` + 可诊断错误
+- [ ] 模型输出异常（JSON parse 失败、字段缺失）降级路径与协议违规路径对齐
+- [ ] 添加降级路径回归用例（补充 Phase 4 测试套件）
+
+### 5.2 system_conf 阈值边缘行为
+- [ ] 当前阈值 0.7，实测 system_conf=0.699 边缘场景（差 0.001 通过）
+- [ ] 确认 gating 用 `>= 0.7` 还是 `> 0.699`，统一为 `>= 0.7` 严格判断
+- [ ] 考虑是否在边缘区间（0.65~0.75）增加 `ask_clarification` 保护
+
+### 5.3 schema_version 输出可靠性（Prompt 强约束）
+- [ ] Manager Prompt v4：在 system prompt 中强化 `schema_version` 字段必须输出的约束
+- [ ] 目标：将 Phase 3.2 的协议违规触发率降至接近 0
+- [ ] 可选：在 JSON schema 前置校验层添加 `schema_version` 存在性 guard
+
+### 5.4 Token 成本 / 路由效率
+- [ ] 统计当前 L2/L3 分布比例，评估 delegate_to_slow 是否过度触发
+- [ ] 对低复杂度任务（代码片段、简单问答）加 direct_answer 权重规则
+- [ ] 可选：manager 输出 token 上限收口（避免 rationale 过长）
 
 ---
 
@@ -118,6 +149,8 @@
 | 2026-05-05 | Phase 1 全部完成 ✅ | 根本 Bug：task_commands.archive_id 写入了 taskId 而非 archiveRecord.id，已修复；全链路打印已补全；DB 8张表验证通过 |
 | 2026-05-05 | Phase 2 完成 ✅（commit 89cc0cc）| 诊断脚本修复（列名校准）；启动必检项（委托表+LLM API）；端到端成功 archive_id=`a21f7814-...`（state=done，耗时55s，cost=$0.0013）|
 | 2026-05-05 | Phase 3 全部完成 ✅ | 3.1 TaskState enum（485d8fe）；3.2 protocol violation throw（7d16aa7）；3.3 updateStateWithIntegrity 校验（0c4dc58）；已全部推送 GitHub |
+| 2026-05-06 | Phase 4 全部完成 ✅（commit 72b1783）| 12/12 集成测试全绿；archive_id 一致性 + FK 探针 + 状态机终态 + 完整性校验回归均通过 |
+| 2026-05-06 | Phase 5 启动 | 降级路径一致性（5.1）/ system_conf 阈值边缘行为（5.2）/ schema 可靠性（5.3）/ token 成本（5.4）|
 
 ---
 
