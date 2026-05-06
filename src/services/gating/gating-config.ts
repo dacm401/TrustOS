@@ -27,7 +27,7 @@ export const DEFAULT_GATING_CONFIG: GatingConfig = {
   rerank: {
     top_gap_threshold: 0.08,     // top1 - top2 < 此值时触发 rerank
     confidence_threshold: 0.60,   // system_confidence < 此值时触发 rerank
-    high_cost_confidence_floor: 0.75, // delegate/execute 在此 confidence 以下触发 rerank
+    high_cost_confidence_floor: 0.70, // Phase 5.2: 0.75→0.70，对齐 base threshold 0.65，减少无意义 rerank
   },
 
   // 成本惩罚系数（用于后续 latency/token 预算校准）

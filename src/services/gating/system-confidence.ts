@@ -90,7 +90,8 @@ export function calculateSystemConfidence(
     confidence *= KB_DIRECT_ANSWER_PENALTY;
   }
 
-  return Math.max(0, Math.min(1, confidence));
+  // 标准化到 3 位小数，消除 IEEE754 浮点尾数噪音
+  return Math.round(Math.max(0, Math.min(1, confidence)) * 1000) / 1000;
 }
 
 /**
