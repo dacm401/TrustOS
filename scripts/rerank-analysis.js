@@ -39,7 +39,7 @@ async function main() {
   const rerankStats = await client.query(`
     SELECT
       COUNT(*)::int                         AS rerank_count,
-      COUNT(*) FILTER (WHERE g2_final_action != g3_final_action)::int AS changed_count,
+      COUNT(*) FILTER (WHERE g2_final_action IS DISTINCT FROM g3_final_action)::int AS changed_count,
       ROUND(AVG(system_confidence)::numeric, 3) AS avg_conf
     FROM delegation_logs
     WHERE created_at >= $1 AND did_rerank = true
@@ -91,10 +91,10 @@ async function main() {
         END AS conf_bucket,
         COUNT(*)                                              AS total,
         COUNT(*) FILTER (WHERE did_rerank = true)             AS rerank_count,
-        COUNT(*) FILTER (WHERE did_rerank = true AND g2_final_action != g3_final_action) AS changed,
+        COUNT(*) FILTER (WHERE did_rerank = true AND g2_final_action IS DISTINCT FROM g3_final_action) AS changed,
         ROUND(COUNT(*) FILTER (WHERE did_rerank = true)::numeric / NULLIF(COUNT(*), 0) * 100, 2) AS trigger_pct,
         ROUND(
-          COUNT(*) FILTER (WHERE did_rerank = true AND g2_final_action != g3_final_action)::numeric
+          COUNT(*) FILTER (WHERE did_rerank = true AND g2_final_action IS DISTINCT FROM g3_final_action)::numeric
           / NULLIF(COUNT(*) FILTER (WHERE did_rerank = true), 0) * 100, 2
         ) AS change_pct,
         ROUND(AVG(system_confidence)::numeric, 3) AS avg_conf
@@ -115,16 +115,18 @@ async function main() {
     );
   }
 
-  // ── 3. rerank 原因分布（诊断：60% 的 rerank 应该消失？） ──────────────────
+  // ── 3. rerank 原因分布（诊断：大部分应该消失？） ─────────────────────────────
+  // 注意：必须 JOIN 父表 dl，不能在 sub 里直接引用 dl 列（PostgreSQL 作用域规则）
   const reasons = await client.query(`
     SELECT
       rr AS rerank_reason,
-      COUNT(*) AS cnt,
-      COUNT(*) FILTER (WHERE g2_final_action != g3_final_action) AS changed
+      COUNT(*)::int AS cnt,
+      SUM(CASE WHEN g2_final_action IS DISTINCT FROM g3_final_action THEN 1 ELSE 0 END)::int AS changed
     FROM (
-      SELECT jsonb_array_elements_text(rerank_rules) AS rr
-      FROM delegation_logs
-      WHERE created_at >= $1 AND did_rerank = true
+      SELECT dl.id, dl.g2_final_action, dl.g3_final_action,
+             jsonb_array_elements_text(dl.rerank_rules) AS rr
+      FROM delegation_logs dl
+      WHERE dl.created_at >= $1 AND dl.did_rerank = true
     ) sub
     GROUP BY rr
     ORDER BY cnt DESC
