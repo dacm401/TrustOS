@@ -51,6 +51,7 @@ export function shouldRerank(
     selectedAction === "delegate_to_slow" || selectedAction === "execute_task";
 
   // 【短路条件 B】灰色地带跳过 rerank（语义优先于阈值）
+  // 来源：Phase 5.4 grayZone 短路（2026-05-06，53 条历史样本回放，v2 grayZone 切掉 14 次 rerank，全部 change=0）
   // 若 G2 已选 delegate_to_slow 或 execute_task，且 conf 处于"灰区"（0.60 ≤ conf < 0.70），
   // 则不 rerank：灰区任务本身不贵，rerank 负 ROI（87.8% 走默认分支，保持原选）。
   // 边界：conf=0.60 属于灰区（low 触发线），conf=0.70 属于灰区外（high_cost_floor 线）。
