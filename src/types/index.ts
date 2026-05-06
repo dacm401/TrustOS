@@ -729,6 +729,8 @@ export interface DelegationLog {
   rerank_gap?: number;
   rerank_rules: string[];
   g3_final_action?: ManagerDecisionType;
+  /** grayZone 短路原因（当 rerank 被 grayZone 跳过时写入，供监控埋点） */
+  grayzone_shortcut?: string;
 
   // 最终路由决策
   routed_action: ManagerDecisionType;
@@ -775,6 +777,7 @@ export interface DelegationLogInput {
   rerank_gap?: number;
   rerank_rules: string[];
   g3_final_action?: ManagerDecisionType;
+  grayzone_shortcut?: string;
   routed_action: ManagerDecisionType;
   routing_reason?: string;
   // Sprint 68: 显式路由层（L0/L1/L2/L3），用于分层监控和 L2 灰度分析

@@ -112,7 +112,7 @@ export function runGatedDelegation(
   );
 
   // G3: 判断是否需要 rerank
-  const { should: needsRerank, gap: rerankGap } = shouldRerank(
+  const { should: needsRerank, gap: rerankGap, grayzone_shortcut } = shouldRerank(
     calibrated.adjustedScores,
     systemConfidence,
     calibrated.finalAction,
@@ -141,6 +141,7 @@ export function runGatedDelegation(
     rerankResult,
     routedAction,
     rerankGap,
+    grayzone_shortcut,
     // KB-1: 保留知识边界信号供 trace/debug 使用
     knowledgeBoundarySignals,
   };
@@ -589,6 +590,7 @@ export async function routeWithManagerDecision(
       rerank_gap: gatedResult.rerankGap ?? null,
       rerank_rules: gatedResult.rerankResult ? [gatedResult.rerankResult.reason ?? "reranked"] : [],
       g3_final_action: gatedResult.rerankResult ? gatedResult.routedAction : undefined,
+      grayzone_shortcut: gatedResult.grayzone_shortcut ?? null,
       routed_action: "direct_answer",
       routing_reason: `Gated: direct_answer (sys_conf=${gatedResult.systemConfidence.toFixed(3)})`,
       routing_layer: "L0",
@@ -960,6 +962,7 @@ async function routeByGatedDecision(
     rerank_gap: gated.rerankGap ?? null,
     rerank_rules: gated.rerankResult ? [gated.rerankResult.reason ?? "reranked"].filter(Boolean) : [],
     g3_final_action: gated.rerankResult ? gated.routedAction : undefined,
+    grayzone_shortcut: gated.grayzone_shortcut ?? null,
     routed_action: gated.routedAction,
     routing_reason: `Gated: ${gated.routedAction} (sys_conf=${gated.systemConfidence.toFixed(3)})`,
     // Sprint 68: 显式路由层，用于分层监控和 L2 灰度分析

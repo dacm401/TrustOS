@@ -184,10 +184,17 @@ describe("G3: shouldRerank", () => {
     expect(shouldRerank(scores, 0.85, "delegate_to_slow").should).toBe(false);
   });
 
-  it("execute_task 在灰区（0.60≤conf<0.70）仍触发 rerank（灰区仅适用于 delegate_to_slow）", () => {
-    // execute_task 不在 gray zone，仍然走普通高成本逻辑
+  it("execute_task 在灰区（0.60≤conf<0.70）不触发 rerank（grayZone 已扩展到 execute_task）", () => {
+    // grayZone 现在同时适用于 delegate_to_slow 和 execute_task
     const scores = { direct_answer: 0.2, ask_clarification: 0.2, delegate_to_slow: 0.2, execute_task: 0.75 };
-    expect(shouldRerank(scores, 0.68, "execute_task").should).toBe(true); // 0.68 < 0.70
+    expect(shouldRerank(scores, 0.68, "execute_task").should).toBe(false); // 0.68 ∈ [0.60, 0.70)，grayZone 短路
+  });
+
+  it("execute_task 在 conf=0.60 灰区下界触发 grayZone 短路", () => {
+    // conf=0.60 ∈ grayZone 下界（闭区间），grayZone 短路
+    const scores = { direct_answer: 0.2, ask_clarification: 0.2, delegate_to_slow: 0.2, execute_task: 0.75 };
+    expect(shouldRerank(scores, 0.60, "execute_task").should).toBe(false);
+    expect(shouldRerank(scores, 0.60, "execute_task").grayzone_shortcut).toBeTruthy();
   });
 
   it("delegate_to_slow 在灰区上界 conf=0.70 不触发（gray zone 左闭右开）", () => {

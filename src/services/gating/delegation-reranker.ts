@@ -32,6 +32,8 @@ export interface ShouldRerankResult {
   should: boolean;
   /** top1 - top2 score gap（用于日志记录） */
   gap: number;
+  /** grayZone 短路原因（当 should=false 且由 grayZone 触发时返回，供 delegation_logs 埋点） */
+  grayzone_shortcut?: string;
 }
 
 /**
@@ -49,15 +51,19 @@ export function shouldRerank(
     selectedAction === "delegate_to_slow" || selectedAction === "execute_task";
 
   // 【短路条件 B】灰色地带跳过 rerank（语义优先于阈值）
-  // 若 G2 已选 delegate_to_slow，且 conf 处于"灰区"（0.60 ≤ conf < 0.70），
+  // 若 G2 已选 delegate_to_slow 或 execute_task，且 conf 处于"灰区"（0.60 ≤ conf < 0.70），
   // 则不 rerank：灰区任务本身不贵，rerank 负 ROI（87.8% 走默认分支，保持原选）。
   // 边界：conf=0.60 属于灰区（low 触发线），conf=0.70 属于灰区外（high_cost_floor 线）。
   const grayZone =
-    selectedAction === "delegate_to_slow" &&
+    (selectedAction === "delegate_to_slow" || selectedAction === "execute_task") &&
     systemConfidence >= config.rerank.confidence_threshold &&         // ≥ 0.60（灰区下界）
     systemConfidence < config.rerank.high_cost_confidence_floor;       // < 0.70（灰区上界，左闭右开）
   if (grayZone) {
-    return { should: false, gap };
+    return {
+      should: false,
+      gap,
+      grayzone_shortcut: `grayZone: ${selectedAction} conf∈[${config.rerank.confidence_threshold}, ${config.rerank.high_cost_confidence_floor})`
+    };
   }
 
   const should =

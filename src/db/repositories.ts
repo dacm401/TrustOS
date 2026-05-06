@@ -1356,12 +1356,13 @@ export const DelegationLogRepo = {
   async save(d: DelegationLogInput): Promise<DelegationLog> {
     const id = d.id ?? uuid();
     await query(
-      `INSERT INTO delegation_logs (
+      `      INSERT INTO delegation_logs (
         id, user_id, session_id, turn_id, task_id, routing_version,
         llm_scores, llm_confidence,
         system_confidence,
         calibrated_scores, policy_overrides, g2_final_action,
         did_rerank, rerank_gap, rerank_rules, g3_final_action,
+        grayzone_shortcut,
         routed_action, routing_reason, routing_layer,
         routing_success, value_success, user_success
       ) VALUES (
@@ -1370,8 +1371,9 @@ export const DelegationLogRepo = {
         $9,
         $10,$11,$12,
         $13,$14,$15,$16,
-        $17,$18,$19,
-        $20,$21,$22
+        $17,
+        $18,$19,$20,
+        $21,$22,$23
       )`,
       [
         id,
@@ -1390,6 +1392,7 @@ export const DelegationLogRepo = {
         d.rerank_gap ?? null,
         JSON.stringify(d.rerank_rules),
         d.g3_final_action ?? null,
+        d.grayzone_shortcut ?? null,   // $17: grayZone 短路原因（供监控埋点）
         d.routed_action,
         d.routing_reason ?? null,
         d.routing_layer ?? null,
