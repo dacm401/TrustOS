@@ -71,6 +71,8 @@ export interface GatedDelegationContext {
   finalAction: ManagerDecisionType;
   policyOverrides: import("../types/index.js").PolicyOverride[];
   rerankResult?: RerankResult;
+  /** G2→G3 评分 gap（top1-top2），用于日志分析 */
+  rerankGap: number;
   /** 最终用于路由的 action（可能经过 rerank） */
   routedAction: ManagerDecisionType;
   /** KB-1: 知识边界信号（可选，用于 trace/debug） */
@@ -110,10 +112,16 @@ export function runGatedDelegation(
   );
 
   // G3: 判断是否需要 rerank
+  const { should: needsRerank, gap: rerankGap } = shouldRerank(
+    calibrated.adjustedScores,
+    systemConfidence,
+    calibrated.finalAction,
+    DEFAULT_GATING_CONFIG
+  );
   let rerankResult: RerankResult | undefined;
   let routedAction = calibrated.finalAction;
 
-  if (shouldRerank(calibrated.adjustedScores, systemConfidence, calibrated.finalAction, DEFAULT_GATING_CONFIG)) {
+  if (needsRerank) {
     rerankResult = ruleBasedRerank(
       calibrated.adjustedScores,
       features,
@@ -132,6 +140,7 @@ export function runGatedDelegation(
     policyOverrides: calibrated.policyOverrides,
     rerankResult,
     routedAction,
+    rerankGap,
     // KB-1: 保留知识边界信号供 trace/debug 使用
     knowledgeBoundarySignals,
   };
@@ -577,7 +586,7 @@ export async function routeWithManagerDecision(
       policy_overrides: gatedResult.policyOverrides,
       g2_final_action: gatedResult.finalAction,
       did_rerank: Boolean(gatedResult.rerankResult),
-      rerank_gap: undefined,
+      rerank_gap: gatedResult.rerankGap ?? null,
       rerank_rules: gatedResult.rerankResult ? [gatedResult.rerankResult.reason ?? "reranked"] : [],
       g3_final_action: gatedResult.rerankResult ? gatedResult.routedAction : undefined,
       routed_action: "direct_answer",
@@ -948,6 +957,7 @@ async function routeByGatedDecision(
     policy_overrides: gated.policyOverrides,
     g2_final_action: gated.finalAction,
     did_rerank: Boolean(gated.rerankResult),
+    rerank_gap: gated.rerankGap ?? null,
     rerank_rules: gated.rerankResult ? [gated.rerankResult.reason ?? "reranked"].filter(Boolean) : [],
     g3_final_action: gated.rerankResult ? gated.routedAction : undefined,
     routed_action: gated.routedAction,

@@ -28,6 +28,12 @@ export interface RerankResult {
   finalAction: ManagerDecisionType;
 }
 
+export interface ShouldRerankResult {
+  should: boolean;
+  /** top1 - top2 score gap（用于日志记录） */
+  gap: number;
+}
+
 /**
  * 判断是否需要 rerank
  */
@@ -36,17 +42,18 @@ export function shouldRerank(
   systemConfidence: number,
   selectedAction: ManagerDecisionType,
   config: GatingConfig = DEFAULT_GATING_CONFIG
-): boolean {
+): ShouldRerankResult {
   const sorted = Object.values(scores).sort((a, b) => b - a);
-  const topGap = (sorted[0] ?? 0) - (sorted[1] ?? 0);
+  const gap = (sorted[0] ?? 0) - (sorted[1] ?? 0);
   const isHighCostAction =
     selectedAction === "delegate_to_slow" || selectedAction === "execute_task";
 
-  return (
-    topGap < config.rerank.top_gap_threshold ||
+  const should =
+    gap < config.rerank.top_gap_threshold ||
     systemConfidence < config.rerank.confidence_threshold ||
-    (isHighCostAction && systemConfidence < config.rerank.high_cost_confidence_floor)
-  );
+    (isHighCostAction && systemConfidence < config.rerank.high_cost_confidence_floor);
+
+  return { should, gap };
 }
 
 /**
