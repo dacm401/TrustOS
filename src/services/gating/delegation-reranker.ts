@@ -48,6 +48,18 @@ export function shouldRerank(
   const isHighCostAction =
     selectedAction === "delegate_to_slow" || selectedAction === "execute_task";
 
+  // 【短路条件 B】灰色地带跳过 rerank（语义优先于阈值）
+  // 若 G2 已选 delegate_to_slow，且 conf 处于"灰区"（0.60 ≤ conf < 0.70），
+  // 则不 rerank：灰区任务本身不贵，rerank 负 ROI（87.8% 走默认分支，保持原选）。
+  // 边界：conf=0.60 属于灰区（low 触发线），conf=0.70 属于灰区外（high_cost_floor 线）。
+  const grayZone =
+    selectedAction === "delegate_to_slow" &&
+    systemConfidence >= config.rerank.confidence_threshold &&         // ≥ 0.60（灰区下界）
+    systemConfidence < config.rerank.high_cost_confidence_floor;       // < 0.70（灰区上界，左闭右开）
+  if (grayZone) {
+    return { should: false, gap };
+  }
+
   const should =
     gap < config.rerank.top_gap_threshold ||
     systemConfidence < config.rerank.confidence_threshold ||

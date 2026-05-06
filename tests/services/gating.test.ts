@@ -160,24 +160,41 @@ describe("G2: calibrateWithPolicy", () => {
 // ── G3: delegation-reranker ───────────────────────────────────────────────────
 
 describe("G3: shouldRerank", () => {
-  it("top gap小时触发 rerank", () => {
+  it("top gap小时触发 rerank（gray zone conf=0.60 跳过）", () => {
+    // conf=0.60 处于灰区下界（0.60 ≤ 0.60 < 0.70），delegate_to_slow 不 rerank
     const scores = { direct_answer: 0.49, ask_clarification: 0.45, delegate_to_slow: 0.52, execute_task: 0.1 };
-    expect(shouldRerank(scores, 0.6, "delegate_to_slow")).toBe(true);
+    expect(shouldRerank(scores, 0.60, "delegate_to_slow").should).toBe(false);
   });
 
-  it("低置信度触发 rerank", () => {
+  it("低置信度（<0.60）触发 rerank", () => {
+    // conf=0.5 低于 base threshold，不在 gray zone，正常触发
     const scores = { direct_answer: 0.3, ask_clarification: 0.2, delegate_to_slow: 0.85, execute_task: 0.1 };
-    expect(shouldRerank(scores, 0.5, "delegate_to_slow")).toBe(true);
+    expect(shouldRerank(scores, 0.5, "delegate_to_slow").should).toBe(true);
   });
 
-  it("高成本动作+低置信度触发 rerank", () => {
+  it("高成本动作+灰区置信度（0.60≤conf<0.70）不触发 rerank", () => {
+    // conf=0.68 在灰区，delegate_to_slow 不 rerank
     const scores = { direct_answer: 0.2, ask_clarification: 0.2, delegate_to_slow: 0.8, execute_task: 0.1 };
-    expect(shouldRerank(scores, 0.7, "delegate_to_slow")).toBe(true); // 0.7 < 0.75 high_cost_confidence_floor
+    expect(shouldRerank(scores, 0.68, "delegate_to_slow").should).toBe(false);
   });
 
-  it("gap大+高置信度+低风险动作不触发", () => {
+  it("gap大+高置信度（≥0.70）不触发 rerank", () => {
+    // conf=0.85 超出灰区，gap 大，正常不触发
     const scores = { direct_answer: 0.3, ask_clarification: 0.2, delegate_to_slow: 0.85, execute_task: 0.1 };
-    expect(shouldRerank(scores, 0.85, "delegate_to_slow")).toBe(false);
+    expect(shouldRerank(scores, 0.85, "delegate_to_slow").should).toBe(false);
+  });
+
+  it("execute_task 在灰区（0.60≤conf<0.70）仍触发 rerank（灰区仅适用于 delegate_to_slow）", () => {
+    // execute_task 不在 gray zone，仍然走普通高成本逻辑
+    const scores = { direct_answer: 0.2, ask_clarification: 0.2, delegate_to_slow: 0.2, execute_task: 0.75 };
+    expect(shouldRerank(scores, 0.68, "execute_task").should).toBe(true); // 0.68 < 0.70
+  });
+
+  it("delegate_to_slow 在灰区上界 conf=0.70 不触发（gray zone 左闭右开）", () => {
+    // conf=0.70 < 0.70 不成立，gray zone 不触发，但 conf=0.70 >= 0.60，conf 条件不触发，
+    // gap 大 → 最终不触发 rerank
+    const scores = { direct_answer: 0.3, ask_clarification: 0.2, delegate_to_slow: 0.85, execute_task: 0.1 };
+    expect(shouldRerank(scores, 0.70, "delegate_to_slow").should).toBe(false);
   });
 });
 
@@ -197,10 +214,12 @@ describe("G3: ruleBasedRerank", () => {
     expect(result.finalAction).toBe("direct_answer");
   });
 
-  it("execute_task 无工具需求降级到 direct_answer", () => {
+  it("execute_task 无匹配规则，保持 execute_task（Rule 3 已删除）", () => {
+    // Rule 3 已删除：execute_task 的降级由 shouldRerank 的阈值过滤控制，
+    // ruleBasedRerank 不主动降级 execute_task（避免误伤复杂代码任务）。
     const scores = { direct_answer: 0.3, ask_clarification: 0.2, delegate_to_slow: 0.2, execute_task: 0.75 };
     const result = ruleBasedRerank(scores, BASE_FEATURES, "execute_task");
-    expect(result.finalAction).toBe("direct_answer");
+    expect(result.finalAction).toBe("execute_task");
   });
 
   it("无匹配规则时保持原选", () => {
