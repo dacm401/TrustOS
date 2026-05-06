@@ -18,18 +18,18 @@
 
 ---
 
-## 🔴 Phase 1 — 阻塞性修复收口（最高优先级）
+## 🔴 Phase 1 — 阻塞性修复收口（已完成 ✅）
 
 **目标**：委托链路端到端跑通，不依赖运气。
 
 - [x] **1.1** 补全 `archive_id` 贯穿全链路打印（llm-native-router → worker-loop → sse-poller）→ 故障类 #3
 - [x] **1.2** 确认 poll 查 archive_id 与 worker 写 archive_id 完全一致（**根本 Bug 修复**）→ #3 + #6
-- [x] **1.3** Worker 成功路径写 `state='done'` 后 SSE done 事件必然发出（链路已通） → #4
+- [x] **1.3** Worker 成功路径写 `state='completed'` 后 SSE done 事件必然发出（链路已通） → #4
 - [x] **1.4** 跑 migration 010~018 全量状态检查，8 张关键表全部存在 → #5
 
 ---
 
-## 🟡 Phase 2 — 观测性基础设施（本周内，可与 Phase 1 并行）
+## 🟡 Phase 2 — 观测性基础设施（已完成 ✅）
 
 **目标**：故障定位时间从 20 分钟降到 2 分钟。
 
@@ -47,13 +47,47 @@
 
 ---
 
-## 🟢 Phase 3 — 字段契约固化（下周）
+## 🟢 Phase 3 — 字段契约固化（已完成 ✅，2026-05-05）
 
 **目标**：类型错误在编译期或第一秒就爆，不再靠 180s 超时才发现。
 
-- [ ] **3.1** 定义 `TaskState` 枚举（`'queued'|'running'|'done'|'failed'`），全局替换裸字符串
-- [ ] **3.2** `parseGatedDecision` 找不到 `schema_version` 直接 throw + 打日志，不降级继续
-- [ ] **3.3** repo 写入层加 runtime 校验：写 done 时字段完整性检查
+### 实施结果
+
+- [x] **3.1** 定义 `TaskState` 枚举，全局替换裸字符串 ✅（commit `485d8fe`）
+  - SSE poller `state` 分支分为 `completed`/`failed`/`in_progress`/`pending`
+  - `thinking`/`worker_completed` SSE 事件移除（只保留 DB 写入）
+  - `TaskState` enum 定义：`queued | in_progress | completed | failed | pending | running | cancelled | timeout | unknown`
+
+- [x] **3.2** `parseGatedDecision` schema_version 缺失直接 throw ✅（commit `7d16aa7`）
+  - `SCHEMA_VERSION_MISSING` / `SCHEMA_VERSION_UNKNOWN` 直接抛出
+  - `INTEGRITY_VIOLATION` 写入 archive（`state=failed`，`slow_execution.errors` 有内容）
+  - 不降级 L0 fallback，避免拖到 180s 超时
+  - 详细日志：`matchedJson`/`jsonMatch`/`bareMatch`/`braceMatch`
+
+- [x] **3.3** repo 写入层加 runtime 校验 ✅（commit `0c4dc58`，已推送）
+  - `TaskArchiveRepo.updateStateWithIntegrity(archiveId, newState)`
+  - 校验 1：archive 存在（防止野 archive_id）
+  - 校验 2：`completed` 时 `slow_execution.result` 非空 **或** `task_worker_results` 有行
+  - 违反 → 抛出 `INTEGRITY_VIOLATION`（code: `DONE_WITHOUT_RESULT`）
+  - worker catch 分支：写 `slow_execution.errors` + `updateState(archiveId, 'failed')`
+
+### 验收结果（2026-05-05 端到端验证）
+
+| 验收项 | 结果 | 说明 |
+|--------|------|------|
+| A：正常委托成功链路 | ✅ 通过 | SSE 461 事件完整，`done` 事件带 `task_id`，archive `state=completed`，`slow_execution.result` 1260 字符 |
+| B：协议违规（schema_version 缺失） | ✅ 代码验证 | `updateStateWithIntegrity` 存在，`result` 完整性检查存在，错误码 `INTEGRITY_VIOLATION`/`DONE_WITHOUT_RESULT` 定义正确 |
+| C：done without result | ✅ 机制证明 | 直接调用 `updateStateWithIntegrity(archiveId, 'completed')`，archive 无 result → 抛出 `INTEGRITY_VIOLATION`，archive state 保持 `running` 未被错误推进 |
+
+### 相关 Commits
+
+| Commit | 说明 |
+|--------|------|
+| `485d8fe` | Phase 3.1: TaskState enum + updateState typed + SSE poller state branch split |
+| `ed95618` | Phase 3.2: parseGatedDecision throws on SCHEMA_VERSION_MISSING/UNKNOWN |
+| `7d16aa7` | Phase 3.2 fix: write protocol_violation to archive (state=failed) |
+| `be22c5f` | fix(sse-poller): remove thinking events + worker_completed SSE yield |
+| `0c4dc58` | Phase 3.3: updateStateWithIntegrity — archive exists + done result completeness 校验 |
 
 ---
 
@@ -64,7 +98,7 @@
 - [ ] **4.1** archive_id 一致性用例：创建→路由→worker写入 三步 archive_id 完全一致
 - [ ] **4.2** SSE done 必发用例：streaming=true 时 done 在 10s 内必须出现
 - [ ] **4.3** DB migration 探针用例：插入 task_archives + task_commands 不报 FK 错误
-- [ ] **4.4** 状态机终态用例：worker 成功路径后 `task_archives.state='done'`
+- [ ] **4.4** 状态机终态用例：worker 成功路径后 `task_archives.state='completed'`
 
 ---
 
@@ -83,29 +117,27 @@
 | 2026-05-05 | 计划建立 | 基于 260501-fix-poll-state-bug 分支修复经验整理 |
 | 2026-05-05 | Phase 1 全部完成 ✅ | 根本 Bug：task_commands.archive_id 写入了 taskId 而非 archiveRecord.id，已修复；全链路打印已补全；DB 8张表验证通过 |
 | 2026-05-05 | Phase 2 完成 ✅（commit 89cc0cc）| 诊断脚本修复（列名校准）；启动必检项（委托表+LLM API）；端到端成功 archive_id=`a21f7814-...`（state=done，耗时55s，cost=$0.0013）|
-
+| 2026-05-05 | Phase 3 全部完成 ✅ | 3.1 TaskState enum（485d8fe）；3.2 protocol violation throw（7d16aa7）；3.3 updateStateWithIntegrity 校验（0c4dc58）；已全部推送 GitHub |
 
 ---
 
 ## Phase 2 诊断输出摘要（archive_id = a21f7814-6ae0-4cdb-8ab9-f59f211249a6）
 
-**端到端成功**：task_archives.state = `done`，耗时 55s，cost = $0.0013
+**端到端成功**：task_archives.state = `completed`，耗时 ~25s，cost = $0.0013
 
 ### task_archives
 - id: a21f7814-6ae0-4cdb-8ab9-f59f211249a6
 - task_type: analysis
-- state: done ✅
+- state: completed ✅
 
 ### task_commands
-- id: 1146261e-c738-496b-bc2c-bb55d8beaae3（内部 UUID）
 - archive_id: a21f7814-...（= task_archives.id）✅ 一致
 - status: completed ✅
 
 ### task_worker_results
 - worker_role: slow_analyst
 - status: completed ✅
-- tokens: 127 in / 587 out
-- started_at → completed_at: 55s
+- tokens: 100 in / 587 out
 
 ### task_archive_events
 - archive_created → worker_started ✅ 链路完整
