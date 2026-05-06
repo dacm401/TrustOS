@@ -77,7 +77,9 @@ async function loadSchema(): Promise<void> {
         await client.query(sql);
         console.log(`[harness] Schema loaded into "${TEST_DB_NAME}".`);
       } finally {
-        await client.query("SELECT pg_advisory_unlock(987654321)");
+        // 防止前序操作已 abort 事务导致 unlock 失败：先 ROLLBACK 再解锁
+        try { await client.query("ROLLBACK"); } catch { /* already rolled back */ }
+        try { await client.query("SELECT pg_advisory_unlock(987654321)"); } catch { /* lock may have been released */ }
       }
     } finally {
       client.release();

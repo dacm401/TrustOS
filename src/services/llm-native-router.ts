@@ -164,12 +164,13 @@ function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: strin
 - **代码生成/数学计算/复杂分析/深度推理**：慢模型显著优于快模型，delegate_to_slow 必须 >= 0.8，direct_answer 必须 <= 0.2
 - **简单问答/闲聊/打招呼**：快模型已经足够好，direct_answer 必须 >= 0.7
 - **需要工具调用（搜索/执行代码）**：execute_task 必须 >= 0.8
+- **schema_version 必须为 JSON 第一个字段**：值为 "manager_decision_v4"，必须作为 JSON 第一行出现，缺失或错位视为协议错误
 
 【输出格式示例】
 如果用户问："帮我写一篇关于人工智能发展的 1000 字文章"
 正确打分应该是：
 {
-  "schema_version": "manager_decision_v3",
+  "schema_version": "manager_decision_v4",
   "scores": {
     "direct_answer": 0.2,
     "ask_clarification": 0.1,
@@ -209,11 +210,28 @@ function buildManagerSystemPrompt(lang: "zh" | "en", crossSessionContext?: strin
 - requires_multi_step: 是否需要多步骤操作或跨文件处理
 - is_continuation: 请求是否引用了之前的对话或任务
 
+【输出规则（强制）】
+- 输出**只允许包含一个 JSON 对象**，不要输出任何额外文本（不要包裹在 \`\`\` 中）。
+- \`schema_version\` **必须作为 JSON 的第一个字段出现**（第一行/第一项）。
+- \`schema_version\` 的值固定为：\`"manager_decision_v4"\`。
+- 若无法提供字段值，请用 \`null\` 或使用 schema 允许的默认方式填充（但不得省略字段名）。
+- JSON 中字段名必须与 schema 完全一致（大小写敏感）。
+- 参考模板（简短示例）：
+
+\`\`\`json
+{
+  "schema_version": "manager_decision_v4",
+  "scores": { ... },
+  "confidence_hint": 0.0~1.0,
+  ...
+}
+\`\`\`
+
 【输出格式】（必须严格使用此 JSON Schema，放在回复的最后）
 
 \`\`\`json
 {
-  "schema_version": "manager_decision_v3",
+  "schema_version": "manager_decision_v4",
   "scores": {
     "direct_answer": 0.0~1.0,
     "ask_clarification": 0.0~1.0,
@@ -277,11 +295,28 @@ After understanding the user's request, you need to complete two tasks:
 - requires_multi_step: Does it need multi-step operations or cross-file handling
 - is_continuation: Does the request reference a previous conversation or task
 
+【Output Rules (Mandatory)】
+- Output **only one JSON object**, no extra text (do NOT wrap in \`\`\`).
+- \`schema_version\` **must be the FIRST field** of the JSON object (first line/first item).
+- \`schema_version\` value is fixed: \`"manager_decision_v4"\`.
+- If a field value cannot be provided, use \`null\` or schema-allowed default (field name must NOT be omitted).
+- Field names must match the schema exactly (case-sensitive).
+- Reference template (concise example):
+
+\`\`\`json
+{
+  "schema_version": "manager_decision_v4",
+  "scores": { ... },
+  "confidence_hint": 0.0~1.0,
+  ...
+}
+\`\`\`
+
 【Output Format】（must use this exact JSON Schema, placed at the very end of your response）
 
 \`\`\`json
 {
-  "schema_version": "manager_decision_v3",
+  "schema_version": "manager_decision_v4",
   "scores": {
     "direct_answer": 0.0~1.0,
     "ask_clarification": 0.0~1.0,
@@ -745,8 +780,8 @@ function parseGatedDecision(
       );
     }
 
-    // Sprint 72 fix: 同时接受 v1、v2 和 v3 (v3 为 Text+JSON 模式)
-    if (!["manager_decision_v3", "manager_decision_v2", "manager_decision_v1"].includes(raw.schema_version)) {
+    // Sprint 72 fix: 同时接受 v1、v2、v3 和 v4 (v3/v4 为 Text+JSON 模式，v4 schema_version 必须为第一字段)
+    if (!["manager_decision_v4", "manager_decision_v3", "manager_decision_v2", "manager_decision_v1"].includes(raw.schema_version)) {
       // Phase 3.2: 协议版本未知 → 立刻失败，不降级拖到超时
       throw Object.assign(
         new Error(`[parseGatedDecision] PROTOCOL_VIOLATION: unknown schema_version "${raw.schema_version}"`),
