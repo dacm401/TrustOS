@@ -64,28 +64,25 @@ export const DecisionRepo = {
   },
 
   async getTodayStats(userId: string): Promise<any> {
-    // 读 delegation_logs（TrustOS 实时写入的事实表）
-    // 时区：PG session = Etc/UTC，但用户在北京（UTC+8）
-    //   CURRENT_DATE AT TIME ZONE 'Asia/Shanghai' → 北京时间今日 00:00 的 UTC 等价
+    // 读 decision_logs（DecisionRepo.save() 写入的主表）
+    // 时区：PG session = UTC，CURRENT_DATE AT TIME ZONE 'Asia/Shanghai' → 北京时间今日 00:00 的 UTC 等价
     const result = await query(
       `SELECT
-        COUNT(*)::int                                                          AS total_requests,
-        COUNT(*) FILTER (WHERE routed_action IN ('direct_answer','ask_clarification'))::int
-                                                                               AS fast_count,
-        COUNT(*) FILTER (WHERE routed_action IN ('delegate_to_slow','execute_task'))::int
-                                                                               AS slow_count,
-        0::int                                                                 AS fallback_count,
-        0::int                                                                 AS total_tokens,
-        COALESCE(SUM(cost_usd), 0)::float                                     AS total_cost,
-        0::float                                                               AS saved_cost,
-        COALESCE(AVG(latency_ms), 0)::int                                     AS avg_latency,
+        COUNT(*)::int                                                                     AS total_requests,
+        COUNT(*) FILTER (WHERE selected_role = 'fast')::int                                  AS fast_count,
+        COUNT(*) FILTER (WHERE selected_role = 'slow')::int                                  AS slow_count,
+        COUNT(*) FILTER (WHERE did_fallback)::int                                           AS fallback_count,
+        COALESCE(SUM(exec_input_tokens + exec_output_tokens), 0)::int                     AS total_tokens,
+        COALESCE(SUM(total_cost_usd), 0)::float                                           AS total_cost,
+        COALESCE(SUM(cost_saved_vs_slow), 0)::float                                      AS saved_cost,
+        COALESCE(AVG(latency_ms), 0)::int                                                 AS avg_latency,
         COALESCE(
           ROUND(
-            COUNT(*) FILTER (WHERE user_success = true)::float /
-            NULLIF(COUNT(*) FILTER (WHERE user_success IS NOT NULL), 0)::float * 100
+            COUNT(*) FILTER (WHERE feedback_score::int = 1)::float /
+            NULLIF(COUNT(*) FILTER (WHERE feedback_score IS NOT NULL), 0)::float * 100
           ), 0
-        )::int                                                                 AS satisfaction_rate
-      FROM delegation_logs
+        )::int                                                                             AS satisfaction_rate
+      FROM decision_logs
       WHERE user_id = $1
         AND created_at >= (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::timestamptz`,
       [userId]
@@ -497,7 +494,8 @@ export const GrowthRepo = {
     const history = await DecisionRepo.getRoutingAccuracyHistory(userId);
     const memories = await MemoryRepo.getBehavioralMemories(userId);
 
-    const totalResult = await query(`SELECT COUNT(*)::int as total FROM delegation_logs WHERE user_id=$1`, [userId]);
+    // totalInteractions: 统计 decision_logs 中该用户的决策数（每次交互 = 1 条决策记录）
+    const totalResult = await query(`SELECT COUNT(*)::int as total FROM decision_logs WHERE user_id=$1`, [userId]);
     const totalInteractions = totalResult.rows[0]?.total || 0;
 
     let currentLevel = GROWTH_LEVELS[0];
@@ -507,9 +505,9 @@ export const GrowthRepo = {
     const nextLevel = GROWTH_LEVELS.find((l) => l.level === currentLevel.level + 1) || currentLevel;
     const progress = nextLevel === currentLevel ? 100 : Math.round(((totalInteractions - currentLevel.min_interactions) / (nextLevel.min_interactions - currentLevel.min_interactions)) * 100);
 
-    // TODO: delegation_logs 没有 cost_saved_vs_slow 列，需要额外计算 baseline cost
-    // 暂时返回 0，后面 sprint 实现
-    const total_saved_usd = 0;
+    // total_saved_usd: 从 decision_logs.cost_saved_vs_slow 聚合
+    const savedResult = await query(`SELECT COALESCE(SUM(cost_saved_vs_slow), 0)::float as total FROM decision_logs WHERE user_id=$1`, [userId]);
+    const total_saved_usd = savedResult.rows[0]?.total || 0;
     const milestonesResult = await query(`SELECT title, created_at FROM growth_milestones WHERE user_id=$1 ORDER BY created_at DESC LIMIT 10`, [userId]);
 
     const recentMemories = memories.sort((a, b) => b.created_at - a.created_at).slice(0, 5);
