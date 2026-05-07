@@ -1355,8 +1355,9 @@ export const DelegationLogRepo = {
    */
   async save(d: DelegationLogInput): Promise<DelegationLog> {
     const id = d.id ?? uuid();
+    // 显式列名映射，防止 DDL 新增列后 positional bind 顺序错位
     await query(
-      `      INSERT INTO delegation_logs (
+      `INSERT INTO delegation_logs (
         id, user_id, session_id, turn_id, task_id, routing_version,
         llm_scores, llm_confidence,
         system_confidence,
@@ -1366,40 +1367,39 @@ export const DelegationLogRepo = {
         routed_action, routing_reason, routing_layer,
         routing_success, value_success, user_success
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,
-        $7,$8,
+        $1, $2, $3, $4, $5, $6,
+        $7, $8,
         $9,
-        $10,$11,$12,
-        $13,$14,$15,$16,
+        $10, $11, $12,
+        $13, $14, $15, $16,
         $17,
-        $18,$19,$20,
-        $21,$22,$23
+        $18, $19, $20,
+        $21, $22, $23
       )`,
       [
-        id,
-        d.user_id,
-        d.session_id,
-        d.turn_id,
-        d.task_id ?? null,
-        d.routing_version ?? "v2",
-        JSON.stringify(d.llm_scores),
-        d.llm_confidence,
-        d.system_confidence,
-        JSON.stringify(d.calibrated_scores),
-        JSON.stringify(d.policy_overrides),
-        d.g2_final_action,
-        d.did_rerank,
-        d.rerank_gap ?? null,
-        JSON.stringify(d.rerank_rules),
-        d.g3_final_action ?? null,
-        d.grayzone_shortcut ?? null,   // $17: grayZone 短路原因（供监控埋点）
-        d.routed_action,
-        d.routing_reason ?? null,
-        d.routing_layer ?? null,
-        // G4: 四层成功标准，首次写入时均为 null（异步回填）
-        d.routing_success ?? null,
-        d.value_success ?? null,
-        d.user_success ?? null,
+        /* $1  */ id,
+        /* $2  */ d.user_id,
+        /* $3  */ d.session_id,
+        /* $4  */ d.turn_id,
+        /* $5  */ d.task_id ?? null,
+        /* $6  */ d.routing_version ?? "v2",
+        /* $7  */ JSON.stringify(d.llm_scores),
+        /* $8  */ d.llm_confidence,
+        /* $9  */ d.system_confidence,
+        /* $10 */ JSON.stringify(d.calibrated_scores),
+        /* $11 */ JSON.stringify(d.policy_overrides),
+        /* $12 */ d.g2_final_action,
+        /* $13 */ d.did_rerank,
+        /* $14 */ d.rerank_gap ?? null,
+        /* $15 */ JSON.stringify(d.rerank_rules),
+        /* $16 */ d.g3_final_action ?? null,
+        /* $17 */ d.grayzone_shortcut ?? null,
+        /* $18 */ d.routed_action,
+        /* $19 */ d.routing_reason ?? null,
+        /* $20 */ d.routing_layer ?? null,
+        /* $21 */ d.routing_success ?? null,   // G4: 首次写入时均为 null（异步回填）
+        /* $22 */ d.value_success ?? null,
+        /* $23 */ d.user_success ?? null,
       ]
     );
 
@@ -1412,30 +1412,31 @@ export const DelegationLogRepo = {
    * G4: 同时回填 routing_success / value_success / user_success（如果传入）。
    */
   async updateExecution(id: string, update: DelegationLogExecutionUpdate): Promise<void> {
+    // 显式列名映射，id 作为最后一个参数，防止顺序错位
     await query(
       `UPDATE delegation_logs SET
-        execution_status = $1,
+        execution_status  = $1,
         execution_correct = $2,
-        error_message = $3,
-        model_used = $4,
-        latency_ms = $5,
-        cost_usd = $6,
-        executed_at = NOW(),
-        routing_success = $8,
-        value_success = $9,
-        user_success = $10
-       WHERE id = $7`,
+        error_message     = $3,
+        model_used        = $4,
+        latency_ms        = $5,
+        cost_usd          = $6,
+        executed_at       = NOW(),
+        routing_success   = $7,
+        value_success     = $8,
+        user_success      = $9
+       WHERE id = $10`,
       [
-        update.execution_status,
-        update.execution_correct ?? null,
-        update.error_message ?? null,
-        update.model_used ?? null,
-        update.latency_ms ?? null,
-        update.cost_usd ?? null,
-        id,
-        update.routing_success ?? null,
-        update.value_success ?? null,
-        update.user_success ?? null,
+        /* $1  */ update.execution_status,
+        /* $2  */ update.execution_correct ?? null,
+        /* $3  */ update.error_message ?? null,
+        /* $4  */ update.model_used ?? null,
+        /* $5  */ update.latency_ms ?? null,
+        /* $6  */ update.cost_usd ?? null,
+        /* $7  */ update.routing_success ?? null,
+        /* $8  */ update.value_success ?? null,
+        /* $9  */ update.user_success ?? null,
+        /* $10 */ id,
       ]
     );
   },
