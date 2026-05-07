@@ -746,6 +746,11 @@ export interface DelegationLog {
   latency_ms?: number;
   cost_usd?: number;
 
+	  // 统计字段（从 delegation_logs 映射）
+	  selected_role?: "fast" | "slow";
+	  exec_input_tokens?: number;
+	  cost_saved_vs_slow?: number;
+
   // G4: 四层成功标准（异步回填，不阻塞主流程）
   // routing_success: manager 是否选对了动作（benchmark 离线分析后回填）
   routing_success?: boolean;

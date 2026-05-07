@@ -273,8 +273,9 @@ export async function* pollArchiveAndYield(
           let cost_usd: number | null = null;
           let latency_ms: number | null = null;
 
+          let workerResultRecord: any = null;
           try {
-            const workerResultRecord = await TaskWorkerResultRepo.getByArchiveId(taskId);
+            workerResultRecord = await TaskWorkerResultRepo.getByArchiveId(taskId);
             if (workerResultRecord) {
               cost_usd = workerResultRecord.cost_usd;
               if (workerResultRecord.started_at && workerResultRecord.completed_at) {

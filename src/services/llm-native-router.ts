@@ -78,6 +78,7 @@ export interface GatedDelegationContext {
   routedAction: ManagerDecisionType;
   /** KB-1: 知识边界信号（可选，用于 trace/debug） */
   knowledgeBoundarySignals?: KnowledgeBoundarySignal[];
+	  grayzone_shortcut?: string;
 }
 
 /**
@@ -369,7 +370,7 @@ export async function routeWithManagerDecision(
       rerank_gap: gatedResult.rerankGap ?? null,
       rerank_rules: gatedResult.rerankResult ? [gatedResult.rerankResult.reason ?? "reranked"] : [],
       g3_final_action: gatedResult.rerankResult ? gatedResult.routedAction : undefined,
-      grayzone_shortcut: gatedResult.grayzone_shortcut ?? null,
+      grayzone_shortcut: gatedResult.grayzone_shortcut ?? undefined,
       routed_action: "direct_answer",
       routing_reason: `Gated: direct_answer (sys_conf=${gatedResult.systemConfidence.toFixed(3)})`,
       routing_layer: "L0",
@@ -743,7 +744,7 @@ async function routeByGatedDecision(
     rerank_gap: gated.rerankGap ?? null,
     rerank_rules: gated.rerankResult ? [gated.rerankResult.reason ?? "reranked"].filter(Boolean) : [],
     g3_final_action: gated.rerankResult ? gated.routedAction : undefined,
-    grayzone_shortcut: gated.grayzone_shortcut ?? null,
+    grayzone_shortcut: gated.grayzone_shortcut ?? undefined,
     routed_action: gated.routedAction,
     routing_reason: `Gated: ${gated.routedAction} (sys_conf=${gated.systemConfidence.toFixed(3)})`,
     // Sprint 68: 显式路由层，用于分层监控和 L2 灰度分析
