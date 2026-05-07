@@ -138,7 +138,7 @@ export const DecisionRepo = {
           d.created_at::date as date,
           d.feedback_score,
           CASE
-            WHEN fe.signal_level IS NOT NULL AND fe.signal_level <= 1 THEN true
+            WHEN fe.signal_level = 1 THEN true
             WHEN fe.signal_level IS NULL AND d.feedback_score IS NOT NULL THEN true
             ELSE false
           END as has_l1_signal
