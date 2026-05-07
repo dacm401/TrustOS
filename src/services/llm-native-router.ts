@@ -373,6 +373,8 @@ export async function routeWithManagerDecision(
       routed_action: "direct_answer",
       routing_reason: `Gated: direct_answer (sys_conf=${gatedResult.systemConfidence.toFixed(3)})`,
       routing_layer: "L0",
+      selected_role: "fast",
+
     }).catch((e: Error) => console.error("[llm-native-router] delegation_log write FAILED (normal direct_answer):", e.message, e.stack));
 
     // 检测模型意图是否原本想委派（降级回退处理）
@@ -746,6 +748,7 @@ async function routeByGatedDecision(
     routing_reason: `Gated: ${gated.routedAction} (sys_conf=${gated.systemConfidence.toFixed(3)})`,
     // Sprint 68: 显式路由层，用于分层监控和 L2 灰度分析
     routing_layer: DECISION_TO_LAYER[gated.routedAction],
+    selected_role: gated.routedAction === "delegate_to_slow" ? "slow" : "fast",
   }).catch((e) => console.warn("[delegation-log] write failed:", e.message));
 
   // Gated Delegation 日志（console.debug 级别，不阻塞主流程）

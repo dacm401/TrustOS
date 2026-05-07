@@ -5,6 +5,7 @@
 import type { RoutingLayer } from "../../types/index.js";
 import { callModelFull, callModelStream } from "../../models/model-gateway.js";
 import { config } from "../../config.js";
+import { estimateCost } from "../../models/token-counter.js";
 import type { ChatMessage } from "../../types/index.js";
 import type { DelegationLogExecutionUpdate } from "../../types/index.js";
 import {
@@ -290,12 +291,20 @@ export async function* pollArchiveAndYield(
             latency_ms = startedMs > 0 ? Date.now() - startedMs : null;
           }
 
+          const slowCost = workerResultRecord
+            ? estimateCost(workerResultRecord.tokens_input, workerResultRecord.tokens_output, config.slowModel)
+            : 0;
+          const actualCost = cost_usd ?? 0;
+          const costSaved = Math.max(0, slowCost - actualCost);
+
           const execUpdate: Partial<DelegationLogExecutionUpdate> = {
             execution_status: "success",
             execution_correct: true, // G4: Worker 执行成功，标记 execution_correct
             model_used: (execution.worker_role as string) ?? "slow_worker",
             latency_ms: latency_ms ?? undefined,
             cost_usd: cost_usd ?? undefined,
+            exec_input_tokens: workerResultRecord?.tokens_input ?? undefined,
+            cost_saved_vs_slow: costSaved > 0 ? costSaved : undefined,
           };
           DelegationLogRepo.updateExecution(delegation_log_id, execUpdate as DelegationLogExecutionUpdate)
             .catch((e) => console.warn("[delegation-log] updateExecution failed:", e.message));

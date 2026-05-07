@@ -1373,6 +1373,9 @@ function mapDelegationLogRow(row: any): DelegationLog {
     routing_success: row.routing_success,
     value_success: row.value_success,
     user_success: row.user_success,
+    selected_role: row.selected_role ?? undefined,
+    exec_input_tokens: row.exec_input_tokens ?? undefined,
+    cost_saved_vs_slow: row.cost_saved_vs_slow ? Number(row.cost_saved_vs_slow) : undefined,
     created_at: row.created_at,
     executed_at: row.executed_at,
   };
@@ -1395,7 +1398,8 @@ export const DelegationLogRepo = {
         did_rerank, rerank_gap, rerank_rules, g3_final_action,
         grayzone_shortcut,
         routed_action, routing_reason, routing_layer,
-        routing_success, value_success, user_success
+        routing_success, value_success, user_success,
+        selected_role
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
         $7, $8,
@@ -1404,7 +1408,8 @@ export const DelegationLogRepo = {
         $13, $14, $15, $16,
         $17,
         $18, $19, $20,
-        $21, $22, $23
+        $21, $22, $23,
+        $24
       )`,
       [
         /* $1  */ id,
@@ -1430,6 +1435,7 @@ export const DelegationLogRepo = {
         /* $21 */ d.routing_success ?? null,   // G4: 首次写入时均为 null（异步回填）
         /* $22 */ d.value_success ?? null,
         /* $23 */ d.user_success ?? null,
+        /* $24 */ d.selected_role ?? null,
       ]
     );
 
@@ -1451,11 +1457,13 @@ export const DelegationLogRepo = {
         model_used        = $4,
         latency_ms        = $5,
         cost_usd          = $6,
+        exec_input_tokens = $7,
+        cost_saved_vs_slow = $8,
         executed_at       = NOW(),
-        routing_success   = $7,
-        value_success     = $8,
-        user_success      = $9
-       WHERE id = $10`,
+        routing_success   = $9,
+        value_success     = $10,
+        user_success      = $11
+       WHERE id = $12`,
       [
         /* $1  */ update.execution_status,
         /* $2  */ update.execution_correct ?? null,
@@ -1463,10 +1471,12 @@ export const DelegationLogRepo = {
         /* $4  */ update.model_used ?? null,
         /* $5  */ update.latency_ms ?? null,
         /* $6  */ update.cost_usd ?? null,
-        /* $7  */ update.routing_success ?? null,
-        /* $8  */ update.value_success ?? null,
-        /* $9  */ update.user_success ?? null,
-        /* $10 */ id,
+        /* $7  */ update.exec_input_tokens ?? null,
+        /* $8  */ update.cost_saved_vs_slow ?? null,
+        /* $9  */ update.routing_success ?? null,
+        /* $10 */ update.value_success ?? null,
+        /* $11 */ update.user_success ?? null,
+        /* $12 */ id,
       ]
     );
   },

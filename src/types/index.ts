@@ -782,6 +782,8 @@ export interface DelegationLogInput {
   routing_reason?: string;
   // Sprint 68: 显式路由层（L0/L1/L2/L3），用于分层监控和 L2 灰度分析
   routing_layer?: RoutingLayer;
+  // 统计字段：让 delegation_logs 能独立支撑统计接口
+  selected_role?: "fast" | "slow";
 
   // G4: 四层成功标准（异步回填，首次写入时为空）
   routing_success?: boolean;
@@ -801,6 +803,9 @@ export interface DelegationLogExecutionUpdate {
   routing_success?: boolean;
   value_success?: "better" | "same" | "worse";
   user_success?: boolean;
+  // 统计字段（异步回填）
+  exec_input_tokens?: number;
+  cost_saved_vs_slow?: number;
 }
 
 /** 决策类型枚举（Phase 0 精简版，4 种） */

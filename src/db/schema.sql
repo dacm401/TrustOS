@@ -418,6 +418,9 @@ CREATE TABLE IF NOT EXISTS delegation_logs (
   model_used         VARCHAR(100),
   latency_ms         INTEGER,
   cost_usd           DECIMAL(10, 6),
+  exec_input_tokens INTEGER         DEFAULT 0,
+  cost_saved_vs_slow DECIMAL(10, 6),
+  selected_role     TEXT,
 
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   executed_at        TIMESTAMPTZ
