@@ -810,6 +810,17 @@ export type ManagerDecisionType =
   | "delegate_to_slow"
   | "execute_task";
 
+/**
+ * 编译期穷尽检查工具（exhaustiveness check）
+ *
+ * 用法：switch(action) { ... default: assertUnreachable(action) }
+ * 当 switch 没有覆盖所有枚举成员时，TypeScript 编译期报错。
+ * 运行时抛出 Error 防止静默 fallthrough。
+ */
+export function assertUnreachable(x: never, context?: string): never {
+  throw new Error(`Unhandled case${context ? ` in ${context}` : ""}: ${String(x)}`);
+}
+
 /** 路由层（兼容现有 L0/L1/L2/L3） */
 export type RoutingLayer = "L0" | "L1" | "L2" | "L3";
 

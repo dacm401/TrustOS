@@ -29,7 +29,7 @@ import type {
   DecisionFeatures,
   AmbiguitySignal,
 } from "../types/index.js";
-import { DECISION_TO_LAYER } from "../types/index.js";
+import { DECISION_TO_LAYER, assertUnreachable } from "../types/index.js";
 import { parseAndValidate } from "./decision-validator.js";
 import { taskPlanner } from "./task-planner.js";
 import { DelegationLogRepo } from "../db/repositories.js";
@@ -1194,15 +1194,8 @@ async function routeByDecision(
     }
 
     default: {
-      console.warn("[llm-native-router] Unknown decision_type:", (decision as any).decision_type);
-      return {
-        message: language === "zh" ? "好的，让我看看。" : "Got it.",
-        decision,
-        routing_layer: "L0",
-        decision_type: null,
-        raw_manager_output: raw,
-        delegation_log_id,
-      };
+      // 编译期穷尽检查：如果 ManagerDecisionType 新增成员，TypeScript 会在这里报错
+      return assertUnreachable(decision.decision_type, "routeByDecision");
     }
   }
 }
