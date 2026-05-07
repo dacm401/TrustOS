@@ -65,26 +65,58 @@ export const DecisionRepo = {
 
   async getTodayStats(userId: string): Promise<any> {
     // 读 decision_logs（DecisionRepo.save() 写入的主表）
+    // satisfaction_rate 三层逻辑：
+    //   L1:  feedback_events.signal_level = 1  → event_type 决定正负（thumbs_up/regenerated=正，thumbs_down=负）
+    //   L2+: feedback_events.signal_level >= 2 → 不计入
+    //   Legacy: 无 feedback_events 行          → decision_logs.feedback_score（1=正，0=负）
     // 时区：PG session = UTC，CURRENT_DATE AT TIME ZONE 'Asia/Shanghai' → 北京时间今日 00:00 的 UTC 等价
     const result = await query(
-      `SELECT
-        COUNT(*)::int                                                                     AS total_requests,
-        COUNT(*) FILTER (WHERE selected_role = 'fast')::int                                  AS fast_count,
-        COUNT(*) FILTER (WHERE selected_role = 'slow')::int                                  AS slow_count,
-        COUNT(*) FILTER (WHERE did_fallback)::int                                           AS fallback_count,
-        COALESCE(SUM(exec_input_tokens + exec_output_tokens), 0)::int                     AS total_tokens,
-        COALESCE(SUM(total_cost_usd), 0)::float                                           AS total_cost,
-        COALESCE(SUM(cost_saved_vs_slow), 0)::float                                      AS saved_cost,
-        COALESCE(AVG(latency_ms), 0)::int                                                 AS avg_latency,
+      `WITH base AS (
+        SELECT
+          d.id,
+          d.selected_role,
+          d.did_fallback,
+          d.exec_input_tokens,
+          d.exec_output_tokens,
+          d.total_cost_usd,
+          d.cost_saved_vs_slow,
+          d.latency_ms,
+          d.feedback_score,
+          fe.signal_level,
+          fe.event_type,
+          -- L1 判断：有 feedback_events 行且 signal_level=1；或无行且 feedback_score IS NOT NULL（legacy L1）
+          CASE
+            WHEN fe.signal_level = 1 THEN true
+            WHEN fe.signal_level IS NULL AND d.feedback_score IS NOT NULL THEN true
+            ELSE false
+          END AS is_l1,
+          -- 正向信号：L1 且 (thumbs_up 或 regenerated) 或 legacy positive
+          CASE
+            WHEN fe.signal_level = 1 AND fe.event_type IN ('thumbs_up', 'regenerated') THEN true
+            WHEN fe.signal_level IS NULL AND d.feedback_score >= 1 THEN true
+            ELSE false
+          END AS is_positive
+        FROM decision_logs d
+        LEFT JOIN feedback_events fe ON fe.decision_id = d.id AND fe.user_id = d.user_id
+        WHERE d.user_id = $1
+          AND d.created_at >= (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::timestamptz
+      )
+      SELECT
+        COUNT(*)::int                                                                    AS total_requests,
+        COUNT(*) FILTER (WHERE selected_role = 'fast')::int                               AS fast_count,
+        COUNT(*) FILTER (WHERE selected_role = 'slow')::int                               AS slow_count,
+        COUNT(*) FILTER (WHERE did_fallback)::int                                        AS fallback_count,
+        COALESCE(SUM(COALESCE(exec_input_tokens, 0) + COALESCE(exec_output_tokens, 0)), 0)::int AS total_tokens,
+        COALESCE(SUM(total_cost_usd), 0)::float                                         AS total_cost,
+        COALESCE(SUM(cost_saved_vs_slow), 0)::float                                     AS saved_cost,
+        COALESCE(AVG(latency_ms), 0)::int                                               AS avg_latency,
         COALESCE(
           ROUND(
-            COUNT(*) FILTER (WHERE feedback_score::int = 1)::float /
-            NULLIF(COUNT(*) FILTER (WHERE feedback_score IS NOT NULL), 0)::float * 100
+            COUNT(*) FILTER (WHERE is_l1 AND is_positive)::float /
+            NULLIF(COUNT(*) FILTER (WHERE is_l1), 0)::float * 100
           ), 0
-        )::int                                                                             AS satisfaction_rate
-      FROM decision_logs
-      WHERE user_id = $1
-        AND created_at >= (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::timestamptz`,
+        )::int                                                                           AS satisfaction_rate
+      FROM base`,
       [userId]
     );
     return result.rows[0];
