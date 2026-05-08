@@ -547,24 +547,39 @@ async function callDirectReplyModel(input: {
 function splitManagerOutput(output: string): { userFacingText: string; jsonPart: string } {
   // 匹配 ```json 块
   const jsonMatch = output.match(/```json\s*([\s\S]*?)\s*```/);
-  
+
+  let jsonPart: string;
+  let userFacingText: string;
+
   if (jsonMatch) {
-    const jsonPart = jsonMatch[1];
+    jsonPart = jsonMatch[1];
     // 获取 JSON 之前的部分作为用户可见文本
-    const userFacingText = output.slice(0, jsonMatch.index).trim();
-    return { userFacingText, jsonPart };
+    userFacingText = output.slice(0, jsonMatch.index).trim();
+  } else {
+    // 如果没有找到 ```json 块，尝试匹配裸 JSON
+    const bareJsonMatch = output.match(/(\{[\s\S]*\})/);
+    if (bareJsonMatch) {
+      jsonPart = bareJsonMatch[1];
+      userFacingText = output.slice(0, bareJsonMatch.index).trim();
+    } else {
+      // 如果没有 JSON，整个文本都视为用户可见文本
+      return { userFacingText: output.trim(), jsonPart: "" };
+    }
   }
 
-  // 如果没有找到 JSON 块，尝试匹配裸 JSON
-  const bareJsonMatch = output.match(/(\{[\s\S]*\})/);
-  if (bareJsonMatch) {
-    const jsonPart = bareJsonMatch[1];
-    const userFacingText = output.slice(0, bareJsonMatch.index).trim();
-    return { userFacingText, jsonPart };
+  // 如果前面没有自然语言文本，尝试从 JSON 的 direct_response.content 提取
+  if (!userFacingText && jsonPart) {
+    try {
+      const parsed = JSON.parse(jsonPart);
+      if (parsed.direct_response?.content) {
+        userFacingText = parsed.direct_response.content.trim();
+      }
+    } catch {
+      // ignore JSON parse errors
+    }
   }
 
-  // 如果没有 JSON，整个文本都视为用户可见文本
-  return { userFacingText: output.trim(), jsonPart: "" };
+  return { userFacingText, jsonPart };
 }
 
 function parseGatedDecision(

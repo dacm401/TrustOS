@@ -3,14 +3,32 @@ import { useState, useEffect } from "react";
 import { getDashboard, getGrowth, fetchCostStats } from "@/lib/api";
 import type { CostStats } from "@/lib/api";
 
+// 匹配后端 DashboardData 类型 (src/types/task.ts)
 interface DashboardData {
-  total_chats: number;
-  satisfaction_rate: number;
-  token_savings_rate: number;
-  fast_route_rate: number;
-  intent_distribution: Array<{ intent: string; count: number }>;
-  model_distribution: Array<{ model: string; count: number }>;
-  top_intents?: Array<{ intent: string; count: number }>;
+  today: {
+    total_requests: number;
+    fast_count: number;
+    slow_count: number;
+    fallback_count: number;
+    total_cost: number;
+    saved_cost: number;
+    saving_rate: number;
+    avg_latency_ms: number;
+    satisfaction_proxy: number;
+  };
+  token_flow: {
+    fast_tokens: number;
+    slow_tokens: number;
+    compressed_tokens: number;
+    fallback_tokens: number;
+  };
+  recent_decisions: Array<{
+    id: string;
+    timestamp: number;
+    input_features: { intent: string };
+    routing: { selected_role: string; selected_model: string | null };
+  }>;
+  growth: GrowthData;
 }
 
 interface GrowthData {
@@ -130,9 +148,13 @@ export default function DashboardView({ userId }: DashboardViewProps) {
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-3 mb-3">
-            <KpiCard label="今日对话" value={dashboard?.total_chats ?? 0} color="var(--accent-blue)" />
-            <KpiCard label="满意率" value={dashboard?.satisfaction_rate ?? 0} unit="%" color="var(--accent-green)" />
-            <KpiCard label="快速路由" value={dashboard?.fast_route_rate ?? 0} unit="%" color="var(--accent-purple)" />
+            <KpiCard label="今日对话" value={dashboard?.today.total_requests ?? 0} color="var(--accent-blue)" />
+            <KpiCard label="满意率" value={dashboard?.today.satisfaction_proxy ?? 0} unit="%" color="var(--accent-green)" />
+            <KpiCard label="快速路由" value={
+              dashboard?.today.total_requests
+                ? Math.round((dashboard.today.fast_count / dashboard.today.total_requests) * 100)
+                : 0
+            } unit="%" color="var(--accent-purple)" />
           </div>
         )}
 
@@ -216,7 +238,14 @@ export default function DashboardView({ userId }: DashboardViewProps) {
               </div>
             ) : (
               (() => {
-                const intents = dashboard?.top_intents ?? dashboard?.intent_distribution ?? [];
+                // 从 recent_decisions 提取意图分布
+                const decisions = dashboard?.recent_decisions ?? [];
+                const intentMap: Record<string, number> = {};
+                decisions.forEach((d) => {
+                  const intent = d.input_features?.intent ?? "unknown";
+                  intentMap[intent] = (intentMap[intent] || 0) + 1;
+                });
+                const intents = Object.entries(intentMap).map(([intent, count]) => ({ intent, count }));
                 const max = Math.max(...intents.map((i) => i.count), 1);
                 return intents.length > 0 ? (
                   intents.slice(0, 6).map((item) => (
@@ -240,9 +269,16 @@ export default function DashboardView({ userId }: DashboardViewProps) {
               </div>
             ) : (
               (() => {
-                const models = dashboard?.model_distribution ?? [];
+                // 从 recent_decisions 提取模型使用分布
+                const decisions = dashboard?.recent_decisions ?? [];
+                const modelMap: Record<string, number> = {};
+                decisions.forEach((d) => {
+                  const model = d.routing?.selected_model ?? d.routing?.selected_role ?? "unknown";
+                  modelMap[model] = (modelMap[model] || 0) + 1;
+                });
+                const models = Object.entries(modelMap).map(([model, count]) => ({ model, count }));
                 const max = Math.max(...models.map((m) => m.count), 1);
-                const colors = ["var(--accent-purple)", "var(--accent-blue)", "var(--accent-green)"];
+                const colors = ["var(--accent-purple)", "var(--accent-blue)", "var(--accent-green)", "var(--accent-yellow)"];
                 return models.length > 0 ? (
                   models.slice(0, 5).map((item, idx) => (
                     <BarRow key={item.model} label={item.model.split("/").pop() ?? item.model} value={item.count} max={max} color={colors[idx % colors.length]} />

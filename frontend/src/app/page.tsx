@@ -56,36 +56,36 @@ export default function HomePage() {
           {/* Left: Sidebar */}
           <Sidebar activeNav={activeNav} onNavChange={(id) => setActiveNav(id as NavView)} onSettingsClick={() => setShowSettings(true)} />
 
-          {/* Center: View Area */}
+          {/* Center: View Area - 用CSS隐藏而非卸载，保持状态 */}
           <main
             className="flex-1 overflow-hidden"
             style={{ maxWidth: sidebarOpen ? undefined : "100%" }}
           >
             <ErrorBoundary fallback={null}>
-              {activeNav === "chat" && (
+              <div style={{ display: activeNav === "chat" ? "block" : "none", height: "100%" }}>
                 <ChatInterface
                   onTaskIdChange={setSelectedTaskId}
                   userId={userId}
                 />
-              )}
+              </div>
             </ErrorBoundary>
 
             <ErrorBoundary fallback={null}>
-              {activeNav === "tasks" && (
+              <div style={{ display: activeNav === "tasks" ? "block" : "none", height: "100%" }}>
                 <TasksView userId={userId} />
-              )}
+              </div>
             </ErrorBoundary>
 
             <ErrorBoundary fallback={null}>
-              {activeNav === "memory" && (
+              <div style={{ display: activeNav === "memory" ? "block" : "none", height: "100%" }}>
                 <MemoryView userId={userId} />
-              )}
+              </div>
             </ErrorBoundary>
 
             <ErrorBoundary fallback={null}>
-              {activeNav === "dashboard" && (
+              <div style={{ display: activeNav === "dashboard" ? "block" : "none", height: "100%" }}>
                 <DashboardView userId={userId} />
-              )}
+              </div>
             </ErrorBoundary>
           </main>
 
