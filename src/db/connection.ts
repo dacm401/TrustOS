@@ -8,7 +8,12 @@ function makePool(): pg.Pool {
   const url = process.env.DATABASE_URL ?? config.databaseUrl;
   // Sprint 05 fix: 打印实际连接的 DB URL（脱敏密码）
   console.log(`[DB] Connecting to: ${url.replace(/:[^:@]+@/, ':***@')}`);
-  const p = new Pool({ connectionString: url, max: 20, idleTimeoutMillis: 30000 });
+  const p = new Pool({
+    connectionString: url,
+    max: Number(process.env["DB_POOL_MAX"]) || 20,
+    idleTimeoutMillis: Number(process.env["DB_POOL_IDLE_TIMEOUT"]) || 30000,
+    connectionTimeoutMillis: Number(process.env["DB_CONN_TIMEOUT"]) || 5000,
+  });
   p.on("error", (err) => {
     console.error("Unexpected database error:", err);
   });
