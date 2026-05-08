@@ -22,12 +22,42 @@ function resolvePath(id) {
   return path.join(EXP_DIR, `${id}.csv`);
 }
 
+/**
+ * 简单 CSV 解析器：处理带引号和逗号的字段
+ * e.g. `"bucket_[0.00,0.60)"` 不会被 `,` 分割
+ */
+function parseCsvLine(line) {
+  const fields = [];
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === '"') {
+      // quoted field
+      let j = i + 1;
+      while (j < line.length) {
+        if (line[j] === '"' && line[j + 1] === '"') { j += 2; continue; } // escaped quote
+        if (line[j] === '"') { j++; break; }
+        j++;
+      }
+      fields.push(line.slice(i + 1, j - 1).replace(/""/g, '"'));
+      i = j;
+      if (line[i] === ',') i++;
+    } else {
+      // unquoted field
+      const next = line.indexOf(',', i);
+      if (next === -1) { fields.push(line.slice(i)); break; }
+      fields.push(line.slice(i, next));
+      i = next + 1;
+    }
+  }
+  return fields;
+}
+
 function loadCsv(filePath) {
   const raw = fs.readFileSync(filePath, "utf8").trim();
   const lines = raw.split("\n");
-  const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, ""));
-  const values = lines[1].split(",").map(v => v.replace(/^"|"$/g, ""));
-  return Object.fromEntries(headers.map((h, i) => [h.trim(), values[i]]));
+  const headers = parseCsvLine(lines[0]);
+  const values = parseCsvLine(lines[1]);
+  return Object.fromEntries(headers.map((h, i) => [h.trim(), values[i]?.trim() ?? null]));
 }
 
 function fmt(v) { return v == null ? "N/A" : v; }
@@ -93,12 +123,11 @@ async function main() {
 
   console.log(`\n  【按 confidence 区间】`);
   for (const b of bucketKeys) {
-    const bk = b.replace(/[\[\]]/g, "");
-    const t1 = fmt(e1[`trigger_${bk}`]);
-    const t2 = fmt(e2[`trigger_${bk}`]);
-    const c1 = fmt(e1[`change_${bk}`]);
-    const c2 = fmt(e2[`change_${bk}`]);
-    const td = isNum(t1) && isNum(t2) ? delta(e1[`trigger_${bk}`], e2[`trigger_${bk}`]) : "—";
+    const t1 = fmt(e1[`trigger_${b}`]);
+    const t2 = fmt(e2[`trigger_${b}`]);
+    const c1 = fmt(e1[`change_${b}`]);
+    const c2 = fmt(e2[`change_${b}`]);
+    const td = isNum(t1) && isNum(t2) ? delta(e1[`trigger_${b}`], e2[`trigger_${b}`]) : "—";
     console.log(`  ${b.padEnd(16)} trigger: ${t1.padEnd(8)}→${t2.padEnd(8)} (${td})  change: ${c1}→${c2}`);
   }
 
