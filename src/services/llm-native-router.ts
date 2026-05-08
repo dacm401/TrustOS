@@ -34,7 +34,7 @@ import { parseAndValidate } from "./decision-validator.js";
 import { taskPlanner } from "./task-planner.js";
 import { DelegationLogRepo } from "../db/repositories.js";
 import { TaskArchiveRepo } from "../db/task-archive-repo.js";
-import { buildManagerSystemPrompt } from "../prompts/manager/v4.js";
+import { loadManagerPrompt, getManagerPromptVersion } from "../prompts/loader.js";
 
 // Phase 4: Permission Layer + Redaction imports (lazy loaded to avoid circular deps)
 let phase4Module: typeof import("./phase4/index.js") | null = null;
@@ -149,9 +149,10 @@ export function runGatedDelegation(
   };
 }
 
-// ── Manager Prompt ────────────────────────────────────────────────────────────
-// Prompt content extracted to src/prompts/ — import from there to stay current.
-export { buildManagerSystemPrompt } from "../prompts/manager/v4.js";
+// ── Manager Prompt ───────────────────────────────────────────────────────────
+// Prompt content extracted to src/prompts/ — version controlled by MANAGER_PROMPT_VERSION env var.
+export { buildManagerSystemPrompt, MANAGER_PROMPT_VERSION } from "../prompts/loader.js";
+export { getManagerPromptVersion } from "../prompts/loader.js";
 
 export interface LLMNativeRouterInput {
   message: string;
@@ -433,7 +434,7 @@ async function callManagerModel(input: {
 }): Promise<string> {
   const { message, history, language, reqApiKey, crossSessionContext, userMemories } = input;
 
-  const systemPrompt = buildManagerSystemPrompt(language, crossSessionContext, userMemories);
+  const { prompt: systemPrompt } = await loadManagerPrompt(language, crossSessionContext, userMemories);
   // 保留最近 6 轮对话作为上下文，不传全量 history（Manager 只读当前任务）
   const recentHistory = history.filter((m) => m.role !== "system").slice(-6);
 
