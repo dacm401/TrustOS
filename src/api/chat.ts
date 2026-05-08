@@ -84,8 +84,9 @@ chatRouter.post("/chat", async (c) => {
     }
   }
 
-  // 请求级覆盖：前端设置里的 Key / 模型优先于环境变量
+  // 请求级覆盖：前端设置里的 Key / LLM 地址 / 模型优先于环境变量
   const reqApiKey = body.api_key || undefined;
+  const reqLlmBaseUrl = body.llm_base_url || undefined;
   const effectiveFastModel = body.fast_model || config.fastModel;
   const effectiveSlowModel = body.slow_model || config.slowModel;
 
@@ -204,6 +205,9 @@ chatRouter.post("/chat", async (c) => {
           history: body.history ?? [],
           language: features.language as "zh" | "en",
           reqApiKey,
+          reqLlmBaseUrl,
+          fastModel: effectiveFastModel,
+          slowModel: effectiveSlowModel,
           crossSessionContext,
         });
         console.log("[chat] routeWithManagerDecision done, decision_type:", llmNativeResult?.decision_type, "delegation:", !!llmNativeResult?.delegation);
@@ -377,14 +381,17 @@ chatRouter.post("/chat", async (c) => {
 
       llmNativeResult = await routeWithManagerDecision({
         message: body.message ?? "",
-        user_id: userId,
-        session_id: sessionId,
-        turn_id: (body.history ?? []).length,
-        history: body.history ?? [],
-        language: features.language as "zh" | "en",
-        reqApiKey,
-        crossSessionContext,
-      });
+          user_id: userId,
+          session_id: sessionId,
+          turn_id: (body.history ?? []).length,
+          history: body.history ?? [],
+          language: features.language as "zh" | "en",
+          reqApiKey,
+          reqLlmBaseUrl,
+          fastModel: effectiveFastModel,
+          slowModel: effectiveSlowModel,
+          crossSessionContext,
+        });
     } catch (e: any) {
       return c.json({ error: "LLM-native routing failed: " + e.message }, 500);
     }

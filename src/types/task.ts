@@ -131,7 +131,11 @@ export interface ChatRequest {
   preferences?: { mode: "quality" | "balanced" | "cost"; compression_level?: CompressionLevel };
   /** 前端设置透传：可覆盖后端环境变量 */
   api_key?: string;
+  /** 前端设置透传：LLM API 地址，优先于 OPENAI_BASE_URL 环境变量 */
+  llm_base_url?: string;
+  /** 前端设置透传：优先于 FAST_MODEL 环境变量 */
   fast_model?: string;
+  /** 前端设置透传：优先于 SLOW_MODEL 环境变量 */
   slow_model?: string;
   /** EL-003: If true, route this request through TaskPlanner + ExecutionLoop (multi-step execution). */
   execute?: boolean;

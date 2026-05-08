@@ -163,6 +163,12 @@ export interface LLMNativeRouterInput {
   history: ChatMessage[];
   language: "zh" | "en";
   reqApiKey?: string;
+  /** 前端透传：LLM API 地址，优先于 config.openaiBaseUrl */
+  reqLlmBaseUrl?: string;
+  /** 前端透传：优先于 config.fastModel */
+  fastModel?: string;
+  /** 前端透传：优先于 config.slowModel */
+  slowModel?: string;
   /** Sprint 63: 跨会话上下文（active task + history facts） */
   crossSessionContext?: string;
 }
@@ -199,7 +205,7 @@ export interface LLMNativeRouterResult {
 export async function routeWithManagerDecision(
   input: LLMNativeRouterInput
 ): Promise<LLMNativeRouterResult> {
-  const { message, user_id, session_id, turn_id, history, language, reqApiKey, crossSessionContext } = input;
+  const { message, user_id, session_id, turn_id, history, language, reqApiKey, reqLlmBaseUrl, fastModel, slowModel, crossSessionContext } = input;
 
   // P4: Learning Layer — 检索用户记忆，在调用 Manager 之前注入
   let userMemories: string | undefined;
@@ -225,7 +231,7 @@ export async function routeWithManagerDecision(
   }
 
   // Step 1: 调用 Fast 模型，传递 Manager Prompt（含 cross-session 上下文 + 用户记忆）
-  const managerOutput = await callManagerModel({ message, history, language, reqApiKey, crossSessionContext, userMemories });
+  const managerOutput = await callManagerModel({ message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext, userMemories });
 
   // Step 1.5 (KB-1): 检测知识边界信号
   // fail-open：检测异常不阻断主流程，只记录 warning
@@ -386,7 +392,7 @@ export async function routeWithManagerDecision(
     if (isDelegateIntent) {
       console.log("[llm-native-router] Route downgrade detected: model intended to delegate, generating real reply via fallback model");
       const realReply = await callDirectReplyModel({
-        message, history, language, reqApiKey, crossSessionContext
+        message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext
       });
       console.log(`[llm-native-router] Fallback reply generated, length: ${realReply.length}`);
       return {
@@ -427,12 +433,20 @@ async function callManagerModel(input: {
   history: ChatMessage[];
   language: "zh" | "en";
   reqApiKey?: string;
+  /** 前端透传：LLM API 地址，优先于 config.openaiBaseUrl */
+  reqLlmBaseUrl?: string;
+  /** 前端透传：优先于 config.fastModel */
+  fastModel?: string;
   /** Sprint 63: cross-session context */
   crossSessionContext?: string;
   /** P4: 用户记忆层 — 来自历史交互学习的行为偏好 */
   userMemories?: string;
 }): Promise<string> {
-  const { message, history, language, reqApiKey, crossSessionContext, userMemories } = input;
+  const { message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext, userMemories } = input;
+
+  // 前端透传优先于环境变量
+  const effectiveFastModel = fastModel || config.fastModel;
+  const effectiveBaseUrl = reqLlmBaseUrl || config.openaiBaseUrl || undefined;
 
   const { prompt: systemPrompt } = await loadManagerPrompt(language, crossSessionContext, userMemories);
   // 保留最近 6 轮对话作为上下文，不传全量 history（Manager 只读当前任务）
@@ -445,16 +459,20 @@ async function callManagerModel(input: {
   ];
 
   try {
-    if (reqApiKey) {
+    // 有透传 key 或 baseUrl 时，走 callOpenAIWithOptions（支持自定义 baseUrl/apiKey）
+    // 注意：仅传 fastModel 时不足以触发此分支，避免向 callOpenAIWithOptions 传 undefined apiKey
+    const hasAuthOverride = reqApiKey || reqLlmBaseUrl;
+    if (hasAuthOverride) {
       const resp = await callOpenAIWithOptions(
-        config.fastModel,
+        effectiveFastModel,
         messages,
-        reqApiKey,
-        config.openaiBaseUrl || undefined
+        reqApiKey || config.openaiApiKey || undefined,
+        effectiveBaseUrl
       );
       return resp.content;
     }
-    const resp = await callModelFull(config.fastModel, messages);
+    // 无鉴权透传，走默认路径（callModelFull 内部读 config）
+    const resp = await callModelFull(effectiveFastModel, messages);
     return resp.content;
   } catch (e: any) {
     console.error("[llm-native-router] Manager model call failed:", e.message);
@@ -473,9 +491,17 @@ async function callDirectReplyModel(input: {
   history: ChatMessage[];
   language: "zh" | "en";
   reqApiKey?: string;
+  /** 前端透传：LLM API 地址，优先于 config.openaiBaseUrl */
+  reqLlmBaseUrl?: string;
+  /** 前端透传：优先于 config.fastModel */
+  fastModel?: string;
   crossSessionContext?: string;
 }): Promise<string> {
-  const { message, history, language, reqApiKey, crossSessionContext } = input;
+  const { message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext } = input;
+
+  // 前端透传优先于环境变量
+  const effectiveFastModel = fastModel || config.fastModel;
+  const effectiveBaseUrl = reqLlmBaseUrl || config.openaiBaseUrl || undefined;
 
   const systemPrompt = language === "zh"
     ? "你是一个智能助手。请直接、详细地回答用户的问题。"
@@ -491,11 +517,20 @@ async function callDirectReplyModel(input: {
   ];
 
   try {
-    if (reqApiKey) {
-      const resp = await callOpenAIWithOptions(config.fastModel, messages, reqApiKey, config.openaiBaseUrl || undefined);
+    // 有透传 key 或 baseUrl 时，走 callOpenAIWithOptions（支持自定义 baseUrl/apiKey）
+    // 注意：仅传 fastModel 时不足以触发此分支，避免向 callOpenAIWithOptions 传 undefined apiKey
+    const hasAuthOverride = reqApiKey || reqLlmBaseUrl;
+    if (hasAuthOverride) {
+      const resp = await callOpenAIWithOptions(
+        effectiveFastModel,
+        messages,
+        reqApiKey || config.openaiApiKey || undefined,
+        effectiveBaseUrl
+      );
       return resp.content;
     }
-    const resp = await callModelFull(config.fastModel, messages);
+    // 无鉴权透传，走默认路径（callModelFull 内部读 config）
+    const resp = await callModelFull(effectiveFastModel, messages);
     return resp.content;
   } catch (e: any) {
     console.error("[llm-native-router] Direct reply model call failed:", e.message);
@@ -1174,7 +1209,7 @@ async function routeByDecision(
           goal: command?.goal ?? message,
           userId: user_id,
           sessionId: session_id,
-          model: config.slowModel,
+          model: slowModel || config.slowModel,
         });
         console.log("[llm-native-router] execute_task: ExecutionPlan generated:", {
           taskId,
