@@ -797,7 +797,8 @@ async function routeByDecision(
   switch (decision.decision_type) {
     case "direct_answer": {
       const dr = decision.direct_response as DirectResponse | undefined;
-      const reply = dr?.content || (language === "zh" ? "好的。" : "Got it.");
+      // 优先读 direct_response.content（v4），回退到 rationale（v3/v2/v1）
+      const reply = dr?.content || (decision as unknown as { rationale?: string }).rationale || (language === "zh" ? "好的。" : "Got it.");
       return {
         message: reply,
         decision,

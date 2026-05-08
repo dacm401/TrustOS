@@ -123,6 +123,9 @@ export function buildManagerSystemPrompt(
   },
   "rationale": "一句话决策理由",
   "decision_type": "四个动作之一",
+  "direct_response": {
+    "content": "当 decision_type=direct_answer 时，直接写用户看到的完整回答（用中文）。当 decision_type 不是 direct_answer 时，写安抚语（如：好的，正在为您分析...）"
+  },
   "command": { "task_brief": "当 decision_type=delegate/execute 时的任务摘要", "constraints": ["约束1"] },
   "clarification": {
     "question_text": "当 decision_type=ask_clarification 时的具体澄清问题（用中文）",
@@ -132,10 +135,12 @@ export function buildManagerSystemPrompt(
 \`\`\`
 
 【输出规则】
-- **先说人话，后给 JSON**。JSON 必须用代码块包裹。
-- **重要**：当 decision_type=ask_clarification 时，**自然语言部分必须是真正的中文澄清问题**（如"您想了解哪个城市的天气？"），**不要**输出"好的，正在分析"这种安抚语。如果不安抚，JSON 里的 clarification.question_text 会直接展示给用户。
-- JSON 中的 clarification.question_text 用于提取澄清问题，**必须用中文**（用户说中文）。
-- 必须包含所有字段`;
+- 用户可见的回答**必须写入 JSON 的 direct_response.content 字段**，不要在 JSON 外面写任何自然语言。
+- 当 decision_type=ask_clarification 时，JSON 中的 clarification.question_text 是用户看到的澄清问题（必须用中文）。
+- 当 decision_type=direct_answer 时，direct_response.content 包含直接回复用户的完整回答（用中文）。
+- 当 decision_type=delegate_to_slow 或 execute_task 时，direct_response.content 写简短安抚语（如："好的，正在为您深入分析..."）。
+- 必须包含所有字段。
+- schema_version 必须为 JSON 第一个字段`;
 
   const enPrompt = `You are SmartRouter Pro's Manager model.
 
@@ -217,10 +222,12 @@ After understanding the user's request, you need to complete two tasks:
 \`\`\`
 
 【Output Rules】
-- **Speak human first, then give JSON**. JSON must be in a code block.
-- **Important**: When decision_type=ask_clarification, the **natural language MUST be the actual clarification question** (in Chinese if user writes Chinese, e.g. "您想了解哪个城市？" instead of "OK, analyzing..."). If you don't ask the question naturally, the JSON's clarification.question_text will be shown to the user directly.
-- JSON's clarification.question_text is used to extract the clarification question, **must match the natural language question**.
-- Must include all fields`;
+- The user-facing reply **must be written into the JSON's direct_response.content field**. Do NOT write any natural language outside the JSON.
+- When decision_type=ask_clarification, the JSON's clarification.question_text is what the user sees (in the same language as the user's request).
+- When decision_type=direct_answer, direct_response.content contains the complete reply to the user.
+- When decision_type=delegate_to_slow or execute_task, direct_response.content contains a brief reassurance (e.g. "OK, analyzing for you...").
+- Must include all fields.
+- schema_version must be the FIRST field of the JSON.`;
 
   const systemPrompt = lang === "zh" ? zhPrompt : enPrompt;
 
