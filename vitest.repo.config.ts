@@ -41,6 +41,10 @@ export default defineConfig({
       // so realpath() resolves vitest packages to the original workspace path.
       NODE_PATH: resolve("node_modules"),
     },
+    // globalSetup runs ONCE in the main process before any workers start,
+    // preventing the deadlock that occurred when concurrent workers raced to
+    // acquire pg_advisory_lock + TRUNCATE the same tables via setupFiles.
+    globalSetup: "./tests/db/global-setup.ts",
     setupFiles: ["./tests/db/setup.ts"],
     globalTeardown: "./tests/db/teardown.ts",
     coverage: {

@@ -90,7 +90,7 @@ export const DecisionRepo = {
         FROM decision_logs d
         LEFT JOIN feedback_events fe ON fe.decision_id = d.id AND fe.user_id = d.user_id
         WHERE d.user_id = $1
-          AND d.created_at >= (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::timestamptz
+          AND d.created_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'Asia/Shanghai') AT TIME ZONE 'Asia/Shanghai'
       )
       SELECT
         COUNT(*)::int                                                                    AS total_requests,

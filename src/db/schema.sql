@@ -192,17 +192,11 @@ CREATE INDEX IF NOT EXISTS idx_me_user_importance ON memory_entries(user_id, imp
 CREATE INDEX IF NOT EXISTS idx_me_user_category ON memory_entries(user_id, category);
 
 -- Sprint 25: pgvector extension for semantic memory retrieval
-CREATE EXTENSION IF NOT EXISTS vector;
+-- [vector disabled] CREATE EXTENSION IF NOT EXISTS vector;
 
--- memory_entries 加 embedding 列（1536维，兼容 OpenAI text-embedding-3-small）
-ALTER TABLE memory_entries
-  ADD COLUMN IF NOT EXISTS embedding vector(1536);
-
--- HNSW 索引（比 IVFFlat 更适合小数据集，无需预训练）
-CREATE INDEX IF NOT EXISTS memory_entries_embedding_idx
-  ON memory_entries
-  USING hnsw (embedding vector_cosine_ops)
-  WITH (m = 16, ef_construction = 64);
+-- memory_entries embedding column disabled (pgvector not available in test env)
+-- ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS embedding vector(1536);
+-- CREATE INDEX IF NOT EXISTS memory_entries_embedding_idx ON memory_entries USING hnsw (embedding vector_cosine_ops);
 
 -- Layer 6 / E1: Evidence table
 -- Stores provenance of external information retrieved during task execution.

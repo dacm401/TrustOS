@@ -1,18 +1,11 @@
 ﻿// workspace: 20260416214742
 /**
- * Vitest setup file — runs BEFORE the test bundle is loaded.
+ * Vitest setupFile — runs in each worker thread before tests are collected.
  *
- * Because this file runs in a separate VM context (before module resolution),
- * any process.env changes here affect how app modules initialize.
- *
- * We need DATABASE_URL to already point to `smartrouter_test` before
- * src/db/connection.ts is imported anywhere in the test bundle.
- * This is guaranteed by vitest.config.ts `env.DATABASE_URL`.
- *
- * This setup file calls the harness to:
- *   1. Create the `smartrouter_test` database if it doesn't exist.
- *   2. Load schema.sql into it.
+ * Database initialisation (ensureTestDb + loadSchema) has been moved to
+ * globalSetup (tests/db/global-setup.ts) so it only runs once before any
+ * workers start.  This file is kept as a placeholder so the setupFiles
+ * entry in vitest.repo.config.ts continues to resolve without error.
  */
-import { setupTestDatabase } from "./harness";
 
-await setupTestDatabase();
+// Nothing to do here — DB is already ready by the time workers load this file.

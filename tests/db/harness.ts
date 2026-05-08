@@ -138,12 +138,22 @@ export async function truncateTables(): Promise<void> {
       // (prompt_templates / session_summaries / permission_requests / etc.)
       // are not yet present in the test DB.
       const ALL_TABLES = [
-        "feedback_events", "execution_results", "task_traces", "task_summaries",
-        "tasks", "memory_entries", "behavioral_memories", "growth_milestones",
-        "sessions", "identity_memories", "decision_logs",
-        "prompt_templates", "session_summaries",
-        "permission_requests", "task_workspaces", "scoped_tokens",
-        "delegation_logs",
+        // feedback / decisions
+        "feedback_events", "decision_logs",
+        // execution
+        "execution_results", "evidence",
+        // tasks / archives
+        "task_traces", "task_summaries", "tasks",
+        "task_archive_events", "task_worker_results", "task_commands", "task_archives",
+        // delegation
+        "delegation_archive", "delegation_logs",
+        // memory / growth
+        "memory_entries", "behavioral_memories", "growth_milestones",
+        "identity_memories",
+        // sessions
+        "sessions", "session_summaries",
+        // system
+        "prompt_templates", "permission_requests", "task_workspaces", "scoped_tokens",
       ];
       const schemaRes = await client.query(
         `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`
