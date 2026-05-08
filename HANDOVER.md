@@ -1,6 +1,105 @@
-# TrustOS 交接文档（2026-05-08）
+# TrustOS 新窗口启动 Prompt
 
-> 蟹小钳 🦀 开新窗口时读这份，不够再看 MEMORY.md。
+> 这是给新 WorkBuddy 窗口的启动说明，读完之后再开始干活。
+
+---
+
+## 必读文件（按顺序）
+
+1. **先读 `HANDOVER.md`**（本文件）—— 整体状态
+2. **`docs/dev-rules.md`** —— 开发规范，干活前必看
+3. **`docs/ARCHITECTURE-OVERVIEW.md`** —— 系统架构全景
+4. **`docs/GATED-DELEGATION-v2.md`** —— 核心门控逻辑
+5. **`MEMORY.md`**（`~/.workbuddy/` 下）—— 长期记忆
+
+---
+
+## 一句话状态
+
+**Phase 1~5 全部完成 ✅，types 拆分完成 ✅，GitHub 三端同步 ✅。**
+**剩余大任务：阈值实验框架（唯一有实际价值的待办）。目录重命名已放弃（风险高、收益低）。**
+
+---
+
+## 仓库现状
+
+| 位置 | commit | 说明 |
+|------|--------|------|
+| `WorkBuddy/trustos` | `a97cece` | 当前工作目录 |
+| `Desktop/.../TrustOS` | `a97cece` | 与 origin 同步 |
+| `origin/master` | `a97cece` | 最新基准 |
+
+**改代码在**：`C:\Users\ligua\WorkBuddy\trustos`
+**测试验证在**：`C:\Users\ligua\Desktop\AI项目\trustos\TrustOS`（跑 `npm run dev`）
+
+---
+
+## 最近完成的功能
+
+| 日期 | 功能 | commit |
+|------|------|--------|
+| 2026-05-08 | types 拆分（2141行→6文件） | `c599c65` |
+| 2026-05-08 | Prompt 版本热切换（`.env` `PROMPT_VERSION`） | `a15e39c` |
+| 2026-05-08 | DB 连接池配置项 | `1100f48` |
+| 2026-05-08 | 根目录临时文件清理 | `2cf1d99` |
+| 2026-05-08 | HANDOVER.md | `a97cece` |
+| 2026-05-07 | repositories.ts 拆分（2079行→7文件） | `0947a5f` |
+| 2026-05-06 | Phase 5.4 B 灰区短路（triggerRate 92%→66%） | `2399ffc` |
+
+---
+
+## 架构速查
+
+- **后端**：Hono + TypeScript，`src/index.ts`（端口 3001）
+- **LLM**：SiliconFlow（`api.siliconflow.cn`），Prompt v4
+- **DB**：PostgreSQL（Docker `trustos-postgres-1`），`smartrouter` 库
+- **门控**：G1~G4 四层，G2=0.65 / G3=0.60 / high_cost_floor=0.70
+- **委托**：Manager 双重输出（自然语言 + JSON），`splitManagerOutput()` 解析
+- **SSE**：仅 `worker_started → chunk → done`
+- **types**：`src/types/task.ts` / `delegation.ts` / `memory.ts` / `execution.ts` / `gating.ts` / `redaction.ts` + 纯 re-export 的 `index.ts`
+
+---
+
+## 待办任务（按优先级）
+
+### 唯一有价值的任务：阈值实验框架
+
+**目标**：`scripts/rerank-analysis.js` formalize，支持 baseline 对比。
+
+方案（CSV 方案，不建新 DB 表）：
+```
+scripts/
+├── rerank-analysis.js   # 扩展：--experiment-id
+├── baseline.js          # 新建：快照当前指标到 CSV
+└── compare.js           # 新建：对比两个 experiment
+```
+
+### 已放弃的任务
+
+- ❌ 目录重命名 `src/` → `backend/`（风险高、收益低，不值得做）
+
+---
+
+## 启动命令
+
+```bash
+# Desktop 机器，跑测试
+cd C:\Users\ligua\Desktop\AI项目\trustos\TrustOS
+npm run dev
+
+# Docker（需要先 restart）
+docker restart trustos-postgres-1 trustos-frontend-1 trustos-backend-1
+```
+
+---
+
+## 重要注意事项
+
+1. **GFW 网络**：GitHub push 有时会超时，多试几次
+2. **双机协作**：改代码在 WorkBuddy，测试在 Desktop，GitHub 是同步基准
+3. **vitest 测试**：用 `vitest.repo.config.ts`，不要用默认配置（会 deadlock）
+4. **git commit 前**：确认 `git status` 干净，先 tsc 再 push
+5. **临时文件**：根目录定期清理，不留 `.cjs` / `.txt` 调试脚本
 
 ---
 
