@@ -207,31 +207,36 @@ export async function routeWithManagerDecision(
 ): Promise<LLMNativeRouterResult> {
   const { message, user_id, session_id, turn_id, history, language, reqApiKey, reqLlmBaseUrl, fastModel, slowModel, crossSessionContext } = input;
 
-  // P4: Learning Layer — 检索用户记忆，在调用 Manager 之前注入
-  let userMemories: string | undefined;
-  try {
-    const memories = await retrieveMemoriesHybrid({
-      userId: user_id,
-      context: { userMessage: message },
-      categoryPolicy: {
-        instruction: { minImportance: 1, maxCount: 2, alwaysInject: false },
-        preference: { minImportance: 1, maxCount: 3, alwaysInject: false },
-        fact: { minImportance: 2, maxCount: 2, alwaysInject: false },
-        context: { minImportance: 1, maxCount: 2, alwaysInject: false },
-      },
-      maxTotalEntries: 5,
-    });
-    if (memories.length > 0) {
-      const formatted = buildCategoryAwareMemoryText(memories);
-      userMemories = formatted.combined;
+  // P4: Learning Layer — 检索用户记忆，与 Manager 调用并行执行（节省 200-500ms）
+  const memoryPromise = (async () => {
+    try {
+      const memories = await retrieveMemoriesHybrid({
+        userId: user_id,
+        context: { userMessage: message },
+        categoryPolicy: {
+          instruction: { minImportance: 1, maxCount: 2, alwaysInject: false },
+          preference: { minImportance: 1, maxCount: 3, alwaysInject: false },
+          fact: { minImportance: 2, maxCount: 2, alwaysInject: false },
+          context: { minImportance: 1, maxCount: 2, alwaysInject: false },
+        },
+        maxTotalEntries: 5,
+      });
+      if (memories.length > 0) {
+        const formatted = buildCategoryAwareMemoryText(memories);
+        return formatted.combined;
+      }
+      return undefined;
+    } catch (e: any) {
+      console.warn("[llm-native-router] Memory retrieval failed (fail-open):", e.message);
+      return undefined;
     }
-  } catch (e: any) {
-    // Learning Layer fail-open：检索失败不阻断路由流程
-    console.warn("[llm-native-router] Memory retrieval failed (fail-open):", e.message);
-  }
+  })();
 
-  // Step 1: 调用 Fast 模型，传递 Manager Prompt（含 cross-session 上下文 + 用户记忆）
-  const managerOutput = await callManagerModel({ message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext, userMemories });
+  // Step 1: 调用 Fast 模型（与 Memory 检索并行，节省总延迟）
+  const [managerOutput, userMemories] = await Promise.all([
+    callManagerModel({ message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext, userMemories: undefined }),
+    memoryPromise,
+  ]);
 
   // Step 1.5 (KB-1): 检测知识边界信号
   // fail-open：检测异常不阻断主流程，只记录 warning
