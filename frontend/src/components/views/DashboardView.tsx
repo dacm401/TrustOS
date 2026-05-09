@@ -2,6 +2,8 @@
 import { useState, useEffect } from "react";
 import { getDashboard, getGrowth } from "@/lib/api";
 import { PerformancePanel } from "@/components/dashboard/PerformanceCharts";
+import { TokenSankey } from "@/components/dashboard/TokenSankey";
+import { LearningPanel } from "@/components/dashboard/LearningPanel";
 
 // 匹配后端 DashboardData 类型 (src/types/task.ts)
 interface DashboardData {
@@ -285,6 +287,12 @@ export default function DashboardView({ userId }: DashboardViewProps) {
 
         {/* Performance Charts */}
         {userId && <PerformancePanel userId={userId} />}
+
+        {/* Token Flow & Learning */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+          {dashboard && <TokenSankey tokenFlow={dashboard.token_flow} />}
+          {growth && <LearningPanel growth={growth} />}
+        </div>
 
         {/* Growth Profile */}
         <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
