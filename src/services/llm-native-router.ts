@@ -207,40 +207,45 @@ export async function routeWithManagerDecision(
 ): Promise<LLMNativeRouterResult> {
   const { message, user_id, session_id, turn_id, history, language, reqApiKey, reqLlmBaseUrl, fastModel, slowModel, crossSessionContext } = input;
 
-  // P4: Learning Layer — 检索用户记忆，在调用 Manager 之前注入
-  let userMemories: string | undefined;
-  try {
-    const memories = await retrieveMemoriesHybrid({
-      userId: user_id,
-      context: { userMessage: message },
-      categoryPolicy: {
-        instruction: { minImportance: 1, maxCount: 2, alwaysInject: false },
-        preference: { minImportance: 1, maxCount: 3, alwaysInject: false },
-        fact: { minImportance: 2, maxCount: 2, alwaysInject: false },
-        context: { minImportance: 1, maxCount: 2, alwaysInject: false },
-      },
-      maxTotalEntries: 5,
-    });
-    if (memories.length > 0) {
-      const formatted = buildCategoryAwareMemoryText(memories);
-      userMemories = formatted.combined;
+  // P4: Learning Layer — 检索用户记忆（并行执行以减少延迟）
+  const memoryPromise = (async () => {
+    try {
+      const memories = await retrieveMemoriesHybrid({
+        userId: user_id,
+        context: { userMessage: message },
+        categoryPolicy: {
+          instruction: { minImportance: 1, maxCount: 2, alwaysInject: false },
+          preference: { minImportance: 1, maxCount: 3, alwaysInject: false },
+          fact: { minImportance: 2, maxCount: 2, alwaysInject: false },
+          context: { minImportance: 1, maxCount: 2, alwaysInject: false },
+        },
+        maxTotalEntries: 5,
+      });
+      if (memories.length > 0) {
+        const formatted = buildCategoryAwareMemoryText(memories);
+        return formatted.combined;
+      }
+    } catch (e: any) {
+      console.warn("[llm-native-router] Memory retrieval failed (fail-open):", e.message);
     }
-  } catch (e: any) {
-    // Learning Layer fail-open：检索失败不阻断路由流程
-    console.warn("[llm-native-router] Memory retrieval failed (fail-open):", e.message);
-  }
+    return undefined;
+  })();
 
-  // Step 1: 调用 Fast 模型，传递 Manager Prompt（含 cross-session 上下文 + 用户记忆）
-  const managerOutput = await callManagerModel({ message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext, userMemories });
+  // KB-1: 知识边界信号检测（同步计算，不需要 I/O）
+  const kbSignals = (() => {
+    try {
+      return detectKnowledgeBoundarySignals(message, { locale: language });
+    } catch (e: any) {
+      console.warn("[llm-native-router] KB signal detection failed (fail-open):", e.message);
+      return undefined;
+    }
+  })();
 
-  // Step 1.5 (KB-1): 检测知识边界信号
-  // fail-open：检测异常不阻断主流程，只记录 warning
-  let kbSignals: KnowledgeBoundarySignal[] | undefined;
-  try {
-    kbSignals = detectKnowledgeBoundarySignals(message, { locale: language });
-  } catch (e: any) {
-    console.warn("[llm-native-router] KB signal detection failed (fail-open):", e.message);
-  }
+  // 并行执行：Manager 调用 + Memory 检索
+  const [managerOutput, userMemories] = await Promise.all([
+    callManagerModel({ message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext, userMemories: undefined }),
+    memoryPromise
+  ]);
 
   // Step 2: 解析 G1 多动作打分格式（manager_decision_v2）
   // Debug: 打印 Manager 原始输出，排查 parse 失败

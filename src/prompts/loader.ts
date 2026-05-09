@@ -29,6 +29,48 @@ export interface LoadedPrompt {
   version: string;
 }
 
+// Module-level cache for dynamic imports
+interface PromptModuleCache {
+  buildManagerSystemPrompt: BmspSig;
+  MANAGER_PROMPT_VERSION: string;
+  timestamp: number;
+}
+
+let moduleCache: PromptModuleCache | null = null;
+let moduleCacheVersion: string | null = null;
+const MODULE_CACHE_TTL_MS = 60_000;
+
+async function getPromptModule(version: string): Promise<PromptModuleCache> {
+  const now = Date.now();
+  if (moduleCache && moduleCacheVersion === version && now - moduleCache.timestamp < MODULE_CACHE_TTL_MS) {
+    return moduleCache;
+  }
+
+  switch (version) {
+    case "v4": {
+      const mod = await import("./manager/v4.js");
+      moduleCache = {
+        buildManagerSystemPrompt: mod.buildManagerSystemPrompt as BmspSig,
+        MANAGER_PROMPT_VERSION: mod.MANAGER_PROMPT_VERSION,
+        timestamp: now,
+      };
+      moduleCacheVersion = version;
+      return moduleCache;
+    }
+    default:
+      throw new Error(`Unknown manager prompt version: "${version}". Supported: v4`);
+  }
+}
+
+/**
+ * Invalidate the module-level prompt cache.
+ * Call this when MANAGER_PROMPT_VERSION changes at runtime.
+ */
+export function invalidatePromptCache(): void {
+  moduleCache = null;
+  moduleCacheVersion = null;
+}
+
 /**
  * Load a Manager prompt using the version from MANAGER_PROMPT_VERSION env var.
  * Falls back to "v4" if the env var is not set.
@@ -42,17 +84,9 @@ export async function loadManagerPrompt(
   userMemories?: string,
 ): Promise<LoadedPrompt> {
   const version = getManagerPromptVersion();
-  switch (version) {
-    case "v4": {
-      const { buildManagerSystemPrompt: fn, MANAGER_PROMPT_VERSION } = await import(
-        "./manager/v4.js"
-      );
-      return {
-        prompt: fn(lang, crossSessionContext, userMemories),
-        version: MANAGER_PROMPT_VERSION,
-      };
-    }
-    default:
-      throw new Error(`Unknown manager prompt version: "${version}". Supported: v4`);
-  }
+  const mod = await getPromptModule(version);
+  return {
+    prompt: mod.buildManagerSystemPrompt(lang, crossSessionContext, userMemories),
+    version: mod.MANAGER_PROMPT_VERSION,
+  };
 }
