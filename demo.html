@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrustOS Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-base: #0f1419;
+      --bg-surface: #1a1f26;
+      --bg-elevated: #242b35;
+      --border-default: #2d3640;
+      --border-subtle: #1e242c;
+      --text-primary: #e7e9ea;
+      --text-secondary: #8b98a5;
+      --text-muted: #536471;
+      --accent-blue: #3b82f6;
+      --accent-green: #10b981;
+      --accent-purple: #8b5cf6;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --accent-pink: #ec4899;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .logo-text {
+      font-size: 24px;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* Stats Cards */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 16px;
+      padding: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent-blue);
+      box-shadow: 0 8px 30px rgba(59, 130, 246, 0.15);
+    }
+
+    .stat-icon {
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .stat-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Main Grid */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+    }
+
+    /* Card Base */
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 16px;
+      padding: 24px;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Routing Visualization */
+    .routing-container {
+      margin-bottom: 24px;
+    }
+
+    .routing-bar-container {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .routing-model {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 80px;
+    }
+
+    .model-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .model-icon.fast {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-green);
+    }
+
+    .model-icon.slow {
+      background: rgba(139, 92, 246, 0.15);
+      color: var(--accent-purple);
+    }
+
+    .model-name {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .model-score {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .routing-bar {
+      flex: 1;
+      height: 24px;
+      background: var(--bg-elevated);
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .routing-bar-fill {
+      height: 100%;
+      border-radius: 12px;
+      transition: width 1s ease-out;
+      position: relative;
+    }
+
+    .routing-bar-fill.fast {
+      background: linear-gradient(90deg, var(--accent-green), #34d399);
+      width: 0%;
+    }
+
+    .routing-bar-fill.slow {
+      background: linear-gradient(90deg, var(--accent-purple), #a78bfa);
+      width: 0%;
+    }
+
+    .routing-bar-fill::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%);
+      animation: shimmer 2s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .routing-score {
+      min-width: 50px;
+      text-align: right;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .routing-score.fast { color: var(--accent-green); }
+    .routing-score.slow { color: var(--accent-purple); }
+
+    /* Decision Confidence */
+    .decision-info {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      padding: 16px;
+      background: var(--bg-elevated);
+      border-radius: 12px;
+      margin-top: 16px;
+    }
+
+    .confidence-gauge {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .confidence-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent-blue);
+    }
+
+    .confidence-label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .decision-badge {
+      padding: 8px 16px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 20px;
+      font-size: 13px;
+      color: var(--accent-green);
+      font-weight: 500;
+    }
+
+    .decision-explanation {
+      flex: 1;
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    /* Token Flow */
+    .token-flow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      background: var(--bg-elevated);
+      border-radius: 12px;
+    }
+
+    .token-node {
+      text-align: center;
+    }
+
+    .token-node-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .token-node-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .token-arrow {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .token-arrow-line {
+      height: 2px;
+      flex: 1;
+      background: linear-gradient(90deg, var(--text-muted), var(--text-secondary), var(--text-muted));
+      border-radius: 1px;
+      position: relative;
+    }
+
+    .token-arrow-line::after {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      border: 4px solid transparent;
+      border-left-color: var(--text-muted);
+    }
+
+    .token-saved {
+      text-align: center;
+      padding: 8px 12px;
+      background: rgba(16, 185, 129, 0.15);
+      border-radius: 8px;
+    }
+
+    .token-saved-value {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--accent-green);
+    }
+
+    .token-saved-label {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    /* Growth Progress */
+    .growth-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .growth-level {
+      font-size: 36px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-pink));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .growth-name {
+      font-size: 16px;
+      color: var(--text-secondary);
+    }
+
+    .growth-progress {
+      height: 8px;
+      background: var(--bg-elevated);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .growth-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-purple), var(--accent-pink));
+      border-radius: 4px;
+      transition: width 1s ease-out;
+    }
+
+    .growth-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .growth-stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .growth-stat {
+      padding: 12px;
+      background: var(--bg-elevated);
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .growth-stat-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .growth-stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Milestones */
+    .milestones {
+      margin-top: 20px;
+    }
+
+    .milestone {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .milestone:last-child {
+      border-bottom: none;
+    }
+
+    .milestone-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(139, 92, 246, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .milestone-content {
+      flex: 1;
+    }
+
+    .milestone-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .milestone-time {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Cost Section */
+    .cost-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .cost-item {
+      padding: 16px;
+      background: var(--bg-elevated);
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .cost-item-value {
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .cost-item-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .cost-bar {
+      height: 24px;
+      display: flex;
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--bg-elevated);
+    }
+
+    .cost-bar-segment {
+      height: 100%;
+      transition: width 1s ease-out;
+    }
+
+    .cost-bar-segment.fast {
+      background: var(--accent-green);
+    }
+
+    .cost-bar-segment.slow {
+      background: var(--accent-purple);
+    }
+
+    .cost-bar-segment.saved {
+      background: var(--accent-amber);
+    }
+
+    .cost-legend {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-top: 12px;
+    }
+
+    .cost-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .cost-legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    /* Pipeline */
+    .pipeline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px;
+      background: var(--bg-elevated);
+      border-radius: 12px;
+    }
+
+    .pipeline-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      position: relative;
+    }
+
+    .pipeline-step-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .pipeline-step-icon.active {
+      box-shadow: 0 0 20px currentColor;
+    }
+
+    .pipeline-step-icon.input {
+      background: rgba(59, 130, 246, 0.2);
+      color: var(--accent-blue);
+    }
+
+    .pipeline-step-icon.routing {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--accent-green);
+    }
+
+    .pipeline-step-icon.model {
+      background: rgba(139, 92, 246, 0.2);
+      color: var(--accent-purple);
+    }
+
+    .pipeline-step-icon.output {
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--accent-amber);
+    }
+
+    .pipeline-step-label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .pipeline-arrow {
+      color: var(--text-muted);
+      font-size: 20px;
+    }
+
+    /* Animations */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .animate-pulse {
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+    }
+
+    .animate-bounce {
+      animation: bounce 1s ease-in-out infinite;
+    }
+
+    /* Glow effect */
+    .glow {
+      box-shadow: 0 0 30px currentColor;
+    }
+
+    /* Demo controls */
+    .demo-controls {
+      margin-bottom: 24px;
+      display: flex;
+      gap: 12px;
+    }
+
+    .demo-btn {
+      padding: 10px 20px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      color: var(--text-primary);
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s ease;
+    }
+
+    .demo-btn:hover {
+      border-color: var(--accent-blue);
+      background: rgba(59, 130, 246, 0.1);
+    }
+
+    .demo-btn.active {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+      color: white;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <div class="logo-icon">◈</div>
+        <span class="logo-text">TrustOS</span>
+      </div>
+      <div style="color: var(--text-muted); font-size: 13px;">
+        智能路由 · 成本优化 · 决策透明
+      </div>
+    </div>
+
+    <!-- Demo Controls -->
+    <div class="demo-controls">
+      <button class="demo-btn active" onclick="setScenario('fast')">⚡ Fast 路由</button>
+      <button class="demo-btn" onclick="setScenario('slow')">🧠 Slow 路由</button>
+      <button class="demo-btn" onclick="setScenario('mixed')">🔄 混合模式</button>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">💰</div>
+        <div class="stat-value" style="color: var(--accent-green);">
+          <span id="saved-percent">42</span>%
+        </div>
+        <div class="stat-label">今日节省</div>
+        <div class="stat-sub">节省 $0.82</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">⚡</div>
+        <div class="stat-value" style="color: var(--accent-blue);">
+          <span id="fast-rate">78</span>%
+        </div>
+        <div class="stat-label">Fast 模型使用</div>
+        <div class="stat-sub">156 次对话</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🎯</div>
+        <div class="stat-value" style="color: var(--accent-purple);">
+          <span id="accuracy">80</span>%
+        </div>
+        <div class="stat-label">路由准确率</div>
+        <div class="stat-sub">置信度基准</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🌱</div>
+        <div class="stat-value" style="color: var(--accent-pink);">
+          Lv.<span id="level">3</span>
+        </div>
+        <div class="stat-label">成长等级</div>
+        <div class="stat-sub">逐渐熟悉</div>
+      </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="main-grid">
+      <!-- Left Column -->
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+        <!-- Routing Decision Card -->
+        <div class="card">
+          <div class="card-title">🔍 路由决策</div>
+
+          <div class="routing-container">
+            <div class="routing-bar-container">
+              <div class="routing-model">
+                <div class="model-icon fast">⚡</div>
+                <div>
+                  <div class="model-name">Fast</div>
+                  <div class="model-score">Qwen 7B</div>
+                </div>
+              </div>
+              <div class="routing-bar">
+                <div class="routing-bar-fill fast" id="fast-bar"></div>
+              </div>
+              <div class="routing-score fast" id="fast-score">0.72</div>
+            </div>
+
+            <div class="routing-bar-container">
+              <div class="routing-model">
+                <div class="model-icon slow">🧠</div>
+                <div>
+                  <div class="model-name">Slow</div>
+                  <div class="model-score">Qwen 72B</div>
+                </div>
+              </div>
+              <div class="routing-bar">
+                <div class="routing-bar-fill slow" id="slow-bar"></div>
+              </div>
+              <div class="routing-score slow" id="slow-score">0.28</div>
+            </div>
+          </div>
+
+          <div class="decision-info">
+            <div class="confidence-gauge">
+              <div class="confidence-value" id="confidence">72%</div>
+              <div class="confidence-label">置信度</div>
+            </div>
+            <div class="decision-badge" id="decision-type">⚡ direct_answer</div>
+            <div class="decision-explanation" id="decision-reason">
+              问题复杂度低（35/100），Fast 模型回答质量与最强模型相当，速度快 4 倍，成本低约 20 倍。
+            </div>
+          </div>
+        </div>
+
+        <!-- Pipeline Visualization -->
+        <div class="card">
+          <div class="card-title">⚙️ 路由流水线</div>
+          <div class="pipeline">
+            <div class="pipeline-step">
+              <div class="pipeline-step-icon input">
+                <span>📥</span>
+              </div>
+              <div class="pipeline-step-label">用户输入</div>
+            </div>
+            <div class="pipeline-arrow">→</div>
+            <div class="pipeline-step">
+              <div class="pipeline-step-icon routing active glow">
+                <span>🎯</span>
+              </div>
+              <div class="pipeline-step-label">Fast 路由</div>
+            </div>
+            <div class="pipeline-arrow">→</div>
+            <div class="pipeline-step">
+              <div class="pipeline-step-icon model">
+                <span>⚡</span>
+              </div>
+              <div class="pipeline-step-label">LLM 决策</div>
+            </div>
+            <div class="pipeline-arrow">→</div>
+            <div class="pipeline-step">
+              <div class="pipeline-step-icon output">
+                <span>💬</span>
+              </div>
+              <div class="pipeline-step-label">返回结果</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Token Flow -->
+        <div class="card">
+          <div class="card-title">📦 Token 流向</div>
+          <div class="token-flow">
+            <div class="token-node">
+              <div class="token-node-value" id="input-tokens">1500</div>
+              <div class="token-node-label">输入</div>
+            </div>
+            <div class="token-arrow">
+              <div class="token-arrow-line"></div>
+            </div>
+            <div class="token-node">
+              <div class="token-node-value" id="compressed-tokens">825</div>
+              <div class="token-node-label">压缩后</div>
+            </div>
+            <div class="token-arrow">
+              <div class="token-arrow-line"></div>
+            </div>
+            <div class="token-node">
+              <div class="token-node-value" id="output-tokens">312</div>
+              <div class="token-node-label">输出</div>
+            </div>
+            <div class="token-arrow">
+              <div class="token-arrow-line"></div>
+            </div>
+            <div class="token-saved">
+              <div class="token-saved-value" id="saved-tokens">675</div>
+              <div class="token-saved-label">节省 45%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column -->
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+        <!-- Growth Card -->
+        <div class="card">
+          <div class="card-title">🌱 成长中心</div>
+
+          <div class="growth-header">
+            <div class="growth-level">Lv.3</div>
+            <div class="growth-name">逐渐熟悉</div>
+          </div>
+
+          <div class="growth-progress">
+            <div class="growth-progress-fill" id="growth-progress" style="width: 0%;"></div>
+          </div>
+          <div class="growth-hint">47% → 下一等级「有点默契」</div>
+
+          <div class="growth-stats">
+            <div class="growth-stat">
+              <div class="growth-stat-value">156</div>
+              <div class="growth-stat-label">对话次数</div>
+            </div>
+            <div class="growth-stat">
+              <div class="growth-stat-value">$8.67</div>
+              <div class="growth-stat-label">累计节省</div>
+            </div>
+            <div class="growth-stat">
+              <div class="growth-stat-value">23</div>
+              <div class="growth-stat-label">行为记忆</div>
+            </div>
+            <div class="growth-stat">
+              <div class="growth-stat-value">+8%</div>
+              <div class="growth-stat-label">准确率提升</div>
+            </div>
+          </div>
+
+          <div class="milestones">
+            <div class="milestone">
+              <div class="milestone-icon">🎯</div>
+              <div class="milestone-content">
+                <div class="milestone-text">首次触发慢模型</div>
+                <div class="milestone-time">3 天前</div>
+              </div>
+            </div>
+            <div class="milestone">
+              <div class="milestone-icon">📈</div>
+              <div class="milestone-content">
+                <div class="milestone-text">连续 3 天准确率 >80%</div>
+                <div class="milestone-time">昨天</div>
+              </div>
+            </div>
+            <div class="milestone">
+              <div class="milestone-icon">💰</div>
+              <div class="milestone-content">
+                <div class="milestone-text">节省超过 $5</div>
+                <div class="milestone-time">5 天前</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cost Card -->
+        <div class="card">
+          <div class="card-title">💰 成本分析</div>
+
+          <div class="cost-grid">
+            <div class="cost-item">
+              <div class="cost-item-value" style="color: var(--accent-green);">$0.0012</div>
+              <div class="cost-item-label">Fast 成本</div>
+            </div>
+            <div class="cost-item">
+              <div class="cost-item-value" style="color: var(--accent-purple);">$0.0020</div>
+              <div class="cost-item-label">Slow 成本</div>
+            </div>
+            <div class="cost-item">
+              <div class="cost-item-value" style="color: var(--accent-amber);">$0.0018</div>
+              <div class="cost-item-label">节省金额</div>
+            </div>
+          </div>
+
+          <div class="cost-bar">
+            <div class="cost-bar-segment fast" id="cost-fast" style="width: 33%;"></div>
+            <div class="cost-bar-segment slow" id="cost-slow" style="width: 33%;"></div>
+            <div class="cost-bar-segment saved" id="cost-saved" style="width: 34%;"></div>
+          </div>
+
+          <div class="cost-legend">
+            <div class="cost-legend-item">
+              <div class="cost-legend-dot" style="background: var(--accent-green);"></div>
+              Fast
+            </div>
+            <div class="cost-legend-item">
+              <div class="cost-legend-dot" style="background: var(--accent-purple);"></div>
+              Slow
+            </div>
+            <div class="cost-legend-item">
+              <div class="cost-legend-dot" style="background: var(--accent-amber);"></div>
+              节省
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Scenario configurations
+    const scenarios = {
+      fast: {
+        fastScore: 0.72,
+        slowScore: 0.28,
+        confidence: 72,
+        decisionType: '⚡ direct_answer',
+        reason: '问题复杂度低（35/100），Fast 模型回答质量与最强模型相当，速度快 4 倍，成本低约 20 倍。',
+        fastRate: 78,
+        savedPercent: 42,
+        savedTokens: 675,
+        tokens: { input: 1500, compressed: 825, output: 312 }
+      },
+      slow: {
+        fastScore: 0.31,
+        slowScore: 0.69,
+        confidence: 69,
+        decisionType: '🧠 delegate_to_slow',
+        reason: '问题复杂度高（82/100），需要深度推理能力，启用最强模型确保回答质量。',
+        fastRate: 22,
+        savedPercent: 28,
+        savedTokens: 420,
+        tokens: { input: 2800, compressed: 2100, output: 680 }
+      },
+      mixed: {
+        fastScore: 0.55,
+        slowScore: 0.45,
+        confidence: 55,
+        decisionType: '🔄 需要确认',
+        reason: '意图模糊，top-2 候选动作差距较小（0.10），建议用户提供更多信息以获得最佳回答。',
+        fastRate: 55,
+        savedPercent: 35,
+        savedTokens: 520,
+        tokens: { input: 2000, compressed: 1300, output: 480 }
+      }
+    };
+
+    let currentScenario = 'fast';
+
+    function animateValue(element, start, end, duration) {
+      const startTime = performance.now();
+
+      function update(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const easeProgress = 1 - Math.pow(1 - progress, 3);
+        const current = start + (end - start) * easeProgress;
+
+        element.textContent = Math.round(current);
+
+        if (progress < 1) {
+          requestAnimationFrame(update);
+        }
+      }
+
+      requestAnimationFrame(update);
+    }
+
+    function setScenario(scenario) {
+      currentScenario = scenario;
+      const config = scenarios[scenario];
+
+      // Update buttons
+      document.querySelectorAll('.demo-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      event.target.classList.add('active');
+
+      // Animate routing bars
+      const fastBar = document.getElementById('fast-bar');
+      const slowBar = document.getElementById('slow-bar');
+      const fastScore = document.getElementById('fast-score');
+      const slowScore = document.getElementById('slow-score');
+
+      fastBar.style.width = `${config.fastScore * 100}%`;
+      slowBar.style.width = `${config.slowScore * 100}%`;
+
+      animateValue(fastScore, parseFloat(fastScore.textContent), config.fastScore, 500);
+      animateValue(slowScore, parseFloat(slowScore.textContent), config.slowScore, 500);
+
+      // Update confidence
+      document.getElementById('confidence').textContent = `${config.confidence}%`;
+
+      // Update decision info
+      document.getElementById('decision-type').textContent = config.decisionType;
+      document.getElementById('decision-reason').textContent = config.reason;
+
+      // Update stats
+      animateValue(document.getElementById('saved-percent'), parseInt(document.getElementById('saved-percent').textContent), config.savedPercent, 500);
+      animateValue(document.getElementById('fast-rate'), parseInt(document.getElementById('fast-rate').textContent), config.fastRate, 500);
+
+      // Update tokens
+      document.getElementById('saved-tokens').textContent = config.savedTokens;
+
+      // Update pipeline colors
+      const pipelineIcons = document.querySelectorAll('.pipeline-step-icon');
+      pipelineIcons.forEach((icon, index) => {
+        icon.classList.remove('active', 'glow');
+      });
+
+      if (scenario === 'fast') {
+        pipelineIcons[1].classList.add('active', 'glow'); // routing
+      } else if (scenario === 'slow') {
+        pipelineIcons[2].classList.add('active', 'glow'); // model
+      } else {
+        pipelineIcons[0].classList.add('active', 'glow'); // input
+      }
+    }
+
+    // Initial animation on load
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        setScenario('fast');
+        document.getElementById('growth-progress').style.width = '47%';
+      }, 500);
+    });
+  </script>
+</body>
+</html>
