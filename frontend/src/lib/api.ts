@@ -201,6 +201,7 @@ export async function fetchDecision(taskId: string, userId: string) {
   const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}/decision`, {
     headers: { "X-User-Id": userId },
   });
+  if (res.status === 404) return null; // 没有决策数据是正常情况
   if (!res.ok) throw new Error(`加载决策数据失败 (${res.status})`);
   return res.json();
 }

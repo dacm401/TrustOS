@@ -52,9 +52,10 @@ export function DebugPanel({ taskId, userId }: DebugPanelProps) {
     setNotFound(false);
     fetchDecision(taskId, userId)
       .then((res) => {
-        // 404 → not found, but not an error
-        if (res.error && String(res.status) === "404") {
+        // fetchDecision returns null for 404 (no decision data is normal)
+        if (res === null) {
           setNotFound(true);
+          setData(undefined);
         } else {
           setData(res as DecisionData);
         }
