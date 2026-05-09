@@ -335,7 +335,8 @@ chatRouter.post("/chat", async (c) => {
 
             console.log("[chat] entering pollArchiveAndYield for task:", archiveId);
             for await (const event of pollArchiveAndYield(archiveId!, lang, llmNativeResult.delegation_log_id, reqApiKey)) {
-              console.log("[chat] pollArchiveAndYield event:", event.type);
+              // Debug: 每个 SSE event 都打一条，streaming 时太吵，默认注释掉
+            // console.log("[chat] pollArchiveAndYield event:", event.type);
               // 统一字段名：content → stream
               const normalizedEvent = {
                 ...event,
