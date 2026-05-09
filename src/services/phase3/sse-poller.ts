@@ -2,20 +2,20 @@
  * SSE Poller — 从 orchestrator.ts 提取的 SSE 流式轮询逻辑
  * 轮询 TaskArchive，感知状态变化，推送 SSE 事件
  */
-import type { RoutingLayer } from "../../types/index.js";
-import { callModelFull, callModelStream } from "../../models/model-gateway.js";
-import { config } from "../../config.js";
-import { estimateCost } from "../../models/token-counter.js";
-import type { ChatMessage } from "../../types/index.js";
-import type { DelegationLogExecutionUpdate } from "../../types/index.js";
+import type { RoutingLayer } from "../../types/index";
+import { callModelFull, callModelStream } from "../../models/model-gateway";
+import { config } from "../../config";
+import { estimateCost } from "../../models/token-counter";
+import type { ChatMessage } from "../../types/index";
+import type { DelegationLogExecutionUpdate } from "../../types/index";
 import {
   TaskArchiveRepo,
   TaskWorkerResultRepo,
   TaskArchiveEventRepo,
-} from "../../db/task-archive-repo.js";
-import { TaskRepo } from "../../db/repositories.js";
-import { DelegationLogRepo } from "../../db/repositories.js";
-import { getPool } from "../../db/index.js";
+} from "../../db/task-archive-repo";
+import { TaskRepo } from "../../db/repositories";
+import { DelegationLogRepo } from "../../db/repositories";
+import { getPool } from "../../db/connection";
 
 // ── SSE 事件类型 ─────────────────────────────────────────────────────────────
 
