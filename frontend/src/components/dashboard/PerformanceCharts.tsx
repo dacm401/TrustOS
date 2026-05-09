@@ -218,3 +218,63 @@ export function TokenChart({ data, title = 'Token 消耗趋势', height = 200 }:
     </div>
   );
 }
+
+// ── Container: fetch data and render all three charts ─────────────────────
+
+import { useState, useEffect } from "react";
+import { fetchPerformance } from "@/lib/api";
+
+interface PerformancePanelProps {
+  userId: string;
+  range?: string;   // "24h" | "7d" | "30d"
+}
+
+export function PerformancePanel({ userId, range = "7d" }: PerformancePanelProps) {
+  const [data, setData] = useState<{
+    latency: Array<{ timestamp: string; p50: number; p95: number; p99: number }>;
+    qps: Array<{ timestamp: string; qps: number; errors: number }>;
+    tokens: Array<{ timestamp: string; inputTokens: number; outputTokens: number }>;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetchPerformance(userId, range)
+      .then((d) => setData(d))
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [userId, range]);
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="rounded-xl p-4 animate-pulse" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+            <div className="h-5 w-32 rounded mb-3" style={{ backgroundColor: "var(--border-default)" }} />
+            <div className="h-40 rounded" style={{ backgroundColor: "var(--border-subtle)" }} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl p-4 text-xs flex items-center gap-2" style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "var(--accent-red)" }}>
+        ⚠️ 性能数据加载失败：{error}
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  return (
+    <div className="space-y-4">
+      <LatencyChart data={data.latency} />
+      <QPSChart data={data.qps} />
+      <TokenChart data={data.tokens} />
+    </div>
+  );
+}

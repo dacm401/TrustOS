@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { getDashboard, getGrowth } from "@/lib/api";
+import { PerformancePanel } from "@/components/dashboard/PerformanceCharts";
 
 // 匹配后端 DashboardData 类型 (src/types/task.ts)
 interface DashboardData {
@@ -281,6 +282,9 @@ export default function DashboardView({ userId }: DashboardViewProps) {
             )}
           </div>
         </div>
+
+        {/* Performance Charts */}
+        {userId && <PerformancePanel userId={userId} />}
 
         {/* Growth Profile */}
         <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>

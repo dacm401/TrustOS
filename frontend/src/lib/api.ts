@@ -232,3 +232,19 @@ export async function fetchCostStats(userId: string): Promise<CostStats> {
   if (!res.ok) throw new Error(`加载成本统计失败 (${res.status})`);
   return res.json() as Promise<CostStats>;
 }
+
+// Performance time-series charts (latency / QPS / tokens)
+export interface PerformanceData {
+  latency: Array<{ timestamp: string; p50: number; p95: number; p99: number }>;
+  qps: Array<{ timestamp: string; qps: number; errors: number }>;
+  tokens: Array<{ timestamp: string; inputTokens: number; outputTokens: number }>;
+}
+
+export async function fetchPerformance(userId: string, range: string = "7d"): Promise<PerformanceData> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/api/performance/${encodeURIComponent(userId)}?range=${range}`, {
+    headers: { "X-User-Id": userId },
+  });
+  if (!res.ok) throw new Error(`加载性能数据失败 (${res.status})`);
+  return res.json() as Promise<PerformanceData>;
+}

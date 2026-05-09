@@ -308,10 +308,9 @@ export async function routeWithManagerDecision(
     throw err;
   }
 
-  console.log(`[llm-native-router] [DEBUG] parseGatedDecision result: SUCCESS (routedAction=${gatedResult!.routedAction})`);
-
   // Step 3: 不合法 → fallback，返回 L0 direct_answer
   if (!gatedResult) {
+    console.warn("[llm-native-router] parseGatedDecision returned null, fallback to direct_answer");
     // 尝试旧 v1 格式作为 backward compatibility fallback
     const decision = parseAndValidate(managerOutput);
     if (decision) {
