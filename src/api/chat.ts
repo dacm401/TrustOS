@@ -360,8 +360,7 @@ chatRouter.post("/chat", async (c) => {
             task_id: archiveId,
           })}\n\n`);
         } catch (e: any) {
-          console.warn("[stream-llm] SSE error:", e.message);
-          await s.write(`data: ${JSON.stringify({ type: "error", stream: e.message, routing_layer: llmNativeResult.routing_layer })}\n\n`);
+          console.error("[stream-llm] SSE error:", e?.message ?? e);
         }
       });
     }
