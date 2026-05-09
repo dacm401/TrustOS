@@ -252,6 +252,22 @@ export async function* pollArchiveAndYield(
       }
     }
 
+    // Phase 3.4: 处理 slow-worker 超时/失败情况
+    if (currentState === "failed") {
+      console.warn(`[pollArchiveAndYield] Task ${taskId} failed, sending error event`);
+      yield { type: "error", stream: "⚠️ 任务执行失败（请求超时或模型错误）", routing_layer: "L2" };
+      yield { type: "done", stream: lang === "zh" ? "执行失败" : "Execution failed", routing_layer: "L2" };
+      if (delegation_log_id) {
+        DelegationLogRepo.updateExecution(delegation_log_id, {
+          execution_status: "failed",
+          execution_correct: false,
+          error_message: "Task archive state set to failed",
+        }).catch(() => {});
+      }
+      sentResult = true;
+      break;
+    }
+
     if (currentState === "completed" || currentState === "cancelled") {
       if (!task.delivered) {
             const execution: Record<string, unknown> = task.slow_execution ?? {};
