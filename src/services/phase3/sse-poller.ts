@@ -13,6 +13,7 @@ import {
   TaskWorkerResultRepo,
   TaskArchiveEventRepo,
 } from "../../db/task-archive-repo.js";
+import { TaskRepo } from "../../db/repositories.js";
 import { DelegationLogRepo } from "../../db/repositories.js";
 import { getPool } from "../../db/index.js";
 
@@ -396,6 +397,20 @@ export async function* pollArchiveAndYield(
         console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
       );
       break;
+    }
+
+    // 检查 task_commands 是否有失败（worker 可能更早失败）
+    if (!failedChecked) {
+      try {
+        const cmd = await TaskRepo.getById(taskId);
+        if (cmd && cmd.status === "failed") {
+          // 同步失败状态到 task_archives
+          await TaskArchiveRepo.updateState(taskId, "failed").catch(() => {});
+        }
+      } catch (_) {
+        // ignore
+      }
+      failedChecked = true;
     }
 
     // G4: 超时检测（超过 180s 未完成，标记为 timeout）
