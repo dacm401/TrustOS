@@ -14,6 +14,7 @@ import {
   TaskArchiveEventRepo,
 } from "../../db/task-archive-repo.js";
 import { DelegationLogRepo } from "../../db/repositories.js";
+import { getPool } from "../../db/index.js";
 
 // ── SSE 事件类型 ─────────────────────────────────────────────────────────────
 
@@ -194,10 +195,38 @@ export async function* pollArchiveAndYield(
   const startTime = Date.now();
   let lastStatusTime = startTime;
   let sentResult = false;
+  let failedChecked = false;
 
   while (true) {
     const task = await TaskArchiveRepo.getById(taskId);
     if (!task) break;
+
+    // 检查 task_commands 是否有失败（防止 SSE 无限挂起）
+    if (!failedChecked && task.state !== "completed" && task.state !== "failed" && task.state !== "cancelled") {
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          "SELECT id, error_message FROM task_commands WHERE archive_id = $1 AND status = 'failed' LIMIT 1",
+          [taskId]
+        );
+        if (result.rows.length > 0) {
+          const errMsg = result.rows[0].error_message ?? "Unknown error";
+          yield { type: "error", stream: `任务执行失败: ${errMsg}`, routing_layer: "L2" };
+          yield { type: "done", stream: lang === "zh" ? "执行失败" : "Execution failed", routing_layer: "L2" };
+          await TaskArchiveRepo.markDelivered(taskId).catch(() => {});
+          if (delegation_log_id) {
+            DelegationLogRepo.updateExecution(delegation_log_id, {
+              execution_status: "failed",
+              error_message: errMsg,
+            }).catch(() => {});
+          }
+          break;
+        }
+      } catch (e: any) {
+        console.warn("[pollArchiveAndYield] failed command check failed:", e.message);
+      }
+      failedChecked = true;
+    }
 
     const elapsed = Date.now() - startTime;
 
