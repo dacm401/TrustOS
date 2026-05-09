@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { TaskRepo, DecisionRepo } from "../db/repositories.js";
+import { TaskRepo, DecisionRepo, TaskArchiveRepo } from "../db/repositories.js";
 import { formatTraceSummaries } from "../services/trace-formatter.js";
 import { getContextUserId } from "../middleware/identity.js";
 
@@ -12,7 +12,18 @@ taskRouter.get("/all", async (c) => {
   const userId = getContextUserId(c)!;
   const sessionId = c.req.query("session_id") || undefined;
   try {
-    const tasks = await TaskRepo.list(userId, sessionId);
+    // 从 task_archives 表获取任务（系统实际使用的表）
+    const archives = await TaskArchiveRepo.getRecent(userId, 100);
+    const tasks = archives.map((a: any) => ({
+      task_id: a.id,
+      title: a.command?.task || a.user_input || "未命名任务",
+      mode: a.command?.action || "unknown",
+      status: a.status,
+      complexity: null,
+      risk: null,
+      updated_at: a.updated_at,
+      session_id: a.session_id,
+    }));
     return c.json({ tasks });
   } catch (error: any) {
     console.error("Task list error:", error);
@@ -45,9 +56,6 @@ taskRouter.get("/:task_id/traces", async (c) => {
   const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 100, 500) : 100;
 
   try {
-    const task = await TaskRepo.getById(taskId);
-    if (!task) return c.json({ error: `Task not found: ${taskId}` }, 404);
-
     const traces = await TaskRepo.getTraces(taskId, { type, limit });
     const summaries = formatTraceSummaries(traces);
 

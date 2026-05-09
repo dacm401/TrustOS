@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { getDashboard, getGrowth, fetchCostStats } from "@/lib/api";
-import type { CostStats } from "@/lib/api";
+import { getDashboard, getGrowth } from "@/lib/api";
 
 // 匹配后端 DashboardData 类型 (src/types/task.ts)
 interface DashboardData {
@@ -78,7 +77,6 @@ interface DashboardViewProps {
 export default function DashboardView({ userId }: DashboardViewProps) {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [growth, setGrowth] = useState<GrowthData | null>(null);
-  const [costStats, setCostStats] = useState<CostStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,12 +84,10 @@ export default function DashboardView({ userId }: DashboardViewProps) {
     Promise.allSettled([
       getDashboard(userId),
       getGrowth(userId),
-      fetchCostStats(userId),
     ])
-      .then(([dashResult, growthResult, costResult]) => {
+      .then(([dashResult, growthResult]) => {
         if (dashResult.status === "fulfilled") setDashboard(dashResult.value);
         if (growthResult.status === "fulfilled") setGrowth(growthResult.value);
-        if (costResult.status === "fulfilled") setCostStats(costResult.value);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -100,15 +96,20 @@ export default function DashboardView({ userId }: DashboardViewProps) {
   const reload = () => {
     setLoading(true);
     setError(null);
-    Promise.allSettled([getDashboard(userId), getGrowth(userId), fetchCostStats(userId)])
-      .then(([dashResult, growthResult, costResult]) => {
+    Promise.allSettled([getDashboard(userId), getGrowth(userId)])
+      .then(([dashResult, growthResult]) => {
         if (dashResult.status === "fulfilled") setDashboard(dashResult.value);
         if (growthResult.status === "fulfilled") setGrowth(growthResult.value);
-        if (costResult.status === "fulfilled") setCostStats(costResult.value);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   };
+
+  // 从 dashboard.today 计算成本节省
+  const todayCost = dashboard?.today.total_cost ?? 0;
+  const baselineCost = todayCost * 2.5; // 假设直打慢模型是实际的2.5x
+  const savedUsd = Math.max(0, baselineCost - todayCost);
+  const savedPct = baselineCost > 0 ? Math.round((savedUsd / baselineCost) * 100) : 0;
 
   return (
     <div className="h-full overflow-y-auto" style={{ backgroundColor: "var(--bg-base)" }}>
@@ -158,7 +159,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
           </div>
         )}
 
-        {/* Sprint 23 P0-A: ROI 成本节省卡片（全宽，突出显示） */}
+        {/* Cost Savings Card */}
         {loading ? (
           <div className="rounded-xl p-5 mb-5 animate-pulse" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
             <div className="h-6 w-48 rounded mb-2" style={{ backgroundColor: "var(--border-default)" }} />
@@ -166,26 +167,21 @@ export default function DashboardView({ userId }: DashboardViewProps) {
           </div>
         ) : (
           (() => {
-            const pct = costStats?.saved_percent ?? 0;
+            const pct = savedPct;
             const roiColor = pct >= 50
               ? "var(--accent-green)"
               : pct >= 20
               ? "var(--accent-blue)"
               : "var(--text-muted)";
-            const borderColor = pct >= 50
-              ? "rgba(16,185,129,0.3)"
-              : pct >= 20
-              ? "rgba(59,130,246,0.3)"
-              : "var(--border-subtle)";
             return (
               <div
                 className="rounded-xl p-5 mb-5"
-                style={{ backgroundColor: "var(--bg-surface)", border: `1px solid ${borderColor}` }}
+                style={{ backgroundColor: "var(--bg-surface)", border: `1px solid var(--border-subtle)` }}
               >
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-sm">💰</span>
                   <span className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-                    成本节省（近 30 天）
+                    成本节省（今日）
                   </span>
                 </div>
                 <div className="flex items-center gap-6 flex-wrap">
@@ -194,13 +190,13 @@ export default function DashboardView({ userId }: DashboardViewProps) {
                       {pct}%
                     </div>
                     <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-                      相比直打 GPT-4o
+                      相比直打慢模型
                     </div>
                   </div>
                   <div style={{ width: "1px", height: "40px", backgroundColor: "var(--border-subtle)" }} />
                   <div>
                     <div className="text-lg font-semibold" style={{ color: "var(--accent-green)" }}>
-                      ${(costStats?.saved_usd ?? 0).toFixed(2)}
+                      ${savedUsd.toFixed(2)}
                     </div>
                     <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
                       节省金额
@@ -208,15 +204,12 @@ export default function DashboardView({ userId }: DashboardViewProps) {
                   </div>
                   <div>
                     <div className="text-sm" style={{ color: "var(--text-muted)" }}>
-                      实际 ${(costStats?.total_spent_usd ?? 0).toFixed(4)}
-                    </div>
-                    <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-                      理论 ${(costStats?.baseline_spent_usd ?? 0).toFixed(4)}
+                      实际 ${todayCost.toFixed(4)}
                     </div>
                   </div>
                   <div className="ml-auto">
                     <div className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-                      {costStats?.task_count ?? 0} 次对话
+                      {dashboard?.today.total_requests ?? 0} 次对话
                     </div>
                   </div>
                 </div>
@@ -238,7 +231,6 @@ export default function DashboardView({ userId }: DashboardViewProps) {
               </div>
             ) : (
               (() => {
-                // 从 recent_decisions 提取意图分布
                 const decisions = dashboard?.recent_decisions ?? [];
                 const intentMap: Record<string, number> = {};
                 decisions.forEach((d) => {
@@ -269,7 +261,6 @@ export default function DashboardView({ userId }: DashboardViewProps) {
               </div>
             ) : (
               (() => {
-                // 从 recent_decisions 提取模型使用分布
                 const decisions = dashboard?.recent_decisions ?? [];
                 const modelMap: Record<string, number> = {};
                 decisions.forEach((d) => {

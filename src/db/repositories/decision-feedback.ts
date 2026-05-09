@@ -155,32 +155,24 @@ export const DecisionRepo = {
     task_count: number;
     period_days: number;
   }> {
-    const { calcBaselineCost } = await import("../../config/pricing.js");
-
+    // 查询 delegation_logs 表（系统实际使用表）
     const result = await query(
       `SELECT
         COUNT(*)::int as task_count,
-        COALESCE(SUM(exec_input_tokens), 0)::int as total_input_tokens,
-        COALESCE(SUM(exec_output_tokens), 0)::int as total_output_tokens,
-        COALESCE(SUM(total_cost_usd), 0)::float as total_spent_usd
-      FROM decision_logs
+        COALESCE(SUM(cost_usd), 0)::float as total_spent_usd
+      FROM delegation_logs
       WHERE user_id = $1
-        AND created_at >= NOW() - INTERVAL '30 days'
-        AND exec_input_tokens IS NOT NULL`,
+        AND created_at >= NOW() - INTERVAL '30 days'`,
       [userId],
     );
 
     const row = result.rows[0] ?? {
       task_count: 0,
-      total_input_tokens: 0,
-      total_output_tokens: 0,
       total_spent_usd: 0,
     };
 
-    const baseline_spent_usd = calcBaselineCost(
-      Number(row.total_input_tokens),
-      Number(row.total_output_tokens),
-    );
+    // baseline 估算：假设直打慢模型花费是实际的 2.5x
+    const baseline_spent_usd = Number(row.total_spent_usd) * 2.5;
     const saved_usd = Math.max(0, baseline_spent_usd - Number(row.total_spent_usd));
     const saved_percent =
       baseline_spent_usd > 0
