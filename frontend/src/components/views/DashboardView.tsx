@@ -4,6 +4,7 @@ import { getDashboard, getGrowth } from "@/lib/api";
 import { PerformancePanel } from "@/components/dashboard/PerformanceCharts";
 import { TokenSankey } from "@/components/dashboard/TokenSankey";
 import { LearningPanel } from "@/components/dashboard/LearningPanel";
+import { Phase4Panel } from "@/components/dashboard/Phase4Panel";
 
 // 匹配后端 DashboardData 类型 (src/types/task.ts)
 interface DashboardData {
@@ -292,6 +293,11 @@ export default function DashboardView({ userId }: DashboardViewProps) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
           {dashboard && <TokenSankey tokenFlow={dashboard.token_flow} />}
           {growth && <LearningPanel growth={growth} />}
+        </div>
+
+        {/* System Status: Phase 4 + Circuit Breaker + Embedding Cache */}
+        <div className="mb-5">
+          <Phase4Panel />
         </div>
 
         {/* Growth Profile */}

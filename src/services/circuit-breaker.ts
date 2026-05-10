@@ -65,17 +65,10 @@ export class CircuitBreaker {
   }
 
   private canExecute(): boolean {
-      if (this.state === 'closed') {
-      this.lastFailureTime = Date.now();
-      
-      if (this.failureCount >= (this.config.failureThreshold ?? 5)) {
-        this.state = 'open';
-        console.warn(
-          `🔴 Circuit Breaker OPENED after ${this.failureCount} failures`,
-          'Last error details logged separately'
-        );
-      }
-      }
+    // closed: allow execution (failure counting happens in onFailure)
+    if (this.state === 'closed') {
+      return true;
+    }
 
     if (this.state === 'open') {
       if (this.lastFailureTime === null) {

@@ -35,6 +35,7 @@ import { taskPlanner } from "./task-planner.js";
 import { DelegationLogRepo } from "../db/repositories.js";
 import { TaskArchiveRepo } from "../db/task-archive-repo.js";
 import { loadManagerPrompt, getManagerPromptVersion } from "../prompts/loader.js";
+import { circuitBreakers, CircuitBreakerError } from "./circuit-breaker.js";
 
 // Phase 4: Permission Layer + Redaction imports (lazy loaded to avoid circular deps)
 let phase4Module: typeof import("./phase4/index.js") | null = null;
@@ -233,10 +234,31 @@ export async function routeWithManagerDecision(
   })();
 
   // Step 1: 调用 Fast 模型（与 Memory 检索并行，节省总延迟）
-  const [managerOutput, userMemories] = await Promise.all([
-    callManagerModel({ message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext, userMemories: undefined }),
-    memoryPromise,
-  ]);
+  let managerOutput: string;
+  let userMemories: string | undefined;
+  try {
+    [managerOutput, userMemories] = await Promise.all([
+      callManagerModel({ message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext, userMemories: undefined }),
+      memoryPromise,
+    ]);
+  } catch (e: any) {
+    if (e instanceof CircuitBreakerError) {
+      // 熔断：模型服务不可用，快速降级为 direct_answer，告知用户稍后重试
+      console.warn(`[routeWithManagerDecision] Circuit breaker open, returning degraded direct_answer`);
+      const retryMsg = e.retryAfter
+        ? (language === "zh" ? `（约 ${e.retryAfter} 秒后自动恢复）` : ` (auto-recover in ~${e.retryAfter}s)`)
+        : "";
+      return {
+        message: language === "zh"
+          ? `⚡ 模型服务暂时不可用，请稍后重试。${retryMsg}`
+          : `⚡ Model service temporarily unavailable, please retry shortly.${retryMsg}`,
+        decision: null,
+        routing_layer: "L0",
+        decision_type: "direct_answer",
+      };
+    }
+    throw e;
+  }
 
   // Step 1.5 (KB-1): 检测知识边界信号
   // fail-open：检测异常不阻断主流程，只记录 warning
@@ -466,20 +488,27 @@ async function callManagerModel(input: {
     // 有透传 key 或 baseUrl 时，走 callOpenAIWithOptions（支持自定义 baseUrl/apiKey）
     // 注意：仅传 fastModel 时不足以触发此分支，避免向 callOpenAIWithOptions 传 undefined apiKey
     const hasAuthOverride = reqApiKey || reqLlmBaseUrl;
-    if (hasAuthOverride) {
-      const resp = await callOpenAIWithOptions(
-        effectiveFastModel,
-        messages,
-        reqApiKey || config.openaiApiKey || undefined,
-        effectiveBaseUrl
-      );
+    return await circuitBreakers.llm.execute(async () => {
+      if (hasAuthOverride) {
+        const resp = await callOpenAIWithOptions(
+          effectiveFastModel,
+          messages,
+          reqApiKey || config.openaiApiKey || undefined,
+          effectiveBaseUrl
+        );
+        return resp.content;
+      }
+      // 无鉴权透传，走默认路径（callModelFull 内部读 config）
+      const resp = await callModelFull(effectiveFastModel, messages);
       return resp.content;
-    }
-    // 无鉴权透传，走默认路径（callModelFull 内部读 config）
-    const resp = await callModelFull(effectiveFastModel, messages);
-    return resp.content;
+    });
   } catch (e: any) {
-    console.error("[llm-native-router] Manager model call failed:", e.message);
+    if (e instanceof CircuitBreakerError) {
+      const retryMsg = e.retryAfter ? ` (retry in ${e.retryAfter}s)` : "";
+      console.warn(`[llm-native-router] Circuit breaker ${e.state}${retryMsg}, fast-failing Manager call`);
+    } else {
+      console.error("[llm-native-router] Manager model call failed:", e.message);
+    }
     throw e;
   }
 }

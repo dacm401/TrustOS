@@ -3,6 +3,9 @@ import { calculateDashboard } from "../logging/metrics-calculator.js";
 import { GrowthRepo, DecisionRepo, DelegationLogRepo } from "../db/repositories.js";
 import { getContextUserId } from "../middleware/identity.js";
 import { calcBaselineCost } from "../config/pricing.js";
+import { config } from "../config.js";
+import { getEmbeddingCacheStats } from "../services/embedding.js";
+import { circuitBreakers } from "../services/circuit-breaker.js";
 
 const dashboardRouter = new Hono();
 
@@ -70,4 +73,31 @@ dashboardRouter.get("/delegation-stats/:userId", async (c) => {
   }
 });
 
+// Sprint 76: Phase 4 config status — read-only, shows current feature flag state
+// GET /api/config/phase4
+dashboardRouter.get("/config/phase4", (c) => {
+  return c.json({
+    permission_enabled: config.permission.enabled,
+    data_classification_enabled: config.permission.dataClassification,
+    redaction_enabled: config.permission.redaction,
+    small_model_guard_enabled: config.permission.smallModelGuard,
+    user_data_preferences: config.permission.userDataPreferences,
+    layer2_enabled: config.layer2.enabled,
+    layer2_rollout: config.layer2.rollout,
+  });
+});
+
+// Sprint 76: System internals — embedding cache stats + circuit breaker state
+// GET /api/system/stats
+dashboardRouter.get("/system/stats", (_c) => {
+  return _c.json({
+    embedding_cache: getEmbeddingCacheStats(),
+    circuit_breakers: {
+      llm: circuitBreakers.llm.getStats(),
+      database: circuitBreakers.database.getStats(),
+    },
+  });
+});
+
 export { dashboardRouter };
+
