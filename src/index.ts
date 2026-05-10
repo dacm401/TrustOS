@@ -21,8 +21,8 @@ import { sessionsRouter } from "./api/sessions.js";
 // Sprint 64: Permission-Gated Worker Architecture
 import { createPermissionsRouter, createWorkspacesRouter } from "./api/permissions.js";
 // Phase 3.0: 启动后台 Worker 轮询循环
-import { startSlowWorker } from "./services/phase3/slow-worker-loop.js";
-import { startExecuteWorker } from "./services/phase3/execute-worker-loop.js";
+import { startSlowWorker, stopSlowWorker } from "./services/phase3/slow-worker-loop.js";
+import { startExecuteWorker, stopExecuteWorker } from "./services/phase3/execute-worker-loop.js";
 // Optimization: Prometheus Metrics endpoint
 import { metricsRouter } from "./api/metrics.js";
 
@@ -145,9 +145,37 @@ if (API_KEY && API_KEY !== "dummy") {
 
 // ── 启动 HTTP 服务 ──────────────────────────────────────────────────────────────
 
-serve({ fetch: app.fetch, port: config.port });
+const server = serve({ fetch: app.fetch, port: config.port });
 
 // Phase 3.0: 启动后台 Worker（独立轮询循环，不阻塞 HTTP 请求）
 console.log("  ✅ Workers starting in background...\n");
 startSlowWorker();
 startExecuteWorker();
+
+// ── 优雅关机：处理 SIGINT / SIGTERM ─────────────────────────────────────
+
+async function gracefulShutdown(signal: string): Promise<void> {
+  console.log(`\n[shutdown] Received ${signal}, shutting down gracefully...`);
+
+  // 1. 停止 worker 轮询
+  stopSlowWorker();
+  stopExecuteWorker();
+
+  // 2. 等待 worker 当前迭代结束（最多 500ms）
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  // 3. 关闭 HTTP server，释放端口
+  server.close(() => {
+    console.log("[shutdown] HTTP server closed. Goodbye 👋");
+    process.exit(0);
+  });
+
+  // 兜底：如果 server.close 回调没触发，1s 后强制退出
+  setTimeout(() => {
+    console.log("[shutdown] Forcing exit.");
+    process.exit(0);
+  }, 1000);
+}
+
+process.on("SIGINT", () => { void gracefulShutdown("SIGINT"); });
+process.on("SIGTERM", () => { void gracefulShutdown("SIGTERM"); });

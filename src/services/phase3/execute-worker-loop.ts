@@ -159,7 +159,7 @@ async function executePlanCommand(
 async function pollLoop(): Promise<void> {
   const POLL_INTERVAL_MS = 3000;
 
-  while (true) {
+  while (!workerStopped) {
     try {
       const { query } = await import("../../db/connection.js");
       const result = await query(
@@ -178,6 +178,7 @@ async function pollLoop(): Promise<void> {
       }
 
       for (const row of result.rows) {
+        if (workerStopped) break;
         const payload_json: CommandPayload = typeof row.payload_json === "string"
           ? JSON.parse(row.payload_json)
           : row.payload_json;
@@ -194,17 +195,18 @@ async function pollLoop(): Promise<void> {
       console.error("[execute-worker] Poll error:", err.message);
     }
 
-    await sleep(POLL_INTERVAL_MS);
+    if (!workerStopped) {
+      await sleep(POLL_INTERVAL_MS);
+    }
   }
-}
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  console.log("[execute-worker] Stopped.");
 }
 
 // ── 启动入口 ─────────────────────────────────────────────────────────────
 
 let workerStarted = false;
+let workerStopped = false;
 
 export function startExecuteWorker(): void {
   if (workerStarted) {
@@ -212,10 +214,32 @@ export function startExecuteWorker(): void {
     return;
   }
   workerStarted = true;
+  workerStopped = false;
 
   console.log("[execute-worker] Starting execute worker loop...");
   pollLoop().catch((err) => {
     console.error("[execute-worker] Unhandled error in poll loop:", err.message);
     workerStarted = false;
+  });
+}
+
+/** 优雅停止 worker，供 index.ts 关机时调用 */
+export function stopExecuteWorker(): void {
+  if (!workerStarted) return;
+  workerStopped = true;
+  console.log("[execute-worker] Stopping...");
+}
+
+// 让 sleep 可中断
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    const check = setInterval(() => {
+      if (workerStopped) {
+        clearTimeout(timer);
+        clearInterval(check);
+        resolve();
+      }
+    }, 50);
   });
 }

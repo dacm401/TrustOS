@@ -211,7 +211,7 @@ function estimateCost(inputTokens: number, outputTokens: number, model: string):
 async function pollLoop(): Promise<void> {
   const POLL_INTERVAL_MS = 3000;
 
-  while (true) {
+  while (!workerStopped) {
     try {
       // 查询 queued 的 delegate 命令（排除 execute_plan）
       const { query } = await import("../../db/connection.js");
@@ -232,6 +232,7 @@ async function pollLoop(): Promise<void> {
       }
 
       for (const row of result.rows) {
+        if (workerStopped) break;
         // 反序列化 payload_json
         const payload_json: CommandPayload = typeof row.payload_json === "string"
           ? JSON.parse(row.payload_json)
@@ -249,17 +250,18 @@ async function pollLoop(): Promise<void> {
       console.error("[slow-worker] Poll error:", err.message);
     }
 
-    await sleep(POLL_INTERVAL_MS);
+    if (!workerStopped) {
+      await sleep(POLL_INTERVAL_MS);
+    }
   }
-}
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  console.log("[slow-worker] Stopped.");
 }
 
 // ── 启动入口 ───────────────────────────────────────────────────────────────
 
 let workerStarted = false;
+let workerStopped = false;
 
 export function startSlowWorker(): void {
   if (workerStarted) {
@@ -267,10 +269,33 @@ export function startSlowWorker(): void {
     return;
   }
   workerStarted = true;
+  workerStopped = false;
 
   console.log("[slow-worker] Starting slow worker loop...");
   pollLoop().catch((err) => {
     console.error("[slow-worker] Unhandled error in poll loop:", err.message);
     workerStarted = false;
+  });
+}
+
+/** 优雅停止 worker，供 index.ts 关机时调用 */
+export function stopSlowWorker(): void {
+  if (!workerStarted) return;
+  workerStopped = true;
+  console.log("[slow-worker] Stopping...");
+}
+
+// 让 sleep 可中断
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    // 如果设置了 stopped flag，提前 resolve
+    const check = setInterval(() => {
+      if (workerStopped) {
+        clearTimeout(timer);
+        clearInterval(check);
+        resolve();
+      }
+    }, 50);
   });
 }
