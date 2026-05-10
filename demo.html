@@ -3,482 +3,986 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TrustOS Demo</title>
+  <title>TrustOS - 智能路由对话</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    /* ============================================================
-       Design Tokens — SmartRouter Pro Dark Theme
-       参考: Linear / Vercel Dashboard / Raycast 视觉语言
-       ============================================================ */
     :root {
-      /* 背景层次 */
       --bg-base: #0a0e1a;
       --bg-surface: #111827;
       --bg-elevated: #1a2235;
       --bg-overlay: #1e2d45;
-
-      /* 边框 */
       --border-subtle: #1e2d45;
       --border-default: #2a3f5f;
       --border-strong: #3b5278;
-
-      /* 文字 */
       --text-primary: #e8edf5;
       --text-secondary: #8b9ab5;
       --text-muted: #4a5a75;
       --text-accent: #60a5fa;
-
-      /* 品牌色 */
       --accent-blue: #3b82f6;
-      --accent-blue-glow: rgba(59, 130, 246, 0.15);
-      --accent-blue-hover: rgba(59, 130, 246, 0.25);
       --accent-green: #10b981;
-      --accent-green-glow: rgba(16, 185, 129, 0.15);
       --accent-amber: #f59e0b;
       --accent-red: #ef4444;
       --accent-purple: #8b5cf6;
-
-      /* 特效 */
-      --glow-blue: 0 0 20px rgba(59, 130, 246, 0.3);
-      --glow-green: 0 0 20px rgba(16, 185, 129, 0.3);
     }
 
     * {
       box-sizing: border-box;
-    }
-
-    html, body {
       margin: 0;
       padding: 0;
-      height: 100%;
     }
 
     body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background-color: var(--bg-base);
       color: var(--text-primary);
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
+      height: 100vh;
+      overflow: hidden;
     }
 
-    /* 滚动条美化 */
-    ::-webkit-scrollbar {
-      width: 4px;
-      height: 4px;
+    /* Layout */
+    .app-container {
+      display: flex;
+      height: 100vh;
     }
-    ::-webkit-scrollbar-track {
+
+    /* Sidebar */
+    .sidebar {
+      width: 260px;
       background: var(--bg-surface);
-    }
-    ::-webkit-scrollbar-thumb {
-      background: var(--border-strong);
-      border-radius: 2px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: var(--border-default);
+      border-right: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
     }
 
-    /* 选中文字 */
-    ::selection {
-      background: var(--accent-blue-glow);
-      color: var(--text-accent);
+    .sidebar-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border-subtle);
     }
 
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .logo-text {
+      font-size: 18px;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .sidebar-nav {
+      flex: 1;
+      padding: 12px;
+      overflow-y: auto;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .nav-item:hover {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+    }
+
+    .nav-item.active {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--accent-blue);
+    }
+
+    .nav-item .icon {
+      font-size: 18px;
+      width: 24px;
+      text-align: center;
+    }
+
+    /* Stats mini in sidebar */
+    .sidebar-stats {
+      padding: 16px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      font-size: 12px;
+    }
+
+    .stat-row-label {
+      color: var(--text-muted);
+    }
+
+    .stat-row-value {
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .stat-row-value.highlight {
+      color: var(--accent-green);
+    }
+
+    /* Main Chat Area */
+    .main-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    /* Chat Header */
+    .chat-header {
+      padding: 16px 24px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .chat-header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .session-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: var(--bg-elevated);
+      border-radius: 20px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .session-badge .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: transparent;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 16px;
+      transition: all 0.15s ease;
+    }
+
+    .header-btn:hover {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border-color: var(--border-default);
+    }
+
+    /* Messages Area */
+    .messages-container {
+      flex: 1;
+      overflow-y: auto;
       padding: 24px;
     }
 
-    /* Surface Card */
-    .surface-card {
-      background-color: var(--bg-surface);
-      border: 1px solid var(--border-subtle);
-      border-radius: 12px;
+    .message {
+      max-width: 720px;
+      margin: 0 auto 24px;
+      animation: fadeIn 0.3s ease;
     }
 
-    .surface-elevated {
-      background-color: var(--bg-elevated);
-      border: 1px solid var(--border-default);
-      border-radius: 12px;
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Badge */
-    .badge {
-      display: inline-flex;
+    .message-user {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .message-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent-blue), #60a5fa);
+      display: flex;
       align-items: center;
-      padding: 2px 8px;
-      border-radius: 999px;
-      font-size: 11px;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .message-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .message-text {
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--text-primary);
+      padding: 12px 16px;
+      background: var(--bg-elevated);
+      border-radius: 12px;
+      border-top-left-radius: 4px;
+    }
+
+    .message-assistant {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .message-assistant .message-avatar {
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+    }
+
+    .assistant-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .assistant-text {
+      font-size: 15px;
+      line-height: 1.7;
+      color: var(--text-primary);
+    }
+
+    /* Decision Card in message */
+    .decision-inline {
+      margin-top: 12px;
+      padding: 12px 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .decision-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
       font-weight: 500;
-      line-height: 1.4;
     }
 
-    .badge-fast {
-      background-color: var(--accent-green-glow);
+    .decision-badge.fast {
+      background: rgba(16, 185, 129, 0.15);
       color: var(--accent-green);
-      border: 1px solid rgba(16, 185, 129, 0.2);
     }
 
-    .badge-slow {
-      background-color: rgba(139, 92, 246, 0.15);
+    .decision-badge.slow {
+      background: rgba(139, 92, 246, 0.15);
       color: var(--accent-purple);
-      border: 1px solid rgba(139, 92, 246, 0.2);
     }
 
-    .badge-warn {
-      background-color: rgba(245, 158, 11, 0.15);
-      color: var(--accent-amber);
-      border: 1px solid rgba(245, 158, 11, 0.2);
+    .decision-metrics {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 11px;
+      color: var(--text-muted);
     }
 
-    /* Progress Bar */
-    .progress-bar {
+    .decision-metric {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .confidence-bar {
+      width: 60px;
+      height: 4px;
+      background: var(--border-subtle);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .confidence-fill {
+      height: 100%;
+      background: var(--accent-blue);
+      border-radius: 2px;
+      transition: width 0.5s ease;
+    }
+
+    /* Input Area */
+    .input-area {
+      padding: 16px 24px 24px;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .input-wrapper {
+      max-width: 720px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .input-container {
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 14px;
+      transition: all 0.2s ease;
+    }
+
+    .input-container:focus-within {
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .chat-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text-primary);
+      font-size: 14px;
+      line-height: 1.5;
+      resize: none;
+      max-height: 120px;
+      font-family: inherit;
+    }
+
+    .chat-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .send-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-blue);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      font-size: 16px;
+      transition: all 0.15s ease;
+    }
+
+    .send-btn:hover {
+      background: #2563eb;
+      transform: scale(1.05);
+    }
+
+    .input-hint {
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    /* Right Panel - Dashboard */
+    .right-panel {
+      width: 320px;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      transition: width 0.3s ease, opacity 0.3s ease;
+    }
+
+    .right-panel.collapsed {
+      width: 0;
+      opacity: 0;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .panel-toggle {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px;
+    }
+
+    .panel-toggle:hover {
+      color: var(--text-primary);
+    }
+
+    .panel-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    /* KPI Cards */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .kpi-card {
+      padding: 14px;
+      background: var(--bg-elevated);
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .kpi-value {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .kpi-label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Section */
+    .panel-section {
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    /* Progress Bars */
+    .progress-item {
+      margin-bottom: 12px;
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+
+    .progress-label {
+      color: var(--text-secondary);
+    }
+
+    .progress-value {
+      color: var(--text-muted);
+      font-family: monospace;
+    }
+
+    .progress-track {
       height: 6px;
+      background: var(--border-subtle);
       border-radius: 3px;
-      background-color: var(--border-subtle);
       overflow: hidden;
     }
 
     .progress-fill {
       height: 100%;
       border-radius: 3px;
-      transition: width 0.5s ease-out;
+      transition: width 0.8s ease;
     }
 
-    /* Animations */
-    @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translateY(8px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+    /* Cost Card */
+    .cost-card {
+      padding: 16px;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.1));
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      border-radius: 12px;
+      margin-bottom: 20px;
     }
 
-    .animate-fade-in-up {
-      animation: fadeInUp 0.2s ease-out both;
+    .cost-main {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 8px;
     }
 
-    .animate-fade-in-up.stagger-1 { animation-delay: 0.05s; }
-    .animate-fade-in-up.stagger-2 { animation-delay: 0.1s; }
-    .animate-fade-in-up.stagger-3 { animation-delay: 0.15s; }
-    .animate-fade-in-up.stagger-4 { animation-delay: 0.2s; }
+    .cost-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--accent-green);
+    }
+
+    .cost-unit {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .cost-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Growth Timeline */
+    .timeline-item {
+      display: flex;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .timeline-item:last-child {
+      border-bottom: none;
+    }
+
+    .timeline-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      margin-top: 6px;
+      flex-shrink: 0;
+    }
+
+    .timeline-content {
+      flex: 1;
+    }
+
+    .timeline-text {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    .timeline-time {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Thinking indicator */
+    .thinking-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .thinking-dots {
+      display: flex;
+      gap: 4px;
+    }
+
+    .thinking-dots span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      animation: bounce 1.4s infinite ease-in-out;
+    }
+
+    .thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0); }
+      40% { transform: scale(1); }
+    }
+
+    /* Welcome message */
+    .welcome-card {
+      max-width: 560px;
+      margin: 0 auto 40px;
+      padding: 32px;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(139, 92, 246, 0.08));
+      border: 1px solid var(--border-default);
+      border-radius: 16px;
+      text-align: center;
+    }
+
+    .welcome-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .welcome-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .welcome-text {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    /* Quick actions */
+    .quick-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+
+    .quick-action {
+      padding: 8px 14px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 20px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .quick-action:hover {
+      background: var(--bg-overlay);
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <!-- Header -->
-    <div class="flex items-center justify-between mb-5">
-      <div>
-        <h1 style="font-size: 14px; font-weight: 600; margin: 0;">
-          📊 数据看板</h1>
-        <p style="font-size: 11px; color: var(--text-muted); margin: 4px 0 0;">
-          系统运行统计总览
-        </p>
+  <div class="app-container">
+    <!-- Left Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <div class="logo-icon">◈</div>
+          <span class="logo-text">TrustOS</span>
+        </div>
       </div>
-      <button
-        onclick="reloadDemo()"
-        style="
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 8px;
-          background-color: var(--bg-surface);
-          border: 1px solid var(--border-subtle);
-          color: var(--text-muted);
-          cursor: pointer;
-          font-size: 14px;
-        "
-        title="刷新"
-      >
-        🔄
-      </button>
-    </div>
 
-    <!-- KPI Cards -->
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px;">
-      <div class="surface-card" style="padding: 20px;">
-        <div class="animate-fade-in-up stagger-1" style="font-size: 30px; font-weight: 700; color: var(--accent-blue);">
-          <span id="total-requests">156</span>
+      <div class="sidebar-nav">
+        <div class="nav-item active">
+          <span class="icon">💬</span>
+          <span>对话</span>
         </div>
-        <div style="font-size: 11px; margin-top: 8px; color: var(--text-muted);">
-          今日对话
+        <div class="nav-item">
+          <span class="icon">📊</span>
+          <span>数据看板</span>
+        </div>
+        <div class="nav-item">
+          <span class="icon">🧠</span>
+          <span>记忆管理</span>
+        </div>
+        <div class="nav-item">
+          <span class="icon">📋</span>
+          <span>任务中心</span>
+        </div>
+        <div class="nav-item">
+          <span class="icon">⚙️</span>
+          <span>设置</span>
         </div>
       </div>
-      <div class="surface-card" style="padding: 20px;">
-        <div class="animate-fade-in-up stagger-2" style="font-size: 30px; font-weight: 700; color: var(--accent-green);">
-          <span id="satisfaction">82</span>%
+
+      <div class="sidebar-stats">
+        <div class="stat-row">
+          <span class="stat-row-label">今日对话</span>
+          <span class="stat-row-value">156</span>
         </div>
-        <div style="font-size: 11px; margin-top: 8px; color: var(--text-muted);">
-          满意率
+        <div class="stat-row">
+          <span class="stat-row-label">Fast 路由</span>
+          <span class="stat-row-value highlight">78%</span>
         </div>
-      </div>
-      <div class="surface-card" style="padding: 20px;">
-        <div class="animate-fade-in-up stagger-3" style="font-size: 30px; font-weight: 700; color: var(--accent-purple);">
-          <span id="fast-rate">78</span>%
-        </div>
-        <div style="font-size: 11px; margin-top: 8px; color: var(--text-muted);">
-          快速路由
+        <div class="stat-row">
+          <span class="stat-row-label">节省金额</span>
+          <span class="stat-row-value highlight">$0.82</span>
         </div>
       </div>
     </div>
 
-    <!-- Cost Savings Card -->
-    <div class="surface-card" style="padding: 20px; margin-bottom: 20px;">
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-        <span style="font-size: 14px;">💰</span>
-        <span style="font-size: 12px; font-weight: 500; color: var(--text-secondary);">
-          成本节省（今日）
-        </span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap;">
-        <div>
-          <div class="animate-fade-in-up stagger-1" style="font-size: 30px; font-weight: 700; color: var(--accent-green);">
-            <span id="saved-pct">42</span>%
-          </div>
-          <div style="font-size: 11px; margin-top: 4px; color: var(--text-muted);">
-            相比直打慢模型
+    <!-- Main Chat Area -->
+    <div class="main-area">
+      <!-- Header -->
+      <div class="chat-header">
+        <div class="chat-header-left">
+          <div class="session-badge">
+            <div class="dot"></div>
+            <span>新对话</span>
           </div>
         </div>
-        <div style="width: 1px; height: 40px; background-color: var(--border-subtle);"></div>
-        <div>
-          <div class="animate-fade-in-up stagger-2" style="font-size: 18px; font-weight: 600; color: var(--accent-green);">
-            $<span id="saved-usd">0.82</span>
-          </div>
-          <div style="font-size: 11px; margin-top: 4px; color: var(--text-muted);">
-            节省金额
-          </div>
-        </div>
-        <div>
-          <div style="font-size: 13px; color: var(--text-muted);">
-            实际 $<span id="actual-cost">0.0032</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Two-column: Intent + Model Distribution -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
-      <!-- Intent Distribution -->
-      <div class="surface-card" style="padding: 16px;">
-        <div style="font-size: 11px; font-weight: 500; margin-bottom: 12px; color: var(--text-secondary);">
-          意图分布
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="width: 80px; font-size: 11px; color: var(--text-secondary); flex-shrink: 0;">
-              simple_qa
-            </div>
-            <div class="progress-bar" style="flex: 1;">
-              <div class="progress-fill" id="intent-simple" style="width: 0%; background-color: var(--accent-blue);"></div>
-            </div>
-            <div style="width: 40px; font-size: 11px; text-align: right; color: var(--text-muted); flex-shrink: 0;">
-              102
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="width: 80px; font-size: 11px; color: var(--text-secondary); flex-shrink: 0;">
-              reasoning
-            </div>
-            <div class="progress-bar" style="flex: 1;">
-              <div class="progress-fill" id="intent-reasoning" style="width: 0%; background-color: var(--accent-blue);"></div>
-            </div>
-            <div style="width: 40px; font-size: 11px; text-align: right; color: var(--text-muted); flex-shrink: 0;">
-              34
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="width: 80px; font-size: 11px; color: var(--text-secondary); flex-shrink: 0;">
-              creative
-            </div>
-            <div class="progress-bar" style="flex: 1;">
-              <div class="progress-fill" id="intent-creative" style="width: 0%; background-color: var(--accent-blue);"></div>
-            </div>
-            <div style="width: 40px; font-size: 11px; text-align: right; color: var(--text-muted); flex-shrink: 0;">
-              20
-            </div>
-          </div>
+        <div class="header-actions">
+          <button class="header-btn" title="历史记录">📜</button>
+          <button class="header-btn" title="导出">📤</button>
+          <button class="header-btn" id="togglePanel" title="切换面板">📈</button>
         </div>
       </div>
 
-      <!-- Model Distribution -->
-      <div class="surface-card" style="padding: 16px;">
-        <div style="font-size: 11px; font-weight: 500; margin-bottom: 12px; color: var(--text-secondary);">
-          模型使用
+      <!-- Messages -->
+      <div class="messages-container">
+        <!-- Welcome -->
+        <div class="welcome-card">
+          <div class="welcome-icon">🤖</div>
+          <h2 class="welcome-title">欢迎使用 TrustOS</h2>
+          <p class="welcome-text">
+            智能路由系统，自动选择最适合的模型来处理你的问题。
+            <br>简单问题用 Fast 模型省时省钱，复杂问题交给 Slow 模型确保质量。
+          </p>
+          <div class="quick-actions">
+            <button class="quick-action">解释什么是 AI 路由</button>
+            <button class="quick-action">今天节省了多少成本</button>
+            <button class="quick-action">查看我的使用统计</button>
+          </div>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="width: 80px; font-size: 11px; color: var(--text-secondary); flex-shrink: 0;">
-              fast
-            </div>
-            <div class="progress-bar" style="flex: 1;">
-              <div class="progress-fill" id="model-fast" style="width: 0%; background-color: var(--accent-green);"></div>
-            </div>
-            <div style="width: 40px; font-size: 11px; text-align: right; color: var(--text-muted); flex-shrink: 0;">
-              122
+
+        <!-- User Message -->
+        <div class="message message-user">
+          <div class="message-avatar">👤</div>
+          <div class="message-content">
+            <div class="message-text">
+              什么是 AI 路由？它是如何工作的？
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="width: 80px; font-size: 11px; color: var(--text-secondary); flex-shrink: 0;">
-              slow
+        </div>
+
+        <!-- Assistant Response -->
+        <div class="message message-assistant">
+          <div class="message-avatar">◈</div>
+          <div class="assistant-content">
+            <div class="assistant-text">
+              <p>AI 路由是一种智能决策系统，它会根据你的问题特征自动选择最合适的处理方式。</p>
+              <br>
+              <p><strong>工作原理：</strong></p>
+              <p>1. <strong>问题分析</strong>：分析你的问题复杂度、意图类型和上下文</p>
+              <p>2. <strong>模型评估</strong>：对比 Fast 模型（快速省成本）和 Slow 模型（深度推理）</p>
+              <p>3. <strong>智能选择</strong>：基于置信度选择最优方案</p>
+              <br>
+              <p><strong>优势：</strong></p>
+              <p>• 简单问题节省 <strong>80%+</strong> 成本</p>
+              <p>• 复杂问题保持高质量回答</p>
+              <p>• 全程透明可追溯</p>
             </div>
-            <div class="progress-bar" style="flex: 1;">
-              <div class="progress-fill" id="model-slow" style="width: 0%; background-color: var(--accent-purple);"></div>
+
+            <!-- Inline Decision Card -->
+            <div class="decision-inline">
+              <div class="decision-badge fast">
+                ⚡ Fast 模型
+              </div>
+              <div class="decision-metrics">
+                <div class="decision-metric">
+                  <span>置信度</span>
+                  <div class="confidence-bar">
+                    <div class="confidence-fill" style="width: 72%;"></div>
+                  </div>
+                  <span style="font-weight: 600;">72%</span>
+                </div>
+                <div class="decision-metric">
+                  <span>💰</span>
+                  <span>$0.0008</span>
+                </div>
+                <div class="decision-metric">
+                  <span>⏱️</span>
+                  <span>342ms</span>
+                </div>
+              </div>
             </div>
-            <div style="width: 40px; font-size: 11px; text-align: right; color: var(--text-muted); flex-shrink: 0;">
-              34
-            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-area">
+        <div class="input-wrapper">
+          <div class="input-container">
+            <textarea
+              class="chat-input"
+              placeholder="输入消息..."
+              rows="1"
+            ></textarea>
+            <button class="send-btn">➤</button>
+          </div>
+          <div class="input-hint">
+            启用智能路由 · 自动压缩上下文 · 决策透明
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Decision Card Example -->
-    <div style="border-radius: 12px; overflow: hidden; font-size: 11px; margin-bottom: 20px; border: 1px solid var(--border-default); background-color: var(--bg-surface);">
-      <!-- Header — always visible -->
-      <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background-color: var(--bg-elevated);">
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-          <span style="color: var(--text-muted);">🔍</span>
-          <span class="badge badge-fast">
-            ⚡ 快模型
-          </span>
-          <span style="color: var(--text-secondary);">
-            2,142 tokens
-          </span>
-          <span style="color: var(--accent-green);">
-            $0.0008
-          </span>
-        </div>
+    <!-- Right Panel - Dashboard -->
+    <div class="right-panel" id="rightPanel">
+      <div class="panel-header">
+        <span class="panel-title">📊 实时数据</span>
+        <button class="panel-toggle" id="closePanel">×</button>
       </div>
 
-      <!-- Expanded content -->
-      <div style="padding: 12px;">
-        <!-- Routing scores -->
-        <div>
-          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 6px; text-transform: uppercase; color: var(--text-muted);">
-          📊 路由决策
-        </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 2px; color: var(--text-secondary);">
-              <span style="font-size: 10px;">快模型</span>
-              <span style="font-size: 10px; font-family: monospace; color: var(--accent-green);">
-                69%
-              </span>
-            </div>
-            <div class="progress-bar">
-              <div class="progress-fill" style="width: 69%; background-color: var(--accent-green);"></div>
-            </div>
+      <div class="panel-content">
+        <!-- Cost Card -->
+        <div class="cost-card">
+          <div class="cost-main">
+            <span class="cost-value">42%</span>
+            <span class="cost-unit">节省</span>
           </div>
-          <div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 2px; color: var(--text-secondary);">
-              <span style="font-size: 10px;">慢模型</span>
-              <span style="font-size: 10px; font-family: monospace; color: var(--accent-purple);">
-                31%
-              </span>
-            </div>
-            <div class="progress-bar">
-              <div class="progress-fill" style="width: 31%; background-color: var(--accent-purple);"></div>
-            </div>
-          </div>
+          <div class="cost-label">相比直打慢模型 · 今日节省 $0.82</div>
         </div>
-        <div style="margin-top: 4px; font-size: 10px; color: var(--text-muted);">
-          置信度: <span style="font-family: monospace; color: var(--text-accent);">80%</span>
-        </div>
-      </div>
 
-      <!-- Token usage -->
-      <div style="padding: 0 12px 12px;">
-        <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 6px; text-transform: uppercase; color: var(--text-muted);">
-        📦 Token 使用
-        </div>
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center;">
-          <div style="border-radius: 8px; padding: 6px 8px; background-color: var(--bg-elevated);">
-            <div style="font-size: 9px; margin-bottom: 2px; color: var(--text-muted);">输入</div>
-            <div style="font-family: monospace; font-weight: 700; font-size: 11px; color: var(--text-accent);">1,848</div>
+        <!-- KPI Grid -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-value" style="color: var(--accent-blue);">156</div>
+            <div class="kpi-label">今日对话</div>
           </div>
-          <div style="border-radius: 8px; padding: 6px 8px; background-color: var(--bg-elevated);">
-            <div style="font-size: 9px; margin-bottom: 2px; color: var(--text-muted);">输出</div>
-            <div style="font-family: monospace; font-weight: 700; font-size: 11px; color: var(--accent-purple);">294</div>
+          <div class="kpi-card">
+            <div class="kpi-value" style="color: var(--accent-green);">82%</div>
+            <div class="kpi-label">满意率</div>
           </div>
-          <div style="border-radius: 8px; padding: 6px 8px; background-color: var(--bg-elevated);">
-            <div style="font-size: 9px; margin-bottom: 2px; color: var(--text-muted);">费用</div>
-            <div style="font-family: monospace; font-weight: 700; font-size: 11px; color: var(--accent-green);">$0.0008</div>
+          <div class="kpi-card">
+            <div class="kpi-value" style="color: var(--accent-purple);">78%</div>
+            <div class="kpi-label">Fast 路由</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-value" style="color: var(--accent-amber);">1.2s</div>
+            <div class="kpi-label">平均延迟</div>
           </div>
         </div>
-      </div>
 
-      <!-- Footer metadata -->
-      <div style="padding: 0 12px 12px; display: flex; align-items: center; gap: 12px; font-size: 10px; padding-top: 6px; border-top: 1px solid var(--border-subtle); color: var(--text-muted);">
-        <span>⏱️ 342ms</span>
-        <span style="font-family: monospace;">qwen2.5:7b</span>
-      </div>
-
-      <!-- 用户语言化决策解释
-      <div style="padding: 0 12px 12px; padding-top: 6px; border-top: 1px solid var(--border-subtle);">
-        <p style="font-size: 11px; line-height: 1.6; margin: 0; color: var(--text-secondary);">
-          ✅ 选择快速模式：问题复杂度低（31/100），快速模型回答质量与最强模型相当，速度快 4 倍，成本低约 20 倍。
-        </p>
-      </div>
-    </div>
-
-    <!-- Growth Profile -->
-    <div class="surface-card" style="padding: 16px;">
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
-        <div style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">
-          🧠 成长档案
-        </div>
-        <span style="font-size: 10px; padding: 2px 8px; border-radius: 6px; background-color: var(--bg-elevated); color: var(--text-muted);">
-          23 条行为记忆
-        </span>
-      </div>
-
-      <div style="display: flex; flex-direction: column; gap: 16px;">
-        <!-- Milestones -->
-        <div>
-          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase; color: var(--text-muted);">
-          里程碑
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <div style="width: 4px; height: 4px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background-color: var(--accent-blue);"></div>
-            <div style="flex: 1;">
-              <div style="font-size: 11px; color: var(--text-secondary);">首次触发慢模型</div>
-              <div style="font-size: 10px; color: var(--text-muted);">2026-05-08</div>
+        <!-- Model Distribution -->
+        <div class="panel-section">
+          <div class="section-title">模型分布</div>
+          <div class="progress-item">
+            <div class="progress-header">
+              <span class="progress-label">⚡ Fast 模型</span>
+              <span class="progress-value">78%</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width: 78%; background: var(--accent-green);"></div>
             </div>
           </div>
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <div style="width: 4px; height: 4px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background-color: var(--accent-blue);"></div>
-            <div style="flex: 1;">
-              <div style="font-size: 11px; color: var(--text-secondary);">连续3天准确率>80%</div>
-              <div style="font-size: 10px; color: var(--text-muted);">2026-05-07</div>
+          <div class="progress-item">
+            <div class="progress-header">
+              <span class="progress-label">🧠 Slow 模型</span>
+              <span class="progress-value">22%</span>
             </div>
-          </div>
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <div style="width: 4px; height: 4px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background-color: var(--accent-blue);"></div>
-            <div style="flex: 1;">
-              <div style="font-size: 11px; color: var(--text-secondary);">节省超过$5</div>
-              <div style="font-size: 10px; color: var(--text-muted);">2026-05-05</div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width: 22%; background: var(--accent-purple);"></div>
             </div>
           </div>
         </div>
 
-        <!-- Recent learnings -->
-        <div>
-          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase; color: var(--text-muted);">
-          最近学习
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; align-items: flex-start; gap: 8px; border-radius: 8px; padding: 8px; background-color: var(--bg-elevated);">
-            <span style="font-size: 11px; flex-shrink: 0;">🧠</span>
-            <div style="font-size: 11px; line-height: 1.5; color: var(--text-secondary);">用户偏好简洁回答</div>
+        <!-- Intent Distribution -->
+        <div class="panel-section">
+          <div class="section-title">意图分布</div>
+          <div class="progress-item">
+            <div class="progress-header">
+              <span class="progress-label">simple_qa</span>
+              <span class="progress-value">65%</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width: 65%; background: var(--accent-blue);"></div>
+            </div>
           </div>
-          <div style="display: flex; align-items: flex-start; gap: 8px; border-radius: 8px; padding: 8px; background-color: var(--bg-elevated);">
-            <span style="font-size: 11px; flex-shrink: 0;">🧠</span>
-            <div style="font-size: 11px; line-height: 1.5; color: var(--text-secondary);">代码问题优先使用Python</div>
+          <div class="progress-item">
+            <div class="progress-header">
+              <span class="progress-label">reasoning</span>
+              <span class="progress-value">22%</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width: 22%; background: var(--accent-blue);"></div>
+            </div>
+          </div>
+          <div class="progress-item">
+            <div class="progress-header">
+              <span class="progress-label">creative</span>
+              <span class="progress-value">13%</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width: 13%; background: var(--accent-blue);"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Growth Timeline -->
+        <div class="panel-section">
+          <div class="section-title">成长记录</div>
+          <div class="timeline-item">
+            <div class="timeline-dot"></div>
+            <div class="timeline-content">
+              <div class="timeline-text">首次触发慢模型</div>
+              <div class="timeline-time">3 天前</div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot"></div>
+            <div class="timeline-content">
+              <div class="timeline-text">连续 3 天准确率 &gt;80%</div>
+              <div class="timeline-time">昨天</div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot"></div>
+            <div class="timeline-content">
+              <div class="timeline-text">节省超过 $5</div>
+              <div class="timeline-time">5 天前</div>
+            </div>
           </div>
         </div>
       </div>
@@ -486,42 +990,44 @@
   </div>
 
   <script>
-    // 初始化动画
-    function animateBars() {
-      setTimeout(() => {
-        document.getElementById('intent-simple').style.width = '100%';
-        document.getElementById('intent-reasoning').style.width = '33%';
-        document.getElementById('intent-creative').style.width = '20%';
-        document.getElementById('model-fast').style.width = '100%';
-        document.getElementById('model-slow').style.width = '28%';
-      }, 200);
-    }
+    // Toggle panel
+    const toggleBtn = document.getElementById('togglePanel');
+    const closeBtn = document.getElementById('closePanel');
+    const rightPanel = document.getElementById('rightPanel');
 
-    // 刷新演示
-    function reloadDemo() {
-      // 简单的数值变化
-      const requests = Math.floor(100 + Math.random() * 100);
-      document.getElementById('total-requests').textContent = requests;
-      
-      const satisfaction = Math.floor(70 + Math.random() * 20);
-      document.getElementById('satisfaction').textContent = satisfaction;
-      
-      const fastRate = Math.floor(60 + Math.random() * 30);
-      document.getElementById('fast-rate').textContent = fastRate;
-      
-      const savedPct = Math.floor(30 + Math.random() * 30);
-      document.getElementById('saved-pct').textContent = savedPct;
-      
-      const savedUsd = (Math.random() * 2).toFixed(2);
-      document.getElementById('saved-usd').textContent = savedUsd;
-      
-      const actualCost = (Math.random() * 0.01).toFixed(4);
-      document.getElementById('actual-cost').textContent = actualCost;
-    }
+    toggleBtn.addEventListener('click', () => {
+      rightPanel.classList.toggle('collapsed');
+    });
 
-    // 页面加载时初始化
+    closeBtn.addEventListener('click', () => {
+      rightPanel.classList.add('collapsed');
+    });
+
+    // Nav items
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', function() {
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        this.classList.add('active');
+      });
+    });
+
+    // Quick actions
+    document.querySelectorAll('.quick-action').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelector('.chat-input').value = this.textContent;
+        document.querySelector('.chat-input').focus();
+      });
+    });
+
+    // Animate progress bars on load
     window.addEventListener('load', () => {
-      animateBars();
+      document.querySelectorAll('.progress-fill').forEach(fill => {
+        const width = fill.style.width;
+        fill.style.width = '0%';
+        setTimeout(() => {
+          fill.style.width = width;
+        }, 300);
+      });
     });
   </script>
 </body>
