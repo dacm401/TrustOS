@@ -172,7 +172,7 @@ export async function* pollArchiveAndYield(
 ): AsyncGenerator<SSEEvent> {
   // 自适应轮询间隔
   const getPollInterval = (elapsedMs: number): number => {
-    if (elapsedMs < 10000) return 2000;
+    if (elapsedMs < 10000) return 500;
     if (elapsedMs < 60000) return 3000;
     return 5000;
   };

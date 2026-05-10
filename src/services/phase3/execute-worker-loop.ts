@@ -157,7 +157,7 @@ async function executePlanCommand(
 
 // 轮询循环
 async function pollLoop(): Promise<void> {
-  const POLL_INTERVAL_MS = 3000;
+  const POLL_INTERVAL_MS = 1000;
 
   while (!workerStopped) {
     try {
