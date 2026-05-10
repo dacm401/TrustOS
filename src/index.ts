@@ -164,15 +164,14 @@ async function gracefulShutdown(signal: string): Promise<void> {
   // 2. 等待 worker 当前迭代结束（最多 500ms）
   await new Promise((resolve) => setTimeout(resolve, 500));
 
-  // 3. 关闭 HTTP server，释放端口
+  // 3. 关闭 HTTP server（不依赖回调，直接超时强退）
   server.close(() => {
-    console.log("[shutdown] HTTP server closed. Goodbye 👋");
-    process.exit(0);
+    console.log("[shutdown] HTTP server closed.");
   });
 
-  // 兜底：如果 server.close 回调没触发，1s 后强制退出
+  // 4. 不管 server.close 回调有没有触发，1s 后强制退出
   setTimeout(() => {
-    console.log("[shutdown] Forcing exit.");
+    console.log("[shutdown] Exiting now.");
     process.exit(0);
   }, 1000);
 }
