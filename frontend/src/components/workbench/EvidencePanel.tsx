@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { fetchEvidence } from "@/lib/api";
+import { SOURCE_CONFIG } from "@/lib/constants";
 
 interface EvidenceItem {
   evidence_id: string;
@@ -15,12 +16,6 @@ interface EvidencePanelProps {
   taskId: string | null;
   userId: string;
 }
-
-const SOURCE_CONFIG: Record<string, { icon: string; label: string; bg: string; color: string }> = {
-  web_search: { icon: "🔍", label: "搜索", bg: "rgba(59,130,246,0.1)", color: "var(--text-accent)" },
-  http_request: { icon: "🌐", label: "HTTP", bg: "rgba(139,92,246,0.1)", color: "var(--accent-purple)" },
-  manual: { icon: "✍️", label: "手动", bg: "rgba(16,185,129,0.1)", color: "var(--accent-green)" },
-};
 
 export function EvidencePanel({ taskId, userId }: EvidencePanelProps) {
   const [evidences, setEvidences] = useState<EvidenceItem[]>([]);

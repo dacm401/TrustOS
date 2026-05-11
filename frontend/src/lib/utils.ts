@@ -14,8 +14,9 @@ export function formatTokens(n: number): string {
   return `${n}`;
 }
 
-export function timeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+export function timeAgo(timestamp: number | string): string {
+  const ts = typeof timestamp === "string" ? new Date(timestamp).getTime() : timestamp;
+  const seconds = Math.floor((Date.now() - ts) / 1000);
   if (seconds < 60) return `${seconds}秒前`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟前`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}小时前`;

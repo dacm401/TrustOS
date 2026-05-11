@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { fetchMemory, deleteMemory, createMemoryEntry, type MemoryEntry } from "@/lib/api";
+import { timeAgo } from "@/lib/utils";
 
 const CATEGORIES = [
   { id: "", label: "全部" },
@@ -27,19 +28,6 @@ const CATEGORY_STYLES: Record<string, { bg: string; text: string; border: string
   instruction: { bg: "rgba(245,158,11,0.15)", text: "#fcd34d", border: "rgba(245,158,11,0.4)" },
   auto_learn: { bg: "rgba(6,182,212,0.15)", text: "#67e8f9", border: "rgba(6,182,212,0.4)" },
 };
-
-function relativeTime(dateStr: string): string {
-  const now = Date.now();
-  const diff = now - new Date(dateStr).getTime();
-  const secs = Math.floor(diff / 1000);
-  if (secs < 60) return "刚刚";
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins} 分钟前`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  const days = Math.floor(hours / 24);
-  return `${days} 天前`;
-}
 
 interface MemoryCardProps {
   item: MemoryEntry;
@@ -102,7 +90,7 @@ function MemoryCard({ item, userId, onDelete }: MemoryCardProps) {
           </span>
         )}
         <span className="text-[10px] ml-auto" style={{ color: "var(--text-muted)" }}>
-          {relativeTime(item.created_at)}
+          {timeAgo(item.created_at)}
         </span>
       </div>
     </div>

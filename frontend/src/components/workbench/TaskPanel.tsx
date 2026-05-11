@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { fetchTasks } from "@/lib/api";
+import { timeAgo } from "@/lib/utils";
 
 interface TaskItem {
   task_id: string;
@@ -17,6 +18,7 @@ interface TaskPanelProps {
   selectedTaskId?: string | null;
 }
 
+
 const STATUS_DOT: Record<string, { color: string; label: string }> = {
   responding: { color: "var(--accent-green)", label: "活跃" },
   completed: { color: "var(--accent-blue)", label: "完成" },
@@ -24,18 +26,6 @@ const STATUS_DOT: Record<string, { color: string; label: string }> = {
   paused: { color: "var(--accent-amber)", label: "暂停" },
   cancelled: { color: "var(--text-muted)", label: "取消" },
 };
-
-function relativeTime(dateStr: string): string {
-  const now = Date.now();
-  const diff = now - new Date(dateStr).getTime();
-  const secs = Math.floor(diff / 1000);
-  if (secs < 60) return "刚刚";
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m 前`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h 前`;
-  return `${Math.floor(hrs / 24)}d 前`;
-}
 
 export function TaskPanel({ userId, sessionId, onTaskSelect, selectedTaskId }: TaskPanelProps) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -125,7 +115,7 @@ export function TaskPanel({ userId, sessionId, onTaskSelect, selectedTaskId }: T
                   className="text-[10px] flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  {relativeTime(task.updated_at)}
+                  {timeAgo(task.updated_at)}
                 </span>
               </div>
               <div className="flex items-center gap-2 ml-2">
@@ -144,7 +134,7 @@ export function TaskPanel({ userId, sessionId, onTaskSelect, selectedTaskId }: T
                   {task.mode}
                 </span>
                 <span className="text-[10px] ml-auto" style={{ color: "var(--text-muted)" }}>
-                  {relativeTime(task.updated_at)}
+                  {timeAgo(task.updated_at)}
                 </span>
               </div>
             </button>

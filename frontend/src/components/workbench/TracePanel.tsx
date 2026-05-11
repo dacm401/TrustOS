@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { fetchTraces } from "@/lib/api";
+import { TYPE_CONFIG } from "@/lib/constants";
 
 interface TraceItem {
   trace_id: string;
@@ -14,14 +15,7 @@ interface TracePanelProps {
   userId: string;
 }
 
-const TYPE_CONFIG: Record<string, { icon: string; color: string }> = {
-  planning: { icon: "🧠", color: "var(--accent-purple)" },
-  classification: { icon: "🏷️", color: "var(--text-accent)" },
-  routing: { icon: "🔀", color: "var(--accent-blue)" },
-  response: { icon: "💬", color: "var(--accent-green)" },
-  step: { icon: "⚙️", color: "var(--accent-amber)" },
-  error: { icon: "❌", color: "var(--accent-red)" },
-};
+
 
 function formatDetail(type: string, detail: Record<string, unknown> | null): string {
   if (!detail) return "";

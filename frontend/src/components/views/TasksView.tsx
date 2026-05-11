@@ -4,6 +4,8 @@ import { fetchTasks, fetchTraces, fetchEvidence, patchTask } from "@/lib/api";
 import { API_BASE } from "@/lib/api";
 import { TracePanel } from "@/components/workbench/TracePanel";
 import { EvidencePanel } from "@/components/workbench/EvidencePanel";
+import { TYPE_CONFIG, SOURCE_CONFIG } from "@/lib/constants";
+import { timeAgo } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,19 +36,6 @@ interface EvidenceItem {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function relativeTime(dateStr: string): string {
-  const now = Date.now();
-  const diff = now - new Date(dateStr).getTime();
-  const secs = Math.floor(diff / 1000);
-  if (secs < 60) return "刚刚";
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}分钟前`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}小时前`;
-  if (hrs < 48) return "昨天";
-  return `${Math.floor(hrs / 24)}天前`;
-}
-
 const STATUS_DOT: Record<string, { color: string; label: string; pulse?: boolean }> = {
   active:     { color: "var(--accent-green)", label: "活跃",   pulse: true },
   executing:  { color: "var(--accent-green)", label: "执行中", pulse: true },
@@ -56,7 +45,7 @@ const STATUS_DOT: Record<string, { color: string; label: string; pulse?: boolean
   failed:    { color: "var(--accent-red)",   label: "失败" },
   cancelled: { color: "var(--text-muted)",   label: "已取消" },
   created:   { color: "var(--accent-blue)",  label: "已创建" },
-  classified:{ color: "var(--accent-blue)",  label: "已分类" },
+  classified: { color: "var(--accent-blue)",  label: "已分类" },
   planning:  { color: "var(--accent-blue)",  label: "规划中" },
 };
 
@@ -87,16 +76,7 @@ function taskTitle(task: TaskItem): string {
   return src.length > 40 ? src.slice(0, 40) + "…" : src;
 }
 
-// ─── Trace rendering (inlined from TracePanel logic) ─────────────────────────
-
-const TRACE_TYPE_CONFIG: Record<string, { icon: string; color: string }> = {
-  planning:     { icon: "🧠", color: "var(--accent-purple)" },
-  classification:{ icon: "🏷️", color: "var(--text-accent)" },
-  routing:      { icon: "🔀", color: "var(--accent-blue)" },
-  response:     { icon: "💬", color: "var(--accent-green)" },
-  step:         { icon: "⚙️", color: "var(--accent-amber)" },
-  error:        { icon: "❌", color: "var(--accent-red)" },
-};
+// ─── Trace rendering ──────────────────────────────────────────────────────────
 
 function formatTraceDetail(type: string, detail: Record<string, unknown> | null): string {
   if (!detail) return "";
@@ -122,7 +102,7 @@ function TraceList({ traces, showAll, onToggle }: { traces: TraceItem[]; showAll
   return (
     <div className="space-y-1">
       {shown.map((t) => {
-        const cfg = TRACE_TYPE_CONFIG[t.type] ?? { icon: "📋", color: "var(--text-muted)" };
+        const cfg = TYPE_CONFIG[t.type] ?? { icon: "📋", color: "var(--text-muted)" };
         return (
           <div key={t.trace_id} className="flex items-start gap-2 text-xs">
             <span style={{ color: cfg.color }}>{cfg.icon}</span>
@@ -145,13 +125,7 @@ function TraceList({ traces, showAll, onToggle }: { traces: TraceItem[]; showAll
   );
 }
 
-// ─── Evidence rendering (inlined from EvidencePanel logic) ─────────────────
-
-const SOURCE_CONFIG: Record<string, { icon: string; label: string; bg: string; color: string }> = {
-  web_search:  { icon: "🔍", label: "搜索", bg: "rgba(59,130,246,0.1)", color: "var(--text-accent)" },
-  http_request: { icon: "🌐", label: "HTTP", bg: "rgba(139,92,246,0.1)", color: "var(--accent-purple)" },
-  manual:       { icon: "✍️", label: "手动", bg: "rgba(16,185,129,0.1)", color: "var(--accent-green)" },
-};
+// ─── Evidence rendering ───────────────────────────────────────────────────────
 
 function EvidenceList({ evidences }: { evidences: EvidenceItem[] }) {
   if (evidences.length === 0) {
@@ -182,7 +156,7 @@ function EvidenceList({ evidences }: { evidences: EvidenceItem[] }) {
                 href={String(ev.source_metadata.url)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block mt-1 truncate"
+                className="block mt-1 truncate text-[10px]"
                 style={{ color: "var(--text-accent)" }}
               >
                 {String(ev.source_metadata.url)}
@@ -207,7 +181,6 @@ export default function TasksView({ userId }: TasksViewProps) {
   const [listLoading, setListLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(false);
   const [traces, setTraces] = useState<TraceItem[]>([]);
   const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
@@ -271,13 +244,11 @@ export default function TasksView({ userId }: TasksViewProps) {
     const ok = await patchTask(selectedTaskId, userId, action);
     setActionLoading(false);
     if (ok) {
-      // Update local task status
       setTasks(prev => prev.map(t =>
         t.task_id === selectedTaskId
           ? { ...t, status: action === "pause" ? "paused" : action === "resume" ? "active" : "cancelled" }
           : t
       ));
-      // Reload full list to be safe
       loadTasks();
     }
   };
@@ -379,7 +350,7 @@ export default function TasksView({ userId }: TasksViewProps) {
                     {task.mode}
                   </span>
                   <span className="text-[10px] ml-auto" style={{ color: "var(--text-muted)" }}>
-                    {relativeTime(task.updated_at)}
+                    {timeAgo(task.updated_at)}
                   </span>
                 </div>
               </button>
