@@ -248,7 +248,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
 
   // O-002: 轮询委托任务，直到慢模型完成
   const pollDelegation = async (messageId: string, taskId: string) => {
-    const { apiBase } = getApiConfig();
+    const { apiBase } = await getApiConfig();
     const MAX_POLLS = 40; // 最多轮询40次（约2分钟）
     const POLL_INTERVAL = 3000; // 每3秒一次
 

@@ -91,7 +91,7 @@ export function Phase4Panel() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   async function fetchData() {
-    const { apiBase } = getApiConfig();
+    const { apiBase } = await getApiConfig();
     try {
       const [p4Res, statsRes] = await Promise.all([
         fetch(`${apiBase}/api/config/phase4`),

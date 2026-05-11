@@ -34,7 +34,7 @@ export async function getApiConfig() {
 export const API_BASE = "http://localhost:3001";
 
 export async function sendMessage(message: string, history: any[], userId: string, sessionId: string) {
-  const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = getApiConfig();
+  const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = await getApiConfig();
   const body: Record<string, any> = { user_id: userId, session_id: sessionId, message, history };
   // 如果前端设置里有 Key / 模型 / LLM地址，透传给后端覆盖环境变量
   if (llmBaseUrl) body.llm_base_url = llmBaseUrl;
@@ -55,7 +55,7 @@ export async function sendMessage(message: string, history: any[], userId: strin
 }
 
 export async function getDashboard(userId: string) {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(`${apiBase}/api/dashboard/${userId}`, {
     headers: { "X-User-Id": userId },
   });
@@ -63,7 +63,7 @@ export async function getDashboard(userId: string) {
 }
 
 export async function getGrowth(userId: string) {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(`${apiBase}/api/growth/${userId}`, {
     headers: { "X-User-Id": userId },
   });
@@ -71,7 +71,7 @@ export async function getGrowth(userId: string) {
 }
 
 export async function sendFeedback(decisionId: string, type: string, userId: string) {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   await fetch(`${apiBase}/api/feedback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -83,7 +83,7 @@ export async function sendFeedback(decisionId: string, type: string, userId: str
 // NOTE: tasks and evidence live under /v1/* (backend index.ts app.route("/v1/tasks/...", taskRouter))
 
 export async function fetchTasks(userId: string, sessionId?: string) {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const url = sessionId
     ? `${apiBase}/v1/tasks/all?session_id=${encodeURIComponent(sessionId)}`
     : `${apiBase}/v1/tasks/all`;
@@ -95,7 +95,7 @@ export async function fetchTasks(userId: string, sessionId?: string) {
 }
 
 export async function fetchTaskDetail(taskId: string, userId: string) {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}`, {
     headers: { "X-User-Id": userId },
   });
@@ -104,7 +104,7 @@ export async function fetchTaskDetail(taskId: string, userId: string) {
 }
 
 export async function fetchTaskSummary(taskId: string, userId: string) {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}/summary`, {
     headers: { "X-User-Id": userId },
   });
@@ -113,7 +113,7 @@ export async function fetchTaskSummary(taskId: string, userId: string) {
 }
 
 export async function fetchEvidence(taskId: string, userId: string) {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(
     `${apiBase}/v1/evidence?task_id=${encodeURIComponent(taskId)}`,
     { headers: { "X-User-Id": userId } }
@@ -123,7 +123,7 @@ export async function fetchEvidence(taskId: string, userId: string) {
 }
 
 export async function fetchTraces(taskId: string, userId: string) {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(
     `${apiBase}/v1/tasks/${encodeURIComponent(taskId)}/traces`,
     { headers: { "X-User-Id": userId } }
@@ -152,7 +152,7 @@ export interface HealthStatus {
 }
 
 export async function fetchHealth(): Promise<HealthStatus> {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(`${apiBase}/health`);
   if (!res.ok) throw new Error(`加载健康状态失败 (${res.status})`);
   return res.json();
@@ -169,7 +169,7 @@ export interface MemoryEntry {
 }
 
 export async function fetchMemory(userId: string, category?: string): Promise<{ entries: MemoryEntry[] }> {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const url = category
     ? `${apiBase}/v1/memory?category=${encodeURIComponent(category)}`
     : `${apiBase}/v1/memory`;
@@ -179,7 +179,7 @@ export async function fetchMemory(userId: string, category?: string): Promise<{ 
 }
 
 export async function deleteMemory(id: string, userId: string): Promise<void> {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(`${apiBase}/v1/memory/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: { "X-User-Id": userId },
@@ -193,7 +193,7 @@ export async function createMemoryEntry(
   content: string,
   source: string = "manual"
 ): Promise<MemoryEntry> {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(`${apiBase}/v1/memory`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-User-Id": userId },
@@ -208,7 +208,7 @@ export async function createMemoryEntry(
 }
 
 export async function fetchDecision(taskId: string, userId: string) {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}/decision`, {
     headers: { "X-User-Id": userId },
   });
@@ -218,7 +218,7 @@ export async function fetchDecision(taskId: string, userId: string) {
 }
 
 export async function patchTask(taskId: string, userId: string, action: "resume" | "pause" | "cancel"): Promise<boolean> {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", "X-User-Id": userId },
@@ -237,7 +237,7 @@ export interface CostStats {
 }
 
 export async function fetchCostStats(userId: string): Promise<CostStats> {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(`${apiBase}/api/cost-stats/${encodeURIComponent(userId)}`, {
     headers: { "X-User-Id": userId },
   });
@@ -253,7 +253,7 @@ export interface PerformanceData {
 }
 
 export async function fetchPerformance(userId: string, range: string = "7d"): Promise<PerformanceData> {
-  const { apiBase } = getApiConfig();
+  const { apiBase } = await getApiConfig();
   const res = await fetch(`${apiBase}/api/performance/${encodeURIComponent(userId)}?range=${range}`, {
     headers: { "X-User-Id": userId },
   });
