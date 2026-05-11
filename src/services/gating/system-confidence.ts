@@ -25,12 +25,9 @@ import type {
 import { DEFAULT_GATING_CONFIG } from "./gating-config.js";
 import { hasStrongBoundarySignal } from "./knowledge-boundary-signals.js";
 
-/**
- * KB-1 知识边界惩罚系数。
- * 当 selected_action = direct_answer 且命中强 knowledge boundary signal 时使用。
- * 0.75 = 将 direct_answer 的置信度降低 25%，但不完全归零（保留 delegate 的机会）。
- */
-const KB_DIRECT_ANSWER_PENALTY = 0.75;
+// G1 惩罚系数从 config 读取（不再硬编码）
+const penalties = DEFAULT_GATING_CONFIG.penalties;
+const kbCfg = DEFAULT_GATING_CONFIG.kb;
 
 /**
  * 计算 system_confidence
@@ -58,36 +55,32 @@ export function calculateSystemConfidence(
   // 2. 基础置信度：gap 贡献更大（gap 是客观信号）
   let confidence = llmConfidenceHint * 0.4 + gap * 0.6;
 
-  // 3. 高成本动作惩罚
+  // 3. 高成本动作惩罚（从 config 读取）
   const selectedAction = getSelectedAction(llmScores);
-  if (selectedAction === "execute_task") confidence *= 0.85;
-  if (selectedAction === "delegate_to_slow") confidence *= 0.92;
+  if (selectedAction === "execute_task") confidence *= penalties.execute_task;
+  if (selectedAction === "delegate_to_slow") confidence *= penalties.delegate_to_slow;
 
   // 4. 缺信息惩罚
-  if (features.missing_info) confidence *= 0.80;
+  if (features.missing_info) confidence *= penalties.missing_info;
 
   // 5. 高风险动作惩罚
-  if (features.high_risk_action) confidence *= 0.80;
+  if (features.high_risk_action) confidence *= penalties.high_risk_action;
 
   // 6. 模糊特征惩罚
-  if (features.query_too_vague) confidence *= 0.85;
+  if (features.query_too_vague) confidence *= penalties.query_too_vague;
 
   // 7. 需要长推理（对 delegate 来说是加分项，对 direct 来说是减分项）
-  // 这项让"需要长推理"在 delegate 场景下不会因为缺少外部特征而扣分
   if (features.needs_long_reasoning && selectedAction === "direct_answer") {
-    confidence *= 0.90;
+    confidence *= penalties.needs_long_reasoning;
   }
 
   // 8. KB-1: 知识边界校准
-  // 若 selected_action = direct_answer 且存在强 knowledge boundary signal，
-  // 说明这类问题属于"参数内不可靠回答"，应降低 direct_answer 的置信度
-  // 这不是"强制路由"，而是"让 direct_answer 不值得信任"
   if (
     selectedAction === "direct_answer" &&
     knowledgeBoundarySignals &&
-    hasStrongBoundarySignal(knowledgeBoundarySignals, 0.80)
+    hasStrongBoundarySignal(knowledgeBoundarySignals, kbCfg.strong_signal_threshold)
   ) {
-    confidence *= KB_DIRECT_ANSWER_PENALTY;
+    confidence *= penalties.kb_direct_answer;
   }
 
   // 标准化到 3 位小数，消除 IEEE754 浮点尾数噪音

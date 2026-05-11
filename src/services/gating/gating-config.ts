@@ -35,4 +35,26 @@ export const DEFAULT_GATING_CONFIG: GatingConfig = {
     delegate_token_penalty: 0.02, // 每 1000 token 额外惩罚
     latency_penalty: 0.01,       // 每 10s latency 额外惩罚
   },
+
+  // HITL 歧义检测阈值（P2）
+  ambiguity: {
+    confidence_threshold: 0.5,   // LLM confidence_hint 低于此值则触发 HITL
+    score_gap_threshold: 0.15,   // top1-top2 分数差低于此值则触发 HITL
+  },
+
+  // G1 系统置信度惩罚系数（统一从此读取，不再散落各处）
+  penalties: {
+    execute_task: 0.85,       // 高成本动作惩罚
+    delegate_to_slow: 0.92,  // 委托动作惩罚
+    missing_info: 0.80,      // 缺信息惩罚
+    high_risk_action: 0.80,  // 高风险动作惩罚
+    query_too_vague: 0.85,   // 模糊特征惩罚
+    needs_long_reasoning: 0.90,  // 长推理惩罚（仅 direct_answer 场景）
+    kb_direct_answer: 0.75,  // KB-1: direct_answer 命中知识边界时惩罚
+  },
+
+  // KB-1 知识边界检测
+  kb: {
+    strong_signal_threshold: 0.80,  // hasStrongBoundarySignal 的强信号阈值
+  },
 };

@@ -702,9 +702,8 @@ function parseGatedDecision(
   }
 }
 
-// P2 HITL: 歧义检测阈值
-const AMBIGUITY_CONFIDENCE_THRESHOLD = 0.5;
-const AMBIGUITY_SCORE_GAP_THRESHOLD = 0.15;
+// P2 HITL: 歧义检测阈值（从 gating-config 读取，不再硬编码）
+const ambiguityCfg = DEFAULT_GATING_CONFIG.ambiguity;
 
 /**
  * P2 HITL: 检测决策歧义。
@@ -720,8 +719,8 @@ function detectDecisionAmbiguity(
   const [secondAction, secondScore] = sorted[1];
   const scoreGap = topScore - secondScore;
 
-  const lowConfidence = llmConfidenceHint < AMBIGUITY_CONFIDENCE_THRESHOLD;
-  const closeScores = scoreGap < AMBIGUITY_SCORE_GAP_THRESHOLD;
+  const lowConfidence = llmConfidenceHint < ambiguityCfg.confidence_threshold;
+  const closeScores = scoreGap < ambiguityCfg.score_gap_threshold;
 
   if (!lowConfidence && !closeScores) return undefined;
 
@@ -834,7 +833,7 @@ async function routeByGatedDecision(
     // Sprint 68: 显式路由层，用于分层监控和 L2 灰度分析
     routing_layer: DECISION_TO_LAYER[gated.routedAction],
     selected_role: gated.routedAction === "delegate_to_slow" ? "slow" : "fast",
-  }).catch((e) => console.warn("[delegation-log] write failed:", e.message));
+  }).catch((e: Error) => console.error("[delegation-log] write failed:", e.message));
 
   // Gated Delegation 日志（console.debug 级别，不阻塞主流程）
   console.log("[llm-native-router] Gated Delegation:", {
@@ -870,6 +869,156 @@ interface RouteContext {
   raw: string;
   /** G4: delegation_logs 主键 ID（用于异步回写 execution 结果） */
   delegation_log_id?: string;
+}
+
+// ─────────────────────────────────────────────────────────
+// 共享 helper：Phase 4 权限层 + 脱敏
+// ─────────────────────────────────────────────────────────
+interface Phase4Result {
+  processedCommand: CommandPayload | undefined;
+  classification: InstanceType<ReturnType<typeof import("../phases/phase4/index.js").getPhase4>["DataClassifier"]>["classify"] extends (s: string, ctx: infer C) => infer R ? R : never;
+  permission: InstanceType<ReturnType<typeof import("../phases/phase4/index.js").getPhase4>["PermissionChecker"]>;
+}
+
+async function runPhase4Guard(
+  command: CommandPayload | undefined,
+  session_id: string,
+  user_id: string,
+): Promise<Phase4Result | null> {
+  if (!config.permission.enabled) return { processedCommand: command, classification: null as any, permission: null as any };
+
+  try {
+    const pl = await getPhase4();
+    const classificationCtx = {
+      dataType: "task_archive" as const,
+      sensitivity: "internal" as const,
+      source: "system" as const,
+      hasPII: false,
+      ageHours: 0,
+    };
+    const classification = new pl.DataClassifier().classify(command?.task_brief ?? "", classificationCtx);
+    const permissionCtx = {
+      sessionId: session_id,
+      userId: user_id,
+      requestedTier: classification.classification,
+      featureFlags: {
+        use_permission_layer: config.permission.enabled,
+        use_data_classification: config.permission.dataClassification,
+        use_redaction: config.permission.redaction,
+      },
+      userDataPreferences: config.permission.userDataPreferences,
+      targetModel: "cloud_72b" as const,
+    };
+    const permission = pl.PermissionChecker.fromClassification(classification.classification, permissionCtx);
+
+    // 拒绝 → 返回 null 通知调用方阻止分发
+    if (!permission.allowed && permission.fallbackAction !== "redact") {
+      return null;
+    }
+
+    let processedCommand = command;
+
+    if (permission.fallbackAction === "redact" && config.permission.redaction) {
+      const redactionEngine = pl.getRedactionEngine();
+      const redactionCtx = {
+        sessionId: session_id,
+        userId: user_id,
+        dataType: "task_archive" as const,
+        targetClassification: classification.classification,
+        enableAudit: true,
+      };
+      if (command) {
+        const redactedBrief = redactionEngine.redact(command.task_brief ?? "", redactionCtx);
+        const redactedWorkerHint = redactionEngine.redact(command.worker_hint ?? "", redactionCtx);
+        processedCommand = {
+          ...command,
+          task_brief: redactedBrief.content as string,
+          worker_hint: redactedWorkerHint.content as WorkerHint,
+        };
+        console.log("[llm-native-router] Phase 4.2 Redaction Applied:", {
+          briefStats: redactedBrief.stats,
+          workerHintStats: redactedWorkerHint.stats,
+        });
+      }
+    }
+
+    return { processedCommand, classification, permission };
+  } catch (e: any) {
+    console.warn("[llm-native-router] Phase 4 guard failed:", e.message);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// 共享 helper：TaskArchive + TaskCommand 写入 + 事件
+// ─────────────────────────────────────────────────────────
+interface ArchiveCommandResult {
+  archiveRecord: { id: string } | null;
+  commandRecord: { id: string } | null;
+}
+
+async function writeTaskArchiveAndCommand(
+  taskId: string,
+  decision: ManagerDecision,
+  message: string,
+  processedCommand: CommandPayload | undefined,
+  session_id: string,
+  user_id: string,
+  eventType: string,
+  workerRole: string,
+): Promise<ArchiveCommandResult> {
+  let archiveRecord: { id: string } | null = null;
+  let commandRecord: { id: string } | null = null;
+
+  try {
+    const { TaskArchiveRepo, TaskArchiveEventRepo } = await import("../db/task-archive-repo.js");
+    archiveRecord = await TaskArchiveRepo.create({
+      task_id: taskId,
+      user_id,
+      session_id,
+      decision,
+      user_input: message,
+      task_brief: processedCommand?.task_brief,
+      goal: processedCommand?.goal,
+    });
+    await TaskArchiveEventRepo.create({
+      archive_id: archiveRecord.id,
+      task_id: taskId,
+      event_type: "archive_created",
+      payload: { decision_type: eventType, command_type: processedCommand?.command_type ?? eventType },
+      actor: "fast_manager",
+      user_id,
+    });
+  } catch (e: any) {
+    console.error("[llm-native-router] TaskArchive create failed:", { error: e.message, taskId });
+  }
+
+  try {
+    const { TaskCommandRepo, TaskArchiveEventRepo } = await import("../db/task-archive-repo.js");
+    if (processedCommand) {
+      commandRecord = await TaskCommandRepo.create({
+        task_id: taskId,
+        archive_id: archiveRecord?.id ?? taskId,
+        user_id,
+        command_type: processedCommand.command_type,
+        worker_hint: processedCommand.worker_hint,
+        priority: processedCommand.priority ?? "normal",
+        payload: processedCommand,
+      });
+      await TaskArchiveEventRepo.create({
+        archive_id: archiveRecord?.id ?? taskId,
+        task_id: taskId,
+        event_type: "worker_started",
+        payload: { worker_role: workerRole, command_id: commandRecord.id },
+        actor: workerRole,
+        user_id,
+      });
+    }
+  } catch (e: any) {
+    console.error("[llm-native-router] TaskCommand create failed:", { error: e.message, taskId });
+  }
+
+  return { archiveRecord, commandRecord };
 }
 
 async function routeByDecision(
@@ -947,22 +1096,14 @@ async function routeByDecision(
     case "delegate_to_slow": {
       const command = decision.command as CommandPayload | undefined;
       const taskId = uuid();
-      let processedCommand = command;
 
       // ── Sensitive Data Guard（信息分发红线）────────────────────────────────────
-      // 在发给云端模型之前，先扫描是否包含红线敏感数据
-      const scanTargets = [
-        message,                           // 用户原始输入
-        command?.task_brief ?? "",          // Manager 组装的任务摘要
-      ].join(" ");
-
-      const sensitiveResult = detectSensitiveData(scanTargets);
+      const sensitiveResult = detectSensitiveData([message, command?.task_brief ?? ""].join(" "));
       if (sensitiveResult) {
-        const alertText = language === "zh"
-          ? `⚠️ 检测到敏感数据 [${sensitiveResult.label}]，为保护您的信息，此请求不会发给云端模型。`
-          : `⚠️ Sensitive data detected [${sensitiveResult.label}]. This request will not be sent to the cloud model.`;
         return {
-          message: alertText,
+          message: language === "zh"
+            ? `⚠️ 检测到敏感数据 [${sensitiveResult.label}]，为保护您的信息，此请求不会发给云端模型。`
+            : `⚠️ Sensitive data detected [${sensitiveResult.label}]. This request will not be sent to the cloud model.`,
           decision,
           decision_type: "delegate_to_slow",
           routing_layer: "L1",
@@ -971,145 +1112,31 @@ async function routeByDecision(
         };
       }
 
-
-      // Phase 4.1 + 4.2: Permission Layer + Redaction Engine
-      // 目的：在数据暴露给云端模型之前，检查是否允许暴露，必要时执行脱敏
-      if (config.permission.enabled) {
-        try {
-          const pl = await getPhase4();
-          // 构建分类上下文：task_brief 是暴露给云端的核心数据
-          const classificationCtx = {
-            dataType: "task_archive" as const,
-            sensitivity: "internal" as const,
-            source: "system" as const,
-            hasPII: false,
-            ageHours: 0,
-          };
-          const classification = new pl.DataClassifier().classify(command?.task_brief ?? "", classificationCtx);
-          const permissionCtx = {
-            sessionId: session_id,
-            userId: user_id,
-            requestedTier: classification.classification,
-            featureFlags: {
-              use_permission_layer: config.permission.enabled,
-              use_data_classification: config.permission.dataClassification,
-              use_redaction: config.permission.redaction,
-            },
-            userDataPreferences: config.permission.userDataPreferences,
-            targetModel: "cloud_72b" as const,
-          };
-          const permission = pl.PermissionChecker.fromClassification(classification.classification, permissionCtx);
-
-          console.log("[llm-native-router] Phase 4 Permission Check:", {
-            taskId,
-            dataType: "task_brief",
-            classification: classification.classification,
-            permissionAllowed: permission.allowed,
-            fallbackAction: permission.fallbackAction,
-          });
-
-          // Phase 4.2: 根据 fallbackAction 执行脱敏
-          if (permission.fallbackAction === "redact" && config.permission.redaction) {
-            const redactionEngine = pl.getRedactionEngine();
-            const redactionCtx = {
-              sessionId: session_id,
-              userId: user_id,
-              dataType: "task_archive" as const,
-              targetClassification: classification.classification,
-              enableAudit: true,
-            };
-
-            if (command) {
-              const redactedBrief = redactionEngine.redact(command.task_brief ?? "", redactionCtx);
-              const redactedWorkerHint = redactionEngine.redact(command.worker_hint ?? "", redactionCtx);
-
-              processedCommand = {
-                ...command,
-                task_brief: redactedBrief.content as string,
-                worker_hint: redactedWorkerHint.content as WorkerHint,
-              };
-
-              console.log("[llm-native-router] Phase 4.2 Redaction Applied:", {
-                taskId,
-                briefStats: redactedBrief.stats,
-                workerHintStats: redactedWorkerHint.stats,
-              });
-            }
-          } else if (permission.fallbackAction === "reject" || !permission.allowed) {
-            // 拒绝暴露，回退到 direct_answer
-            return {
-              message: language === "zh"
-                ? "抱歉，这个问题涉及敏感信息，无法交给更专业的模型处理。"
-                : "Sorry, this request involves sensitive information and cannot be processed by the cloud model.",
-              decision,
-              routing_layer: "L0",
-              decision_type: "direct_answer",
-              raw_manager_output: raw,
-              delegation_log_id,
-            };
-          }
-        } catch (e: any) {
-          console.warn("[llm-native-router] Permission layer check failed:", e.message);
-        }
-      }
-
-      // Phase 3.0: 写入 TaskArchive + archive_written 事件
-      let archiveRecord: { id: string } | null = null;
-      try {
-        const { TaskArchiveRepo, TaskArchiveEventRepo } = await import("../db/task-archive-repo.js");
-        archiveRecord = await TaskArchiveRepo.create({
-          task_id: taskId,
-          user_id,
-          session_id,
+      // Phase 4 权限层 + 脱敏（null = 拒绝暴露）
+      const phase4Result = await runPhase4Guard(command, session_id, user_id);
+      if (phase4Result === null) {
+        return {
+          message: language === "zh"
+            ? "抱歉，这个问题涉及敏感信息，无法交给更专业的模型处理。"
+            : "Sorry, this request involves sensitive information and cannot be processed by the cloud model.",
           decision,
-          user_input: message,
-        });
-        await TaskArchiveEventRepo.create({
-          archive_id: archiveRecord.id,
-          task_id: taskId,
-          event_type: "archive_created",
-          payload: { decision_type: "delegate_to_slow", command_type: command?.command_type ?? "research" },
-          actor: "fast_manager",
-          user_id,
-        });
-      } catch (e: any) {
-        console.warn("[llm-native-router] TaskArchive create failed:", e.message);
+          routing_layer: "L0",
+          decision_type: "direct_answer",
+          raw_manager_output: raw,
+          delegation_log_id,
+        };
       }
 
-      // Phase 3.0: 写入 task_commands + worker_started 事件
-      let commandRecord: { id: string } | null = null;
-      try {
-        const { TaskCommandRepo, TaskArchiveEventRepo } = await import("../db/task-archive-repo.js");
-        if (processedCommand) {
-          commandRecord = await TaskCommandRepo.create({
-            task_id: taskId,
-            archive_id: archiveRecord?.id ?? taskId,
-            user_id,
-            command_type: processedCommand.command_type,
-            worker_hint: processedCommand.worker_hint,
-            priority: processedCommand.priority ?? "normal",
-            payload: processedCommand,
-          });
-          // Phase 3.0: worker_started 事件
-          await TaskArchiveEventRepo.create({
-            archive_id: archiveRecord?.id ?? taskId,
-            task_id: taskId,
-            event_type: "worker_started",
-            payload: { worker_role: processedCommand.worker_hint ?? "slow_worker", command_id: commandRecord.id },
-            actor: "slow_worker",
-            user_id,
-          });
-        }
-      } catch (e: any) {
-        console.warn("[llm-native-router] TaskCommand create failed:", e.message);
-      }
-
-      const fastReply = language === "zh"
-        ? "这个问题比较深，我正在请更专业的模型帮你分析，稍等一下～"
-        : "This is complex. I'm getting a more specialized model to analyze it, please wait...";
+      // 写入 TaskArchive + TaskCommand
+      const { archiveRecord, commandRecord } = await writeTaskArchiveAndCommand(
+        taskId, decision, message, phase4Result.processedCommand,
+        session_id, user_id, "delegate_to_slow", "slow_worker",
+      );
 
       return {
-        message: fastReply,
+        message: language === "zh"
+          ? "这个问题比较深，我正在请更专业的模型帮你分析，稍等一下～"
+          : "This is complex. I'm getting a more specialized model to analyze it, please wait...",
         decision,
         delegation: { task_id: taskId, status: "triggered" },
         routing_layer: "L2",
@@ -1121,135 +1148,31 @@ async function routeByDecision(
       };
     }
 
+
     case "execute_task": {
       const command = decision.command as CommandPayload | undefined;
       const taskId = uuid();
-      let processedCommand = command;
 
-      // Phase 4.1 + 4.2: Permission Layer + Redaction Engine
-      if (config.permission.enabled) {
-        try {
-          const pl = await getPhase4();
-          const classificationCtx = {
-            dataType: "task_archive" as const,
-            sensitivity: "internal" as const,
-            source: "system" as const,
-            hasPII: false,
-            ageHours: 0,
-          };
-          const classification = new pl.DataClassifier().classify(command?.task_brief ?? "", classificationCtx);
-          const permissionCtx = {
-            sessionId: session_id,
-            userId: user_id,
-            requestedTier: classification.classification,
-            featureFlags: {
-              use_permission_layer: config.permission.enabled,
-              use_data_classification: config.permission.dataClassification,
-              use_redaction: config.permission.redaction,
-            },
-            userDataPreferences: config.permission.userDataPreferences,
-            targetModel: "cloud_72b" as const,
-          };
-          const permission = pl.PermissionChecker.fromClassification(classification.classification, permissionCtx);
-
-          console.log("[llm-native-router] Phase 4 Permission Check (execute_task):", {
-            taskId,
-            dataType: "task_brief",
-            classification: classification.classification,
-            permissionAllowed: permission.allowed,
-            fallbackAction: permission.fallbackAction,
-          });
-
-          // Phase 4.2: 根据 fallbackAction 执行脱敏
-          if (permission.fallbackAction === "redact" && config.permission.redaction) {
-            const redactionEngine = pl.getRedactionEngine();
-            const redactionCtx = {
-              sessionId: session_id,
-              userId: user_id,
-              dataType: "task_archive" as const,
-              targetClassification: classification.classification,
-              enableAudit: true,
-            };
-
-            if (command) {
-              const redactedBrief = redactionEngine.redact(command.task_brief ?? "", redactionCtx);
-              const redactedWorkerHint = redactionEngine.redact(command.worker_hint ?? "", redactionCtx);
-
-              processedCommand = {
-                ...command,
-                task_brief: redactedBrief.content as string,
-                worker_hint: redactedWorkerHint.content as WorkerHint,
-              };
-
-              console.log("[llm-native-router] Phase 4.2 Redaction Applied (execute_task):", {
-                taskId,
-                briefStats: redactedBrief.stats,
-              });
-            }
-          }
-        } catch (e: any) {
-          console.warn("[llm-native-router] Permission layer check failed:", e.message);
-        }
-      }
-
-      // Step 1: 写入 TaskArchive + archive_written 事件
-      let archiveRecord2: { id: string } | null = null;
-      try {
-        const { TaskArchiveRepo, TaskArchiveEventRepo } = await import("../db/task-archive-repo.js");
-        archiveRecord2 = await TaskArchiveRepo.create({
-          task_id: taskId,
-          user_id,
-          session_id,
+      // Phase 4 权限层 + 脱敏（execute_task 不拒绝，只脱敏）
+      const phase4Result = await runPhase4Guard(command, session_id, user_id);
+      if (phase4Result === null) {
+        return {
+          message: language === "zh" ? "无法处理此任务。" : "Unable to process this task.",
           decision,
-          user_input: message,
-          task_brief: command?.task_brief,
-          goal: command?.goal,
-        });
-        await TaskArchiveEventRepo.create({
-          archive_id: archiveRecord2.id,
-          task_id: taskId,
-          event_type: "archive_created",
-          payload: { decision_type: "execute_task", command_type: processedCommand?.command_type ?? "execute_plan" },
-          actor: "fast_manager",
-          user_id,
-        });
-      } catch (e: any) {
-        console.warn("[llm-native-router] TaskArchive create failed:", e.message);
+          routing_layer: "L0",
+          decision_type: "direct_answer",
+          raw_manager_output: raw,
+          delegation_log_id,
+        };
       }
 
-      // Step 2: 写入 task_commands + worker_started 事件
-      let commandRecord2: { id: string } | null = null;
-      try {
-        const { TaskCommandRepo, TaskArchiveEventRepo } = await import("../db/task-archive-repo.js");
-        if (processedCommand) {
-          commandRecord2 = await TaskCommandRepo.create({
-            task_id: taskId,
-            archive_id: archiveRecord2?.id ?? taskId,
-            user_id,
-            command_type: processedCommand.command_type ?? "execute_plan",
-            worker_hint: processedCommand.worker_hint ?? "execute_worker",
-            priority: processedCommand.priority ?? "normal",
-            payload: processedCommand,
-            timeout_sec: processedCommand.timeout_sec,
-          });
-          await TaskArchiveEventRepo.create({
-            archive_id: archiveRecord2?.id ?? taskId,
-            task_id: taskId,
-            event_type: "worker_started",
-            payload: { worker_role: processedCommand.worker_hint ?? "execute_worker", command_id: commandRecord2.id },
-            actor: "execute_worker",
-            user_id,
-          });
-        }
-      } catch (e: any) {
-        console.warn("[llm-native-router] TaskCommand create failed:", e.message);
-      }
+      // 写入 TaskArchive + TaskCommand
+      const { archiveRecord, commandRecord } = await writeTaskArchiveAndCommand(
+        taskId, decision, message, phase4Result.processedCommand,
+        session_id, user_id, "execute_task", "execute_worker",
+      );
 
-      const fastReply = language === "zh"
-        ? "好的，正在处理这个任务，稍等一下～"
-        : "Got it. Processing this task, please wait...";
-
-      // Phase 3.0: P0-3 — execute_task 接入 TaskPlanner，生成 ExecutionPlan
+      // TaskPlanner 生成执行计划
       let execution_plan;
       try {
         execution_plan = await taskPlanner.plan({
@@ -1265,18 +1188,19 @@ async function routeByDecision(
         });
       } catch (e: any) {
         console.warn("[llm-native-router] TaskPlanner.plan failed:", e.message);
-        // TaskPlanner 失败不影响主流程，继续返回 delegation
       }
 
       return {
-        message: fastReply,
+        message: language === "zh"
+          ? "好的，正在处理这个任务，稍等一下～"
+          : "Got it. Processing this task, please wait...",
         decision,
         delegation: { task_id: taskId, status: "triggered" },
         routing_layer: "L3",
         decision_type: "execute_task",
         raw_manager_output: raw,
-        archive_id: archiveRecord2?.id ?? taskId,
-        command_id: commandRecord2?.id,
+        archive_id: archiveRecord?.id ?? taskId,
+        command_id: commandRecord?.id,
         execution_plan,
         delegation_log_id,
       };
@@ -1287,6 +1211,163 @@ async function routeByDecision(
       return assertUnreachable(decision.decision_type, "routeByDecision");
     }
   }
+}
+
+// ── R-01 公共辅助函数（由 delegate_to_slow / execute_task 共用） ─────────────────
+
+type Phase4Processed = {
+  processedCommand: CommandPayload;
+  classification: string;
+  permissionAllowed: boolean;
+  fallbackAction: string;
+};
+
+/**
+ * Phase 4 权限层 + 脱敏引擎。
+ * 返回 null 表示拒绝暴露（应回退到 direct_answer）。
+ * 返回 Phase4Processed 表示允许继续，其中 processedCommand 已是脱敏后的版本。
+ */
+async function runPhase4Guard(
+  command: CommandPayload | undefined,
+  session_id: string,
+  user_id: string,
+): Promise<Phase4Processed | null> {
+  if (!config.permission.enabled) {
+    return command ? { processedCommand: command, classification: "", permissionAllowed: true, fallbackAction: "", } : null;
+  }
+  try {
+    const pl = await getPhase4();
+    const classificationCtx = {
+      dataType: "task_archive" as const,
+      sensitivity: "internal" as const,
+      source: "system" as const,
+      hasPII: false,
+      ageHours: 0,
+    };
+    const classification = new pl.DataClassifier().classify(command?.task_brief ?? "", classificationCtx);
+    const permissionCtx = {
+      sessionId: session_id,
+      userId: user_id,
+      requestedTier: classification.classification,
+      featureFlags: {
+        use_permission_layer: config.permission.enabled,
+        use_data_classification: config.permission.dataClassification,
+        use_redaction: config.permission.redaction,
+      },
+      userDataPreferences: config.permission.userDataPreferences,
+      targetModel: "cloud_72b" as const,
+    };
+    const permission = pl.PermissionChecker.fromClassification(classification.classification, permissionCtx);
+
+    console.log("[llm-native-router] Phase 4 Permission Check:", {
+      dataType: "task_brief",
+      classification: classification.classification,
+      permissionAllowed: permission.allowed,
+      fallbackAction: permission.fallbackAction,
+    });
+
+    // 拒绝暴露
+    if (permission.fallbackAction === "reject" || !permission.allowed) {
+      return null;
+    }
+
+    // 需要脱敏
+    let processedCommand = command ?? ({} as CommandPayload);
+    if (permission.fallbackAction === "redact" && config.permission.redaction) {
+      const redactionEngine = pl.getRedactionEngine();
+      const redactionCtx = {
+        sessionId: session_id,
+        userId: user_id,
+        dataType: "task_archive" as const,
+        targetClassification: classification.classification,
+        enableAudit: true,
+      };
+      const redactedBrief = redactionEngine.redact(command?.task_brief ?? "", redactionCtx);
+      const redactedWorkerHint = redactionEngine.redact(command?.worker_hint ?? "", redactionCtx);
+      processedCommand = {
+        ...command!,
+        task_brief: redactedBrief.content as string,
+        worker_hint: redactedWorkerHint.content as WorkerHint,
+      };
+      console.log("[llm-native-router] Phase 4.2 Redaction Applied:", {
+        briefStats: redactedBrief.stats,
+        workerHintStats: redactedWorkerHint.stats,
+      });
+    }
+
+    return { processedCommand, classification: classification.classification, permissionAllowed: permission.allowed, fallbackAction: permission.fallbackAction };
+  } catch (e: any) {
+    console.warn("[llm-native-router] Permission layer check failed:", e.message);
+    return command ? { processedCommand: command, classification: "", permissionAllowed: true, fallbackAction: "" } : null;
+  }
+}
+
+type ArchiveWriteResult = {
+  archiveRecord: { id: string } | null;
+  commandRecord: { id: string } | null;
+};
+
+/**
+ * 写入 TaskArchive + archive_created 事件 + TaskCommand + worker_started 事件。
+ * 两类 case 共用的 DB 操作。
+ */
+async function writeTaskArchiveAndCommand(
+  taskId: string,
+  decision: ManagerDecision,
+  message: string,
+  processedCommand: CommandPayload,
+  session_id: string,
+  user_id: string,
+  decisionType: string,
+  workerRole: string,
+): Promise<ArchiveWriteResult> {
+  const { TaskArchiveRepo, TaskArchiveEventRepo, TaskCommandRepo } = await import("../db/task-archive-repo.js");
+
+  let archiveRecord: { id: string } | null = null;
+  try {
+    archiveRecord = await TaskArchiveRepo.create({
+      task_id: taskId,
+      user_id,
+      session_id,
+      decision,
+      user_input: message,
+    });
+    await TaskArchiveEventRepo.create({
+      archive_id: archiveRecord.id,
+      task_id: taskId,
+      event_type: "archive_created",
+      payload: { decision_type: decisionType, command_type: processedCommand.command_type ?? "research" },
+      actor: "fast_manager",
+      user_id,
+    });
+  } catch (e: any) {
+    console.warn("[llm-native-router] TaskArchive create failed:", e.message);
+  }
+
+  let commandRecord: { id: string } | null = null;
+  try {
+    commandRecord = await TaskCommandRepo.create({
+      task_id: taskId,
+      archive_id: archiveRecord?.id ?? taskId,
+      user_id,
+      command_type: processedCommand.command_type,
+      worker_hint: processedCommand.worker_hint,
+      priority: processedCommand.priority ?? "normal",
+      payload: processedCommand,
+    });
+    await TaskArchiveEventRepo.create({
+      archive_id: archiveRecord?.id ?? taskId,
+      task_id: taskId,
+      event_type: "worker_started",
+      payload: { worker_role: workerRole, command_id: commandRecord.id },
+      actor: workerRole,
+      user_id,
+    });
+  } catch (e: any) {
+    console.warn("[llm-native-router] TaskCommand create failed:", e.message);
+  }
+
+  return { archiveRecord, commandRecord };
 }
 
 // ── Test-only exports（仅供单元测试访问内部函数） ────────────────────────────────

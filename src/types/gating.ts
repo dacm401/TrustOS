@@ -56,6 +56,27 @@ export interface GatingConfig {
     /** 每 10s latency 额外惩罚系数 */
     latency_penalty: number;
   };
+  /** HITL 歧义检测阈值（P2） */
+  ambiguity: {
+    /** LLM confidence_hint 低于此值则触发 HITL */
+    confidence_threshold: number;
+    /** top1-top2 分数差低于此值则触发 HITL */
+    score_gap_threshold: number;
+  };
+  /** G1 系统置信度惩罚系数 */
+  penalties: {
+    execute_task: number;           // 高成本动作惩罚
+    delegate_to_slow: number;      // 委托动作惩罚
+    missing_info: number;          // 缺信息惩罚
+    high_risk_action: number;      // 高风险动作惩罚
+    query_too_vague: number;       // 模糊特征惩罚
+    needs_long_reasoning: number;  // 长推理惩罚（仅 direct_answer 场景）
+    kb_direct_answer: number;      // KB-1: direct_answer 命中知识边界时惩罚
+  };
+  /** KB-1 知识边界检测 */
+  kb: {
+    strong_signal_threshold: number;  // 强信号阈值（hasStrongBoundarySignal）
+  };
 }
 
 // ── Knowledge Boundary Signals (KB-1) ─────────────────────────────────────────
