@@ -273,7 +273,7 @@ export default function MemoryView({ userId }: MemoryViewProps) {
         </div>
 
         {/* Loading skeletons */}
-        {loading && (
+        {isLoading && (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
               <div
@@ -293,7 +293,7 @@ export default function MemoryView({ userId }: MemoryViewProps) {
         )}
 
         {/* Empty state */}
-        {!loading && !error && memories.length === 0 && (
+        {!isLoading && !error && memories.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="text-5xl mb-4">🧠</div>
             <div className="text-sm font-medium mb-2" style={{ color: "var(--text-secondary)" }}>
@@ -306,7 +306,7 @@ export default function MemoryView({ userId }: MemoryViewProps) {
         )}
 
         {/* Memory list */}
-        {!loading && memories.length > 0 && (
+        {!isLoading && memories.length > 0 && (
           <div className="space-y-3">
             {memories.map((item) => (
               <MemoryCard

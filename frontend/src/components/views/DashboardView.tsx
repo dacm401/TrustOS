@@ -88,7 +88,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
         )}
 
         {/* KPI Cards */}
-        {loading ? (
+        {isLoading ? (
           <div className="grid grid-cols-3 gap-3 mb-3">
             {[1, 2, 3].map((i) => <SkeletonCard key={i} />)}
           </div>
@@ -105,7 +105,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
         )}
 
         {/* Cost Savings Card */}
-        {loading ? (
+        {isLoading ? (
           <div className="rounded-xl p-5 mb-5 animate-pulse" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
             <div className="h-6 w-48 rounded mb-2" style={{ backgroundColor: "var(--border-default)" }} />
             <div className="h-4 w-72 rounded" style={{ backgroundColor: "var(--border-subtle)" }} />
@@ -168,7 +168,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
           {/* Intent Distribution */}
           <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
             <div className="text-xs font-medium mb-3" style={{ color: "var(--text-secondary)" }}>意图分布</div>
-            {loading ? (
+            {isLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="h-3 rounded animate-pulse" style={{ backgroundColor: "var(--border-subtle)" }} />
@@ -198,7 +198,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
           {/* Model Distribution */}
           <div className="rounded-xl p-4" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
             <div className="text-xs font-medium mb-3" style={{ color: "var(--text-secondary)" }}>模型使用</div>
-            {loading ? (
+            {isLoading ? (
               <div className="space-y-2">
                 {[1, 2].map((i) => (
                   <div key={i} className="h-3 rounded animate-pulse" style={{ backgroundColor: "var(--border-subtle)" }} />
@@ -252,7 +252,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
             )}
           </div>
 
-          {loading ? (
+          {isLoading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => <div key={i} className="h-3 rounded animate-pulse" style={{ backgroundColor: "var(--border-subtle)" }} />)}
             </div>
