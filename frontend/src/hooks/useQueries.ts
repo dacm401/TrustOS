@@ -9,6 +9,7 @@ import {
   fetchEvidence,
   fetchTraces,
   fetchDecision,
+  fetchHealth,
   getApiConfig,
   getDashboard,
   getGrowth,
