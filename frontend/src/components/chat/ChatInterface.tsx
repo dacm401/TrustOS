@@ -61,7 +61,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
   }, [messages, loading]);
 
   const sendStreaming = async (text: string, history: any[]): Promise<boolean> => {
-    const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = getApiConfig();
+    const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = await getApiConfig();
     const body: Record<string, any> = {
       user_id: userId,
       session_id: sessionId,
@@ -206,7 +206,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
   // Stream V2: 取消正在执行的任务
   const cancelTask = async () => {
     if (!activeTaskId) return;
-    const { apiBase } = getApiConfig();
+    const { apiBase } = await getApiConfig();
     try {
       const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(activeTaskId)}`, {
         method: "PATCH",
@@ -224,7 +224,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
   };
 
   const sendFallback = async (text: string, history: any[]) => {
-    const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = getApiConfig();
+    const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = await getApiConfig();
     const body: Record<string, any> = {
       user_id: userId,
       session_id: sessionId,

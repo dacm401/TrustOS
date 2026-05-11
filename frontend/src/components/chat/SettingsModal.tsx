@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { getSecureApiKey, setSecureApiKey } from "@/lib/crypto-utils";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -9,6 +10,7 @@ interface SettingsModalProps {
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [llmBaseUrl, setLlmBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [hasExistingKey, setHasExistingKey] = useState(false);
   const [fastModel, setFastModel] = useState("");
   const [slowModel, setSlowModel] = useState("");
   const [saved, setSaved] = useState(false);
@@ -16,18 +18,23 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   useEffect(() => {
     if (isOpen) {
       setLlmBaseUrl(localStorage.getItem("llm_base_url") || "");
-      setApiKey(localStorage.getItem("api_key") || "");
       setFastModel(localStorage.getItem("fast_model") || "");
       setSlowModel(localStorage.getItem("slow_model") || "");
       setSaved(false);
+      // 异步加载加密的 API Key（不在输入框里明文显示已有 key）
+      getSecureApiKey().then((key) => {
+        setApiKey(key || "");
+        setHasExistingKey(!!key);
+      });
     }
   }, [isOpen]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     localStorage.setItem("llm_base_url", llmBaseUrl);
-    localStorage.setItem("api_key", apiKey);
     localStorage.setItem("fast_model", fastModel);
     localStorage.setItem("slow_model", slowModel);
+    await setSecureApiKey(apiKey);
+    setHasExistingKey(!!apiKey);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -61,9 +68,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
+              placeholder={hasExistingKey ? "••••••••••••（已加密存储）" : "sk-..."}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
+            {hasExistingKey && (
+              <p className="text-xs text-gray-400 mt-1">已加密存储；留空则保持不变，修改则重新加密。</p>
+            )}
           </div>
 
           <div>

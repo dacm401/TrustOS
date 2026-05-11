@@ -55,7 +55,7 @@ export function DebugPanel({ taskId, userId }: DebugPanelProps) {
         // fetchDecision returns null for 404 (no decision data is normal)
         if (res === null) {
           setNotFound(true);
-          setData(undefined);
+          setData(null);
         } else {
           setData(res as DecisionData);
         }

@@ -1,11 +1,22 @@
-// 获取API配置
-export function getApiConfig() {
+import { getSecureApiKey } from "./crypto-utils";
+
+// 模块级缓存：解密后的 API Key（避免每次请求都解密）
+let _cachedApiKey: string | null = undefined; // undefined = 未加载，null = 未存储
+
+async function getCachedApiKey(): Promise<string> {
+  if (_cachedApiKey !== undefined) return _cachedApiKey;
+  _cachedApiKey = (await getSecureApiKey()) ?? "";
+  return _cachedApiKey;
+}
+
+/** 同步获取 API 配置（API Key 取自缓存，首次调用触发懒解密） */
+export async function getApiConfig() {
   const DEFAULT_API_BASE = "http://localhost:3001";
   if (typeof window !== "undefined") {
     return {
       apiBase: DEFAULT_API_BASE,
       llmBaseUrl: localStorage.getItem("llm_base_url") || "",
-      apiKey: localStorage.getItem("api_key") || "",
+      apiKey: await getCachedApiKey(),
       fastModel: localStorage.getItem("fast_model") || "",
       slowModel: localStorage.getItem("slow_model") || "",
     };
