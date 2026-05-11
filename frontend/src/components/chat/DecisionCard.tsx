@@ -3,8 +3,9 @@ import { useState } from "react";
 import { Badge } from "../ui/Badge";
 import { Progress } from "../ui/Progress";
 import { formatCost, formatTokens } from "@/lib/utils";
+import type { Decision } from "@/types/dashboard";
 
-interface DecisionCardProps { decision: any; }
+interface DecisionCardProps { decision: Decision; }
 
 // Sprint 23 P0-B: 用户语言化决策解释
 function buildExplanation(

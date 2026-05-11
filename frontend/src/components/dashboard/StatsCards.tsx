@@ -1,8 +1,9 @@
 "use client";
 import { Card } from "../ui/Card";
 import { formatCost, formatTokens } from "@/lib/utils";
+import type { TodayStats, GrowthData } from "@/types/dashboard";
 
-interface StatsCardsProps { data: any; }
+interface StatsCardsProps { data?: { today?: Partial<TodayStats>; growth?: Partial<GrowthData> }; }
 
 export function StatsCards({ data }: StatsCardsProps) {
   const today = data?.today || {};

@@ -33,9 +33,9 @@ export async function getApiConfig() {
 /** Exported so components can build streaming fetch URLs directly */
 export const API_BASE = "http://localhost:3001";
 
-export async function sendMessage(message: string, history: any[], userId: string, sessionId: string) {
+export async function sendMessage(message: string, history: Array<{ role: string; content: string }>, userId: string, sessionId: string) {
   const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = await getApiConfig();
-  const body: Record<string, any> = { user_id: userId, session_id: sessionId, message, history };
+  const body: Record<string, string | number | boolean | object> = { user_id: userId, session_id: sessionId, message, history };
   // 如果前端设置里有 Key / 模型 / LLM地址，透传给后端覆盖环境变量
   if (llmBaseUrl) body.llm_base_url = llmBaseUrl;
   if (apiKey) body.api_key = apiKey;

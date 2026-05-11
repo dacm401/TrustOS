@@ -1,6 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
-import { fetchHealth, type HealthStatus } from "@/lib/api";
+import { useHealth } from "@/hooks/useQueries";
 
 const STATUS_BADGE: Record<string, { bg: string; text: string; dot: string }> = {
   ok: { bg: "rgba(16,185,129,0.1)", text: "var(--accent-green)", dot: "var(--accent-green)" },
@@ -24,36 +23,7 @@ function latencyColor(ms: number | null): string {
 }
 
 export function HealthPanel() {
-  const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState(30);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      const data = await fetchHealth();
-      setHealth(data);
-      setError(null);
-      setCountdown(30);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "未知错误");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-    timerRef.current = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) { load(); return 30; }
-        return c - 1;
-      });
-    }, 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [load]);
-
+  const { data: health, isLoading, error } = useHealth();
   const badge = health ? STATUS_BADGE[health.status] ?? STATUS_BADGE.degraded : null;
 
   return (
@@ -81,7 +51,7 @@ export function HealthPanel() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-3 py-2">
-        {loading && !health && (
+        {isLoading && !health && (
           <div className="text-xs text-center py-4 animate-pulse" style={{ color: "var(--text-muted)" }}>
             加载中…
           </div>
@@ -91,7 +61,7 @@ export function HealthPanel() {
             className="text-xs px-3 py-2 rounded-lg"
             style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "var(--accent-red)" }}
           >
-            ⚠️ {error}
+            ⚠️ {error.message}
           </div>
         )}
 
@@ -218,20 +188,6 @@ export function HealthPanel() {
           </div>
         )}
       </div>
-
-      {/* Refresh countdown bar */}
-      {health && (
-        <div className="flex-shrink-0 h-0.5" style={{ backgroundColor: "var(--border-subtle)" }}>
-          <div
-            className="h-full rounded-r-full transition-all duration-1000"
-            style={{
-              backgroundColor: "var(--accent-blue)",
-              width: `${(countdown / 30) * 100}%`,
-              opacity: 0.6,
-            }}
-          />
-        </div>
-      )}
     </div>
   );
 }

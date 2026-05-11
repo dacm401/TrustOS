@@ -1,7 +1,12 @@
 "use client";
-import { useState, useEffect } from "react";
-import { fetchTasks, fetchTraces, fetchEvidence, patchTask } from "@/lib/api";
-import { API_BASE } from "@/lib/api";
+import { useState } from "react";
+import {
+  useTasks,
+  useTraces,
+  useEvidence,
+  usePatchTask,
+  useTaskSummary,
+} from "@/hooks/useQueries";
 import { TracePanel } from "@/components/workbench/TracePanel";
 import { EvidencePanel } from "@/components/workbench/EvidencePanel";
 import { TYPE_CONFIG, SOURCE_CONFIG } from "@/lib/constants";
@@ -176,81 +181,25 @@ interface TasksViewProps {
 }
 
 export default function TasksView({ userId }: TasksViewProps) {
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [listLoading, setListLoading] = useState(true);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [summary, setSummary] = useState<string | null>(null);
-  const [summaryError, setSummaryError] = useState(false);
-  const [traces, setTraces] = useState<TraceItem[]>([]);
-  const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
   const [showAllTraces, setShowAllTraces] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [listError, setListError] = useState<string | null>(null);
 
-  const loadTasks = () => {
-    setListLoading(true);
-    setListError(null);
-    fetchTasks(userId)
-      .then((data) => setTasks(data.tasks ?? []))
-      .catch((e: Error) => setListError(e.message))
-      .finally(() => setListLoading(false));
-  };
+  const { data, isLoading: listLoading, error: listError, refetch: refetchTasks } = useTasks(userId);
+  const { data: summaryData, isLoading: summaryLoading, isError: summaryError } = useTaskSummary(selectedTaskId, userId);
+  const { data: tracesData, isLoading: tracesLoading } = useTraces(selectedTaskId, userId);
+  const { data: evidenceData, isLoading: evidenceLoading } = useEvidence(selectedTaskId, userId);
+  const patchTaskMutation = usePatchTask(userId);
 
-  useEffect(() => { loadTasks(); }, [userId]);
-
-  // When a task is selected, load summary + traces + evidence in parallel
-  useEffect(() => {
-    if (!selectedTaskId) return;
-    setDetailLoading(true);
-    setSummary(null);
-    setSummaryError(false);
-    setTraces([]);
-    setEvidence([]);
-    setShowAllTraces(false);
-
-    const loadAll = async () => {
-      const [summaryRes, tracesRes, evidenceRes] = await Promise.allSettled([
-        fetch(`${API_BASE}/v1/tasks/${encodeURIComponent(selectedTaskId)}/summary`, {
-          headers: { "X-User-Id": userId },
-        }).then(r => r.ok ? r.json() : Promise.reject(r)),
-        fetchTraces(selectedTaskId, userId),
-        fetchEvidence(selectedTaskId, userId),
-      ]);
-
-      if (summaryRes.status === "fulfilled") {
-        const d = (summaryRes as PromiseFulfilledResult<{ summary?: string }>).value;
-        setSummary(d.summary ?? null);
-      } else {
-        setSummaryError(true);
-      }
-
-      if (tracesRes.status === "fulfilled") {
-        setTraces(tracesRes.value.traces ?? []);
-      }
-      if (evidenceRes.status === "fulfilled") {
-        setEvidence(evidenceRes.value.evidences ?? []);
-      }
-      setDetailLoading(false);
-    };
-
-    loadAll();
-  }, [selectedTaskId, userId]);
+  const tasks: TaskItem[] = data?.tasks ?? [];
+  const summary = summaryData?.summary ?? null;
+  const traces: TraceItem[] = tracesData?.traces ?? [];
+  const evidence: EvidenceItem[] = evidenceData?.evidences ?? [];
+  const detailLoading = summaryLoading || tracesLoading || evidenceLoading;
 
   const handleAction = async (action: "pause" | "resume" | "cancel") => {
     if (!selectedTaskId) return;
     if (action === "cancel" && !confirm("确定要取消此任务吗？")) return;
-    setActionLoading(true);
-    const ok = await patchTask(selectedTaskId, userId, action);
-    setActionLoading(false);
-    if (ok) {
-      setTasks(prev => prev.map(t =>
-        t.task_id === selectedTaskId
-          ? { ...t, status: action === "pause" ? "paused" : action === "resume" ? "active" : "cancelled" }
-          : t
-      ));
-      loadTasks();
-    }
+    await patchTaskMutation.mutateAsync({ taskId: selectedTaskId, action });
   };
 
   const selectedTask = tasks.find(t => t.task_id === selectedTaskId) ?? null;
@@ -285,7 +234,7 @@ export default function TasksView({ userId }: TasksViewProps) {
             )}
           </div>
           <button
-            onClick={loadTasks}
+            onClick={() => refetchTasks()}
             className="text-xs transition-opacity hover:opacity-70"
             style={{ color: "var(--text-muted)" }}
             title="刷新"
@@ -305,7 +254,7 @@ export default function TasksView({ userId }: TasksViewProps) {
           )}
           {listError && (
             <div className="mx-3 my-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "var(--accent-red)" }}>
-              ⚠️ {listError}
+              ⚠️ {listError?.message}
             </div>
           )}
           {!listLoading && !listError && tasks.length === 0 && (
@@ -396,7 +345,7 @@ export default function TasksView({ userId }: TasksViewProps) {
                 {["active","executing","responding"].includes(selectedTask.status) && (
                   <button
                     onClick={() => handleAction("pause")}
-                    disabled={actionLoading}
+                    disabled={patchTaskMutation.isPending}
                     className="text-xs px-3 py-1.5 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50"
                     style={{ backgroundColor: "rgba(251,191,36,0.15)", color: "var(--accent-amber)" }}
                   >
@@ -406,7 +355,7 @@ export default function TasksView({ userId }: TasksViewProps) {
                 {selectedTask.status === "paused" && (
                   <button
                     onClick={() => handleAction("resume")}
-                    disabled={actionLoading}
+                    disabled={patchTaskMutation.isPending}
                     className="text-xs px-3 py-1.5 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50"
                     style={{ backgroundColor: "rgba(16,185,129,0.15)", color: "var(--accent-green)" }}
                   >
@@ -416,7 +365,7 @@ export default function TasksView({ userId }: TasksViewProps) {
                 {!["completed","cancelled","failed"].includes(selectedTask.status) && (
                   <button
                     onClick={() => handleAction("cancel")}
-                    disabled={actionLoading}
+                    disabled={patchTaskMutation.isPending}
                     className="text-xs px-3 py-1.5 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50"
                     style={{ backgroundColor: "rgba(239,68,68,0.15)", color: "var(--accent-red)" }}
                   >

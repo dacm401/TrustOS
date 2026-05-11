@@ -8,10 +8,13 @@ import {
   createMemoryEntry,
   fetchEvidence,
   fetchTraces,
+  fetchDecision,
+  getApiConfig,
   getDashboard,
   getGrowth,
   type MemoryEntry,
   type CostStats,
+  type HealthStatus,
 } from '@/lib/api';
 
 // Tasks
@@ -118,6 +121,54 @@ export function useGrowth(userId: string) {
     queryFn: () => getGrowth(userId),
     staleTime: 2 * 60 * 1000,
     enabled: !!userId,
+  });
+}
+
+// Decision (debug panel)
+export function useDecision(taskId: string | null, userId: string) {
+  return useQuery({
+    queryKey: ['decision', taskId, userId],
+    queryFn: () => taskId ? fetchDecision(taskId, userId) : Promise.resolve(null),
+    enabled: !!taskId,
+    staleTime: 1 * 60 * 1000,
+  });
+}
+
+// Health status (polled)
+export function useHealth() {
+  return useQuery<HealthStatus>({
+    queryKey: ['health'],
+    queryFn: fetchHealth,
+    staleTime: 5 * 1000,
+    refetchInterval: 10000,
+  });
+}
+
+// Task summary (custom endpoint per task)
+export function useTaskSummary(taskId: string | null, userId: string) {
+  return useQuery({
+    queryKey: ['task-summary', taskId, userId],
+    queryFn: async () => {
+      if (!taskId) return null;
+      const { apiBase } = await getApiConfig();
+      const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}/summary`, {
+        headers: { "X-User-Id": userId },
+      });
+      if (!res.ok) throw new Error(`加载任务摘要失败 (${res.status})`);
+      return res.json() as Promise<{ summary?: string }>;
+    },
+    enabled: !!taskId,
+    staleTime: 30 * 1000,
+  });
+}
+
+// Performance charts
+export function usePerformance(userId: string, range: string = "7d") {
+  return useQuery({
+    queryKey: ['performance', userId, range],
+    queryFn: () => fetchPerformance(userId, range),
+    enabled: !!userId,
+    staleTime: 1 * 60 * 1000,
   });
 }
 

@@ -1,7 +1,8 @@
 "use client";
 import { Card } from "../ui/Card";
+import type { GrowthData } from "@/types/dashboard";
 
-interface LearningPanelProps { growth: any; }
+interface LearningPanelProps { growth: Partial<GrowthData>; }
 
 export function LearningPanel({ growth }: LearningPanelProps) {
   const milestones = growth?.milestones || [];
@@ -15,7 +16,7 @@ export function LearningPanel({ growth }: LearningPanelProps) {
           <div className="text-sm text-gray-400 text-center py-4">继续对话，系统会逐渐了解你的偏好</div>
         ) : (
           <div className="space-y-2">
-            {learnings.map((l: any, i: number) => (
+            {learnings.map((l, i: number) => (
               <div key={i} className="flex gap-2 text-sm p-2 bg-blue-50 rounded-lg">
                 <span className="text-blue-400 flex-shrink-0">🔵</span>
                 <div><div className="text-gray-700">{l.learning}</div><div className="text-xs text-gray-400 mt-0.5">{l.date}</div></div>
@@ -30,7 +31,7 @@ export function LearningPanel({ growth }: LearningPanelProps) {
           <div className="text-sm text-gray-400 text-center py-4">完成更多对话解锁里程碑</div>
         ) : (
           <div className="space-y-2">
-            {milestones.map((m: any, i: number) => (
+            {milestones.map((m, i: number) => (
               <div key={i} className="flex gap-2 text-sm p-2 bg-yellow-50 rounded-lg">
                 <span className="flex-shrink-0">🎖️</span>
                 <div><div className="text-gray-700 font-medium">{m.event}</div><div className="text-xs text-gray-400 mt-0.5">{m.date}</div></div>

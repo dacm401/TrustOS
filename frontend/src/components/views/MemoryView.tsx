@@ -1,6 +1,7 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
-import { fetchMemory, deleteMemory, createMemoryEntry, type MemoryEntry } from "@/lib/api";
+import { useState } from "react";
+import { useMemory, useDeleteMemory, useCreateMemory } from "@/hooks/useQueries";
+import type { MemoryEntry } from "@/lib/api";
 import { timeAgo } from "@/lib/utils";
 
 const CATEGORIES = [
@@ -103,47 +104,33 @@ interface MemoryViewProps {
 
 export default function MemoryView({ userId }: MemoryViewProps) {
   const [activeCategory, setActiveCategory] = useState("");
-  const [memories, setMemories] = useState<MemoryEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error, refetch } = useMemory(userId, activeCategory || undefined);
+  const deleteMemoryMutation = useDeleteMemory(userId);
+  const createMemoryMutation = useCreateMemory(userId);
 
   // Add form state
   const [showAddForm, setShowAddForm] = useState(false);
   const [newCategory, setNewCategory] = useState<string>("preference");
   const [newContent, setNewContent] = useState("");
-  const [adding, setAdding] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchMemory(userId, activeCategory || undefined);
-      setMemories(data.entries ?? []);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [userId, activeCategory]);
-
-  useEffect(() => { load(); }, [load]);
+  const memories: MemoryEntry[] = data?.entries ?? [];
+  const load = () => refetch();
 
   const handleAddMemory = async () => {
     if (!newContent.trim()) return;
     if (newContent.length > MAX_CONTENT_LENGTH) return;
-    setAdding(true);
     try {
-      const entry = await createMemoryEntry(userId, newCategory, newContent.trim(), "manual");
-      // Optimistic insert to top
-      setMemories((prev) => [entry, ...prev]);
+      await createMemoryMutation.mutateAsync({
+        category: newCategory,
+        content: newContent.trim(),
+        source: "manual",
+      });
       // Reset form
       setNewContent("");
       setNewCategory("preference");
       setShowAddForm(false);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setAdding(false);
+    } catch {
+      // error is handled by the hook
     }
   };
 
@@ -193,7 +180,7 @@ export default function MemoryView({ userId }: MemoryViewProps) {
         {/* Error */}
         {error && (
           <div className="mb-4 px-4 py-3 rounded-xl text-xs" style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "var(--accent-red)" }}>
-            ⚠️ {error}
+            ⚠️ {error.message}
           </div>
         )}
 
@@ -260,24 +247,24 @@ export default function MemoryView({ userId }: MemoryViewProps) {
                     onClick={() => { setShowAddForm(false); setNewContent(""); }}
                     className="px-3 py-1.5 rounded-md text-xs transition-colors"
                     style={{ color: "var(--text-muted)" }}
-                    disabled={adding}
+                    disabled={createMemoryMutation.isPending}
                   >
                     取消
                   </button>
                   <button
                     onClick={handleAddMemory}
-                    disabled={!newContent.trim() || newContent.length > MAX_CONTENT_LENGTH || adding}
+                    disabled={!newContent.trim() || newContent.length > MAX_CONTENT_LENGTH || createMemoryMutation.isPending}
                     className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
                     style={{
-                      backgroundColor: !newContent.trim() || newContent.length > MAX_CONTENT_LENGTH || adding
+                      backgroundColor: !newContent.trim() || newContent.length > MAX_CONTENT_LENGTH || createMemoryMutation.isPending
                         ? "var(--border-subtle)"
                         : "var(--accent-green)",
-                      color: !newContent.trim() || newContent.length > MAX_CONTENT_LENGTH || adding
+                      color: !newContent.trim() || newContent.length > MAX_CONTENT_LENGTH || createMemoryMutation.isPending
                         ? "var(--text-muted)"
                         : "#fff",
                     }}
                   >
-                    {adding ? "保存中..." : "✓ 保存记忆"}
+                    {createMemoryMutation.isPending ? "保存中..." : "✓ 保存记忆"}
                   </button>
                 </div>
               </div>
@@ -327,11 +314,7 @@ export default function MemoryView({ userId }: MemoryViewProps) {
                 item={item}
                 userId={userId}
                 onDelete={(id) => {
-                  setMemories((prev) => prev.filter((m) => m.id !== id));
-                  deleteMemory(id, userId).catch(() => {
-                    // optimistic update failed, reload
-                    load();
-                  });
+                  deleteMemoryMutation.mutate(id);
                 }}
               />
             ))}

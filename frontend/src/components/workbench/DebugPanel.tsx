@@ -1,6 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
-import { fetchDecision } from "@/lib/api";
+import { useDecision } from "@/hooks/useQueries";
 
 interface DecisionData {
   decision: {
@@ -36,36 +35,8 @@ interface DebugPanelProps {
 }
 
 export function DebugPanel({ taskId, userId }: DebugPanelProps) {
-  const [data, setData] = useState<DecisionData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notFound, setNotFound] = useState(false);
-
-  useEffect(() => {
-    if (!taskId) {
-      setData(null);
-      setNotFound(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setNotFound(false);
-    fetchDecision(taskId, userId)
-      .then((res) => {
-        // fetchDecision returns null for 404 (no decision data is normal)
-        if (res === null) {
-          setNotFound(true);
-          setData(null);
-        } else {
-          setData(res as DecisionData);
-        }
-      })
-      .catch((e: Error) => {
-        // network/server error
-        setError(e.message);
-      })
-      .finally(() => setLoading(false));
-  }, [taskId, userId]);
+  const { data, isLoading, error } = useDecision(taskId, userId);
+  const hasDecisionData = data !== null;
 
   if (!taskId) {
     return (
@@ -111,7 +82,7 @@ export function DebugPanel({ taskId, userId }: DebugPanelProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
-        {loading && (
+        {isLoading && (
           <div className="space-y-3 animate-pulse">
             {[1, 2, 3].map((i) => (
               <div key={i} className="h-16 rounded-lg" style={{ backgroundColor: "var(--bg-elevated)" }} />
@@ -121,11 +92,11 @@ export function DebugPanel({ taskId, userId }: DebugPanelProps) {
 
         {error && (
           <div className="px-2 py-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "var(--accent-red)" }}>
-            ⚠️ {error}
+            ⚠️ {error.message}
           </div>
         )}
 
-        {notFound && !loading && (
+        {hasDecisionData === false && !isLoading && !error && (
           <div className="flex flex-col items-center justify-center py-8 gap-2">
             <span className="text-xl">🔧</span>
             <span className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
@@ -134,7 +105,7 @@ export function DebugPanel({ taskId, userId }: DebugPanelProps) {
           </div>
         )}
 
-        {d && !loading && (
+        {d && !isLoading && (
           <div className="space-y-3">
             {/* Intent & Complexity */}
             {d.intent !== undefined && (
@@ -237,14 +208,14 @@ export function DebugPanel({ taskId, userId }: DebugPanelProps) {
                   </div>
                   {d.execution.total_cost_usd !== undefined && (
                     <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ backgroundColor: "var(--border-subtle)" }}>
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          background: "linear-gradient(90deg, var(--accent-green) 0%, var(--accent-amber) 60%, var(--accent-red) 100%)",
-                          width: `${Math.min(100, (d.execution.total_cost_usd ?? 0) * 100000)}%`,
-                          minWidth: d.execution.total_cost_usd ? "2px" : "0",
-                        }}
-                      />
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            background: "linear-gradient(90deg, var(--accent-green) 0%, var(--accent-amber) 60%, var(--accent-red) 100%)",
+                            width: `${Math.min(100, (d.execution.total_cost_usd ?? 0) * 100000)}%`,
+                            minWidth: d.execution.total_cost_usd ? "2px" : "0",
+                          }}
+                        />
                     </div>
                   )}
                 </div>

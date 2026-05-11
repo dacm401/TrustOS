@@ -1,6 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
-import { fetchTasks } from "@/lib/api";
+import { useTasks } from "@/hooks/useQueries";
 import { timeAgo } from "@/lib/utils";
 
 interface TaskItem {
@@ -18,7 +17,6 @@ interface TaskPanelProps {
   selectedTaskId?: string | null;
 }
 
-
 const STATUS_DOT: Record<string, { color: string; label: string }> = {
   responding: { color: "var(--accent-green)", label: "活跃" },
   completed: { color: "var(--accent-blue)", label: "完成" },
@@ -28,18 +26,8 @@ const STATUS_DOT: Record<string, { color: string; label: string }> = {
 };
 
 export function TaskPanel({ userId, sessionId, onTaskSelect, selectedTaskId }: TaskPanelProps) {
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    fetchTasks(userId, sessionId)
-      .then((data) => setTasks(data.tasks ?? []))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [userId, sessionId]);
+  const { data, isLoading, error } = useTasks(userId, sessionId);
+  const tasks: TaskItem[] = data?.tasks ?? [];
 
   return (
     <div className="flex flex-col h-full">
@@ -61,7 +49,7 @@ export function TaskPanel({ userId, sessionId, onTaskSelect, selectedTaskId }: T
 
       {/* Task list */}
       <div className="flex-1 overflow-y-auto">
-        {loading && (
+        {isLoading && (
           <div className="p-4 text-xs text-center animate-pulse" style={{ color: "var(--text-muted)" }}>
             加载中…
           </div>
@@ -71,10 +59,10 @@ export function TaskPanel({ userId, sessionId, onTaskSelect, selectedTaskId }: T
             className="mx-3 my-2 px-3 py-2 rounded-lg text-xs"
             style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "var(--accent-red)" }}
           >
-            ⚠️ {error}
+            ⚠️ {error.message}
           </div>
         )}
-        {!loading && !error && tasks.length === 0 && (
+        {!isLoading && !error && tasks.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-1">
             <span className="text-xl">📋</span>
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>暂无任务</span>
@@ -98,19 +86,16 @@ export function TaskPanel({ userId, sessionId, onTaskSelect, selectedTaskId }: T
               }}
             >
               <div className="flex items-center gap-2 mb-0.5">
-                {/* Status dot */}
                 <span
                   className="status-dot flex-shrink-0"
                   style={{ backgroundColor: status.color }}
                 />
-                {/* Title */}
                 <span
                   className="text-xs font-medium truncate flex-1"
                   style={{ color: isSelected ? "var(--text-primary)" : "var(--text-secondary)" }}
                 >
                   {task.title || "(无标题)"}
                 </span>
-                {/* Time */}
                 <span
                   className="text-[10px] flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                   style={{ color: "var(--text-muted)" }}

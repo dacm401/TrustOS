@@ -1,6 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
-import { fetchTraces } from "@/lib/api";
+import { useTraces } from "@/hooks/useQueries";
 import { TYPE_CONFIG } from "@/lib/constants";
 
 interface TraceItem {
@@ -14,8 +13,6 @@ interface TracePanelProps {
   taskId: string | null;
   userId: string;
 }
-
-
 
 function formatDetail(type: string, detail: Record<string, unknown> | null): string {
   if (!detail) return "";
@@ -38,22 +35,29 @@ function formatDetail(type: string, detail: Record<string, unknown> | null): str
 }
 
 export function TracePanel({ taskId, userId }: TracePanelProps) {
-  const [traces, setTraces] = useState<TraceItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error } = useTraces(taskId, userId);
+  const traces: TraceItem[] = data?.traces ?? [];
 
-  useEffect(() => {
-    if (!taskId) { setTraces([]); return; }
-    setLoading(true);
-    setError(null);
-    fetchTraces(taskId, userId)
-      .then((data) => setTraces(data.traces ?? []))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [taskId, userId]);
+  if (!taskId) {
+    return (
+      <div className="flex flex-col h-full">
+        <div
+          className="px-3 py-2 flex-shrink-0 flex items-center gap-2"
+          style={{ borderBottom: "1px solid var(--border-subtle)" }}
+        >
+          <span className="text-xs">⚡</span>
+          <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>轨迹</span>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-1">
+          <span className="text-xl">⚡</span>
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>先选择一个任务</span>
+        </div>
+      </div>
+    );
+  }
 
-  const renderContent = () => (
-    <>
+  return (
+    <div className="flex flex-col h-full">
       <div
         className="px-3 py-2 flex-shrink-0 flex items-center justify-between"
         style={{ borderBottom: "1px solid var(--border-subtle)" }}
@@ -66,13 +70,13 @@ export function TracePanel({ taskId, userId }: TracePanelProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {loading && <div className="p-4 text-xs text-center animate-pulse" style={{ color: "var(--text-muted)" }}>加载中…</div>}
+        {isLoading && <div className="p-4 text-xs text-center animate-pulse" style={{ color: "var(--text-muted)" }}>加载中…</div>}
         {error && (
           <div className="mx-3 my-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "var(--accent-red)" }}>
-            ⚠️ {error}
+            ⚠️ {error.message}
           </div>
         )}
-        {!loading && !error && traces.length === 0 && (
+        {!isLoading && !error && traces.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-1">
             <span className="text-xl">⚡</span>
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>此任务暂无执行轨迹</span>
@@ -100,26 +104,6 @@ export function TracePanel({ taskId, userId }: TracePanelProps) {
           );
         })}
       </div>
-    </>
+    </div>
   );
-
-  if (!taskId) {
-    return (
-      <div className="flex flex-col h-full">
-        <div
-          className="px-3 py-2 flex-shrink-0 flex items-center gap-2"
-          style={{ borderBottom: "1px solid var(--border-subtle)" }}
-        >
-          <span className="text-xs">⚡</span>
-          <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>轨迹</span>
-        </div>
-        <div className="flex-1 flex flex-col items-center justify-center gap-1">
-          <span className="text-xl">⚡</span>
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>先选择一个任务</span>
-        </div>
-      </div>
-    );
-  }
-
-  return <div className="flex flex-col h-full">{renderContent()}</div>;
 }

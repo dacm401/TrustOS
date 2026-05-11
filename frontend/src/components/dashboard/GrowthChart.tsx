@@ -2,8 +2,9 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card } from "../ui/Card";
 import { Progress } from "../ui/Progress";
+import type { GrowthData } from "@/types/dashboard";
 
-interface GrowthChartProps { growth: any; }
+interface GrowthChartProps { growth: Partial<GrowthData>; }
 
 export function GrowthChart({ growth }: GrowthChartProps) {
   if (!growth) return null;
@@ -33,7 +34,7 @@ export function GrowthChart({ growth }: GrowthChartProps) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => v.slice(5)} />
               <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} />
-              <Tooltip formatter={(v: any) => [`${v}%`, "满意率"]} labelFormatter={(l) => `日期: ${l}`} />
+              <Tooltip formatter={(v) => [`${v}%`, "满意率"]} labelFormatter={(l) => `日期: ${l}`} />
               <Line type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>

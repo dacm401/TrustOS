@@ -5,12 +5,13 @@ import { MessageBubble } from "./MessageBubble";
 import { ModelSwitchAnim } from "./ModelSwitchAnim";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { getApiConfig } from "@/lib/api";
+import type { Decision, StreamEvent } from "@/types/dashboard";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  decision?: any;
+  decision?: Decision;
   streaming?: boolean;
   /** O-002: 委托状态，供轮询 + 展示使用 */
   delegation?: {
@@ -60,9 +61,9 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  const sendStreaming = async (text: string, history: any[]): Promise<boolean> => {
+  const sendStreaming = async (text: string, history: Array<{ role: string; content: string; decision_id?: string }>): Promise<boolean> => {
     const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = await getApiConfig();
-    const body: Record<string, any> = {
+    const body: Record<string, string | number | boolean | object> = {
       user_id: userId,
       session_id: sessionId,
       message: text,
@@ -108,8 +109,8 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
           if (!line.startsWith("data: ")) continue;
           const raw = line.slice(6).trim();
           if (!raw) continue;
-          let data: any;
-          try { data = JSON.parse(raw); } catch { continue; }
+          let data: StreamEvent;
+          try { data = JSON.parse(raw) as StreamEvent; } catch { continue; }
 
           if (data.type === "chunk") {
             // 标准流式 chunk
@@ -223,9 +224,9 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
     }
   };
 
-  const sendFallback = async (text: string, history: any[]) => {
+  const sendFallback = async (text: string, history: Array<{ role: string; content: string; decision_id?: string }>) => {
     const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = await getApiConfig();
-    const body: Record<string, any> = {
+    const body: Record<string, string | number | boolean | object> = {
       user_id: userId,
       session_id: sessionId,
       message: text,
@@ -366,10 +367,10 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
           setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision, routing_layer: routingLayer }]);
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { id: uuid(), role: "assistant", content: `⚠️ 请求失败：${err?.message || "请检查API配置或点击右上角设置。"}` },
+        { id: uuid(), role: "assistant", content: `⚠️ 请求失败：${(err as Error)?.message || "请检查API配置或点击右上角设置。"}` },
       ]);
     } finally {
       setLoading(false);
@@ -424,10 +425,10 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
           } else {
             setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision, routing_layer: data.decision?.routing?.routing_layer }]);
           }
-        }).catch((err: any) => {
+        }).catch((err) => {
           setMessages((prev) => [
             ...prev,
-            { id: uuid(), role: "assistant", content: `⚠️ 请求失败：${err?.message || "请检查API配置"}` },
+            { id: uuid(), role: "assistant", content: `⚠️ 请求失败：${(err as Error)?.message || "请检查API配置"}` },
           ]);
         }).finally(() => {
           setLoading(false);

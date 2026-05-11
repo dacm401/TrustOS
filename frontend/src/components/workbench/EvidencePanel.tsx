@@ -1,6 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
-import { fetchEvidence } from "@/lib/api";
+import { useEvidence } from "@/hooks/useQueries";
 import { SOURCE_CONFIG } from "@/lib/constants";
 
 interface EvidenceItem {
@@ -18,22 +17,29 @@ interface EvidencePanelProps {
 }
 
 export function EvidencePanel({ taskId, userId }: EvidencePanelProps) {
-  const [evidences, setEvidences] = useState<EvidenceItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error } = useEvidence(taskId, userId);
+  const evidences: EvidenceItem[] = data?.evidences ?? [];
 
-  useEffect(() => {
-    if (!taskId) { setEvidences([]); return; }
-    setLoading(true);
-    setError(null);
-    fetchEvidence(taskId, userId)
-      .then((data) => setEvidences(data.evidences ?? []))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [taskId, userId]);
+  if (!taskId) {
+    return (
+      <div className="flex flex-col h-full">
+        <div
+          className="px-3 py-2 flex-shrink-0 flex items-center gap-2"
+          style={{ borderBottom: "1px solid var(--border-subtle)" }}
+        >
+          <span className="text-xs">🔍</span>
+          <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>证据</span>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-1">
+          <span className="text-xl">🔍</span>
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>先选择一个任务</span>
+        </div>
+      </div>
+    );
+  }
 
-  const renderContent = () => (
-    <>
+  return (
+    <div className="flex flex-col h-full">
       <div
         className="px-3 py-2 flex-shrink-0 flex items-center justify-between"
         style={{ borderBottom: "1px solid var(--border-subtle)" }}
@@ -46,13 +52,13 @@ export function EvidencePanel({ taskId, userId }: EvidencePanelProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {loading && <div className="p-4 text-xs text-center animate-pulse" style={{ color: "var(--text-muted)" }}>加载中…</div>}
+        {isLoading && <div className="p-4 text-xs text-center animate-pulse" style={{ color: "var(--text-muted)" }}>加载中…</div>}
         {error && (
           <div className="mx-3 my-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "var(--accent-red)" }}>
-            ⚠️ {error}
+            ⚠️ {error.message}
           </div>
         )}
-        {!loading && !error && evidences.length === 0 && (
+        {!isLoading && !error && evidences.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-1">
             <span className="text-xl">🔍</span>
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>此任务暂无证据记录</span>
@@ -103,26 +109,6 @@ export function EvidencePanel({ taskId, userId }: EvidencePanelProps) {
           );
         })}
       </div>
-    </>
+    </div>
   );
-
-  if (!taskId) {
-    return (
-      <div className="flex flex-col h-full">
-        <div
-          className="px-3 py-2 flex-shrink-0 flex items-center gap-2"
-          style={{ borderBottom: "1px solid var(--border-subtle)" }}
-        >
-          <span className="text-xs">🔍</span>
-          <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>证据</span>
-        </div>
-        <div className="flex-1 flex flex-col items-center justify-center gap-1">
-          <span className="text-xl">🔍</span>
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>先选择一个任务</span>
-        </div>
-      </div>
-    );
-  }
-
-  return <div className="flex flex-col h-full">{renderContent()}</div>;
 }

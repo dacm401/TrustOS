@@ -2,8 +2,9 @@
 import { Card } from "../ui/Card";
 import { Badge } from "../ui/Badge";
 import { formatCost, formatTokens, timeAgo } from "@/lib/utils";
+import type { DecisionRecord } from "@/types/dashboard";
 
-interface DecisionTimelineProps { decisions: any[]; }
+interface DecisionTimelineProps { decisions: DecisionRecord[]; }
 
 const INTENT_LABELS: Record<string, string> = { simple_qa: "简单问答", reasoning: "分析推理", creative: "创意写作", code: "代码", math: "数学", translation: "翻译", summarization: "摘要", chat: "闲聊", unknown: "未知" };
 
@@ -14,7 +15,7 @@ export function DecisionTimeline({ decisions }: DecisionTimelineProps) {
     <Card>
       <h3 className="font-semibold text-gray-700 mb-4">🕐 决策时间线</h3>
       <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-        {decisions.map((d: any, i: number) => {
+        {decisions.map((d, i: number) => {
           const isFast = d.routing?.selected_role === "fast";
           const complexity = d.input_features?.complexity_score || 0;
           return (

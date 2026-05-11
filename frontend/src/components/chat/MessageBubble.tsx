@@ -2,11 +2,12 @@
 import { useState } from "react";
 import { DecisionCard } from "./DecisionCard";
 import { sendFeedback } from "@/lib/api";
+import type { Decision } from "@/types/dashboard";
 
 interface MessageBubbleProps {
   role: "user" | "assistant";
   content: string;
-  decision?: any;
+  decision?: Decision;
   userId?: string;
   /** O-002: 委托状态 — 告知用户慢模型正在后台处理 */
   delegation?: {

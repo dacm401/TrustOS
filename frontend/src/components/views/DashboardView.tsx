@@ -1,44 +1,10 @@
 "use client";
-import { useState, useEffect } from "react";
-import { getDashboard, getGrowth } from "@/lib/api";
+import { useState } from "react";
+import { useDashboard, useGrowth } from "@/hooks/useQueries";
 import { PerformancePanel } from "@/components/dashboard/PerformanceCharts";
 import { TokenSankey } from "@/components/dashboard/TokenSankey";
 import { LearningPanel } from "@/components/dashboard/LearningPanel";
 import { Phase4Panel } from "@/components/dashboard/Phase4Panel";
-
-// 匹配后端 DashboardData 类型 (src/types/task.ts)
-interface DashboardData {
-  today: {
-    total_requests: number;
-    fast_count: number;
-    slow_count: number;
-    fallback_count: number;
-    total_cost: number;
-    saved_cost: number;
-    saving_rate: number;
-    avg_latency_ms: number;
-    satisfaction_proxy: number;
-  };
-  token_flow: {
-    fast_tokens: number;
-    slow_tokens: number;
-    compressed_tokens: number;
-    fallback_tokens: number;
-  };
-  recent_decisions: Array<{
-    id: string;
-    timestamp: number;
-    input_features: { intent: string };
-    routing: { selected_role: string; selected_model: string | null };
-  }>;
-  growth: GrowthData;
-}
-
-interface GrowthData {
-  behavioral_memories_count: number;
-  milestones: Array<{ id: string; event: string; created_at: string }>;
-  recent_learnings: Array<{ id: string; content: string; created_at: string }>;
-}
 
 function KpiCard({ label, value, unit, color }: { label: string; value: number | string; unit?: string; color: string }) {
   return (
@@ -79,35 +45,10 @@ interface DashboardViewProps {
 }
 
 export default function DashboardView({ userId }: DashboardViewProps) {
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [growth, setGrowth] = useState<GrowthData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: dashboard, isLoading, error, refetch } = useDashboard(userId);
+  const { data: growth } = useGrowth(userId);
 
-  useEffect(() => {
-    Promise.allSettled([
-      getDashboard(userId),
-      getGrowth(userId),
-    ])
-      .then(([dashResult, growthResult]) => {
-        if (dashResult.status === "fulfilled") setDashboard(dashResult.value);
-        if (growthResult.status === "fulfilled") setGrowth(growthResult.value);
-      })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [userId]);
-
-  const reload = () => {
-    setLoading(true);
-    setError(null);
-    Promise.allSettled([getDashboard(userId), getGrowth(userId)])
-      .then(([dashResult, growthResult]) => {
-        if (dashResult.status === "fulfilled") setDashboard(dashResult.value);
-        if (growthResult.status === "fulfilled") setGrowth(growthResult.value);
-      })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  };
+  const reload = () => refetch();
 
   // 从 dashboard.today 计算成本节省
   const todayCost = dashboard?.today.total_cost ?? 0;

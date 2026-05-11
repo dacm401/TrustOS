@@ -1,7 +1,6 @@
 "use client";
-import { useState, useEffect } from "react";
-import { fetchHealth } from "@/lib/api";
-import type { HealthStatus } from "@/lib/api";
+import { useState } from "react";
+import { useHealth } from "@/hooks/useQueries";
 
 interface HeaderProps {
   userId: string;
@@ -11,15 +10,9 @@ interface HeaderProps {
 }
 
 export function Header({ userId, onUserIdChange, sidebarOpen, onToggleSidebar }: HeaderProps) {
-  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const { data: health } = useHealth();
   const [editingUser, setEditingUser] = useState(false);
   const [userInput, setUserInput] = useState(userId);
-
-  useEffect(() => {
-    fetchHealth()
-      .then(setHealth)
-      .catch(() => {/* silent */});
-  }, []);
 
   const statusDot = health
     ? health.status === "ok"

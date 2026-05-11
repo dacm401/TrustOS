@@ -221,8 +221,7 @@ export function TokenChart({ data, title = 'Token 消耗趋势', height = 200 }:
 
 // ── Container: fetch data and render all three charts ─────────────────────
 
-import { useState, useEffect } from "react";
-import { fetchPerformance } from "@/lib/api";
+import { usePerformance } from "@/hooks/useQueries";
 
 interface PerformancePanelProps {
   userId: string;
@@ -230,24 +229,9 @@ interface PerformancePanelProps {
 }
 
 export function PerformancePanel({ userId, range = "7d" }: PerformancePanelProps) {
-  const [data, setData] = useState<{
-    latency: Array<{ timestamp: string; p50: number; p95: number; p99: number }>;
-    qps: Array<{ timestamp: string; qps: number; errors: number }>;
-    tokens: Array<{ timestamp: string; inputTokens: number; outputTokens: number }>;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error } = usePerformance(userId, range);
 
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    fetchPerformance(userId, range)
-      .then((d) => setData(d))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [userId, range]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
@@ -263,7 +247,7 @@ export function PerformancePanel({ userId, range = "7d" }: PerformancePanelProps
   if (error) {
     return (
       <div className="rounded-xl p-4 text-xs flex items-center gap-2" style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "var(--accent-red)" }}>
-        ⚠️ 性能数据加载失败：{error}
+        ⚠️ 性能数据加载失败：{error?.message}
       </div>
     );
   }
