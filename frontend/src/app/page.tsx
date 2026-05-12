@@ -61,7 +61,11 @@ export default function HomePage() {
             className="flex-1 overflow-hidden"
             style={{ maxWidth: sidebarOpen ? undefined : "100%" }}
           >
-            <ErrorBoundary fallback={null}>
+            <ErrorBoundary fallback={
+              <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
+                ⚠️ 聊天界面加载失败，请刷新页面重试
+              </div>
+            }>
               <div style={{ display: activeNav === "chat" ? "block" : "none", height: "100%" }}>
                 <ChatInterface
                   onTaskIdChange={setSelectedTaskId}
@@ -70,19 +74,31 @@ export default function HomePage() {
               </div>
             </ErrorBoundary>
 
-            <ErrorBoundary fallback={null}>
+            <ErrorBoundary fallback={
+              <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
+                ⚠️ 任务视图加载失败，请刷新页面重试
+              </div>
+            }>
               <div style={{ display: activeNav === "tasks" ? "block" : "none", height: "100%" }}>
                 <TasksView userId={userId} />
               </div>
             </ErrorBoundary>
 
-            <ErrorBoundary fallback={null}>
+            <ErrorBoundary fallback={
+              <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
+                ⚠️ 记忆视图加载失败，请刷新页面重试
+              </div>
+            }>
               <div style={{ display: activeNav === "memory" ? "block" : "none", height: "100%" }}>
                 <MemoryView userId={userId} />
               </div>
             </ErrorBoundary>
 
-            <ErrorBoundary fallback={null}>
+            <ErrorBoundary fallback={
+              <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
+                ⚠️ 数据面板加载失败，请刷新页面重试
+              </div>
+            }>
               <div style={{ display: activeNav === "dashboard" ? "block" : "none", height: "100%" }}>
                 <DashboardView userId={userId} />
               </div>

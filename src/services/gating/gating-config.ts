@@ -57,4 +57,7 @@ export const DEFAULT_GATING_CONFIG: GatingConfig = {
   kb: {
     strong_signal_threshold: 0.80,  // hasStrongBoundarySignal 的强信号阈值
   },
+
+  // G2 跨会话续写提升量（is_continuation=true 且当前非 slow 时抬升 delegate_to_slow）
+  cross_session_boost: 0.30,  // 来源：Sprint 58 benchmark，LLM cross-session 准确率 50% → 规则 75%
 };

@@ -270,11 +270,12 @@ export function getStrongestSignal(
  *
  * 用于 G1/G2 校准时的类型白名单。
  * 只有这些类型的强信号才会触发校准。
+ *
+ * 注：realtime_external_fact / post_training_event 已移除——
+ * PATTERN_CLUSTERS 中无对应 cluster，保留等于死代码。
  */
 export const KB_CALIBRATABLE_TYPES: KnowledgeBoundarySignalType[] = [
-  "realtime_external_fact",
   "current_environment_fact",
-  "post_training_event",
   "live_weather_data",
   "live_market_data",
   "live_news_data",

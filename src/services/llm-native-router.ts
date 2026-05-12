@@ -33,7 +33,7 @@ import { DECISION_TO_LAYER, assertUnreachable } from "../types/index.js";
 import { parseAndValidate } from "./decision-validator.js";
 import { taskPlanner } from "./task-planner.js";
 import { DelegationLogRepo } from "../db/repositories.js";
-import { TaskArchiveRepo } from "../db/task-archive-repo.js";
+import { TaskArchiveRepo, TaskCommandRepo, TaskArchiveEventRepo } from "../db/task-archive-repo.js";
 import { loadManagerPrompt, getManagerPromptVersion } from "../prompts/loader.js";
 import { circuitBreakers, CircuitBreakerError } from "./circuit-breaker.js";
 
@@ -42,13 +42,6 @@ let phase4Module: typeof import("./phase4/index.js") | null = null;
 async function getPhase4() {
   if (!phase4Module) phase4Module = await import("./phase4/index.js");
   return phase4Module;
-}
-
-// Task archive: module-level cache to avoid repeated dynamic imports per request
-let taskArchiveModule: typeof import("../db/task-archive-repo.js") | null = null;
-async function getTaskArchiveRepos() {
-  if (!taskArchiveModule) taskArchiveModule = await import("../db/task-archive-repo.js");
-  return taskArchiveModule;
 }
 
 // ── Gating: Gated Delegation v2 ───────────────────────────────────────────────
@@ -1027,7 +1020,6 @@ async function writeTaskArchiveAndCommand(
   let commandRecord: { id: string } | null = null;
 
   try {
-    const { TaskArchiveRepo, TaskArchiveEventRepo } = await getTaskArchiveRepos();
     archiveRecord = await TaskArchiveRepo.create({
       task_id: taskId,
       user_id,
@@ -1050,7 +1042,6 @@ async function writeTaskArchiveAndCommand(
   }
 
   try {
-    const { TaskCommandRepo, TaskArchiveEventRepo } = await getTaskArchiveRepos();
     if (processedCommand) {
       commandRecord = await TaskCommandRepo.create({
         task_id: taskId,
@@ -1114,7 +1105,6 @@ async function routeByDecision(
       // B39-02 fix: ask_clarification 写 task_archives，便于追踪 ClarifyQuestion 后续状态
       const clarifyingTaskId = uuid();
       try {
-        const { TaskArchiveRepo, TaskArchiveEventRepo } = await getTaskArchiveRepos();
         await TaskArchiveRepo.create({
           task_id: clarifyingTaskId,
           user_id,

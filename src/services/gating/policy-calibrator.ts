@@ -139,7 +139,7 @@ export function calibrateWithPolicy(
   if (features.is_continuation) {
     const currentAction = getSelectedAction(llmScores);
     if (currentAction !== "delegate_to_slow" && currentAction !== "execute_task") {
-      const newDelegateScore = Math.min(1, scores.delegate_to_slow + 0.30);
+      const newDelegateScore = Math.min(1, scores.delegate_to_slow + (config.cross_session_boost ?? DEFAULT_GATING_CONFIG.cross_session_boost));
       if (newDelegateScore !== scores.delegate_to_slow) {
         scores.delegate_to_slow = newDelegateScore;
         policyOverrides.push({

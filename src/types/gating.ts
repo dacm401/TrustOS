@@ -77,6 +77,8 @@ export interface GatingConfig {
   kb: {
     strong_signal_threshold: number;  // 强信号阈值（hasStrongBoundarySignal）
   };
+  /** G2 跨会话续写提升量（is_continuation=true 且当前非 slow 时抬升 delegate_to_slow） */
+  cross_session_boost: number;
 }
 
 // ── Knowledge Boundary Signals (KB-1) ─────────────────────────────────────────
