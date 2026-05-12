@@ -587,13 +587,24 @@ function splitManagerOutput(output: string): { userFacingText: string; jsonPart:
     // 获取 JSON 之前的部分作为用户可见文本
     userFacingText = output.slice(0, jsonMatch.index).trim();
   } else {
-    // 如果没有找到 ```json 块，尝试匹配裸 JSON
-    const bareJsonMatch = output.match(/(\{[\s\S]*?\})/);
-    if (bareJsonMatch) {
-      jsonPart = bareJsonMatch[1];
-      userFacingText = output.slice(0, bareJsonMatch.index).trim();
+    // 如果没有找到 ```json 块，从第一个 { 开始用括号计数找匹配的 }
+    const firstBrace = output.indexOf("{");
+    if (firstBrace === -1) {
+      return { userFacingText: output.trim(), jsonPart: "" };
+    }
+    let depth = 0;
+    let end = -1;
+    for (let i = firstBrace; i < output.length; i++) {
+      if (output[i] === "{") depth++;
+      else if (output[i] === "}") {
+        depth--;
+        if (depth === 0) { end = i; break; }
+      }
+    }
+    if (end > firstBrace) {
+      jsonPart = output.slice(firstBrace, end + 1);
+      userFacingText = output.slice(0, firstBrace).trim();
     } else {
-      // 如果没有 JSON，整个文本都视为用户可见文本
       return { userFacingText: output.trim(), jsonPart: "" };
     }
   }
