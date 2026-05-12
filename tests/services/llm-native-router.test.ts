@@ -39,10 +39,9 @@ describe("parseGatedDecision: 降级路径（返回 null 或 throw）", () => {
     expect(result).toBeNull();
   });
 
-  it("TR-02: JSON 格式损坏（缺逗号）→ 返回 null", () => {
+  it("TR-02: JSON 格式损坏（缺逗号）→ PROTOCOL_VIOLATION → throw", () => {
     const broken = '```json\n{"scores": {"direct_answer": 0.9 "delegate_to_slow": 0.05}}\n```';
-    const result = parseGatedDecision(broken);
-    expect(result).toBeNull();
+    expect(() => parseGatedDecision(broken)).toThrow("PROTOCOL_VIOLATION");
   });
 
   it("TR-03: schema_version 缺失 → PROTOCOL_VIOLATION → throw", () => {

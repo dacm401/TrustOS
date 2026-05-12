@@ -83,6 +83,12 @@ export function calculateSystemConfidence(
     confidence *= penalties.kb_direct_answer;
   }
 
+  // 9. G1-02: 惩罚链式叠加衰减下限 — 避免多个条件同时命中导致 confidence 趋近于 0
+  // min_score_ratio 来自 config（默认 0.30），保证惩罚后不低于原始分数的 30%
+  const baseScore = llmConfidenceHint * 0.4 + gap * 0.6;
+  const decayFloor = baseScore * (config.min_score_ratio ?? 0.30);
+  confidence = Math.max(confidence, decayFloor);
+
   // 标准化到 3 位小数，消除 IEEE754 浮点尾数噪音
   return Math.round(Math.max(0, Math.min(1, confidence)) * 1000) / 1000;
 }

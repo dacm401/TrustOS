@@ -1148,8 +1148,11 @@ async function routeByDecision(
       const taskId = uuid();
 
       // ── Sensitive Data Guard（信息分发红线）────────────────────────────────────
+      // SD-01: 检查点在 routeByDecision（而非 G2）——因为需要原始文本（message + task_brief），
+      // 而 G1/G2/G3 只有分数和特征。此处在 archive 写入前拦截，确保敏感数据不落盘不发云端。
       const sensitiveResult = detectSensitiveData([message, command?.task_brief ?? ""].join(" "));
       if (sensitiveResult) {
+        console.warn(`[llm-native-router] Sensitive data guard BLOCKED delegation: type=${sensitiveResult.type}, label=${sensitiveResult.label}`);
         return {
           message: language === "zh"
             ? `⚠️ 检测到敏感数据 [${sensitiveResult.label}]，为保护您的信息，此请求不会发给云端模型。`
@@ -1159,6 +1162,7 @@ async function routeByDecision(
           routing_layer: "L1",
           raw_manager_output: raw,
           delegation: { task_id: taskId, status: "blocked_by_sensitive_guard" },
+          delegation_log_id,
         };
       }
 
@@ -1202,6 +1206,23 @@ async function routeByDecision(
     case "execute_task": {
       const command = decision.command as CommandPayload | undefined;
       const taskId = uuid();
+
+      // SD-01: execute_task 也需要敏感数据检查（工具执行可能暴露数据给外部服务）
+      const sensitiveResultExec = detectSensitiveData([message, command?.task_brief ?? ""].join(" "));
+      if (sensitiveResultExec) {
+        console.warn(`[llm-native-router] Sensitive data guard BLOCKED execute_task: type=${sensitiveResultExec.type}, label=${sensitiveResultExec.label}`);
+        return {
+          message: language === "zh"
+            ? `⚠️ 检测到敏感数据 [${sensitiveResultExec.label}]，为保护您的信息，此任务不会执行。`
+            : `⚠️ Sensitive data detected [${sensitiveResultExec.label}]. This task will not be executed.`,
+          decision,
+          decision_type: "execute_task",
+          routing_layer: "L1",
+          raw_manager_output: raw,
+          delegation: { task_id: taskId, status: "blocked_by_sensitive_guard" },
+          delegation_log_id,
+        };
+      }
 
       // Phase 4 权限层 + 脱敏（execute_task 不拒绝，只脱敏）
       const phase4Result = await runPhase4Guard(command, session_id, user_id);
