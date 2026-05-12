@@ -104,13 +104,15 @@ export function TaskProgress({ taskId, userId, onComplete, className = '' }: Tas
   useEffect(() => {
     if (!polling) return;
 
+    const controller = new AbortController();
+
     const poll = async () => {
       try {
         const res = await fetch(
           `http://localhost:3001/v1/tasks/${encodeURIComponent(taskId)}/traces`,
-          { headers: { 'X-User-Id': userId } }
+          { headers: { 'X-User-Id': userId }, signal: controller.signal }
         );
-        
+
         if (!res.ok) {
           console.error('Failed to fetch traces:', res.status);
           return;
@@ -128,6 +130,7 @@ export function TaskProgress({ taskId, userId, onComplete, className = '' }: Tas
           }
         }
       } catch (error) {
+        if ((error as Error).name === 'AbortError') return;
         console.warn('Progress polling error:', error);
       }
     };
@@ -135,7 +138,10 @@ export function TaskProgress({ taskId, userId, onComplete, className = '' }: Tas
     poll();
     const interval = setInterval(poll, 3000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      controller.abort();
+    };
   }, [taskId, userId, onComplete, polling]);
 
   const color = STATUS_COLORS[progress.status];

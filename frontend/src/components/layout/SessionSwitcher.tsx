@@ -29,7 +29,9 @@ export function SessionSwitcher({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchRecentSessions();
+    const controller = new AbortController();
+    fetchRecentSessions(controller.signal);
+    return () => controller.abort();
   }, [userId]);
 
   useEffect(() => {
@@ -42,17 +44,19 @@ export function SessionSwitcher({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchRecentSessions = async () => {
+  const fetchRecentSessions = async (signal: AbortSignal) => {
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:3001/v1/sessions/recent?user_id=${encodeURIComponent(userId)}&limit=10`, {
-        headers: { 'X-User-Id': userId },
-      });
+      const res = await fetch(
+        `http://localhost:3001/v1/sessions/recent?user_id=${encodeURIComponent(userId)}&limit=10`,
+        { headers: { 'X-User-Id': userId }, signal }
+      );
       if (res.ok) {
         const data = await res.json();
         setSessions(data.sessions || []);
       }
     } catch (error) {
+      if ((error as Error).name === 'AbortError') return;
       console.warn('Failed to fetch sessions:', error);
     } finally {
       setLoading(false);

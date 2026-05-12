@@ -21,7 +21,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setFastModel(localStorage.getItem("fast_model") || "");
       setSlowModel(localStorage.getItem("slow_model") || "");
       setSaved(false);
-      // 异步加载加密的 API Key（不在输入框里明文显示已有 key）
       getSecureApiKey().then((key) => {
         setApiKey(key || "");
         setHasExistingKey(!!key);
@@ -42,82 +41,120 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 surface-overlay flex items-center justify-center z-50">
+      <div
+        className="surface-elevated rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto"
+        style={{ boxShadow: "0 25px 50px -12px rgba(0,0,0,0.6)" }}
+      >
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-800">模型设置</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+          <h2 className="text-xl font-bold text-primary">模型设置</h2>
+          <button
+            onClick={onClose}
+            className="text-muted hover:text-primary transition-colors text-2xl leading-none"
+          >
+            &times;
+          </button>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">LLM API 地址</label>
+            <label className="block text-sm font-medium text-secondary mb-1">
+              LLM API 地址
+            </label>
             <input
               type="text"
               value={llmBaseUrl}
               onChange={(e) => setLlmBaseUrl(e.target.value)}
               placeholder="https://openrouter.ai/api/v1"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full surface-card border border-subtle rounded-lg px-3 py-2 text-sm text-primary placeholder:text-muted focus:ring-2 focus:ring-accent-blue focus:border-accent-blue outline-none transition-colors"
             />
-            <p className="text-xs text-gray-500 mt-1">支持任意 OpenAI 兼容接口</p>
+            <p className="text-xs text-muted mt-1">支持任意 OpenAI 兼容接口</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+            <label className="block text-sm font-medium text-secondary mb-1">
+              API Key
+            </label>
             <input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={hasExistingKey ? "••••••••••••（已加密存储）" : "sk-..."}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full surface-card border border-subtle rounded-lg px-3 py-2 text-sm text-primary placeholder:text-muted focus:ring-2 focus:ring-accent-blue focus:border-accent-blue outline-none transition-colors"
             />
             {hasExistingKey && (
-              <p className="text-xs text-gray-400 mt-1">已加密存储；留空则保持不变，修改则重新加密。</p>
+              <p className="text-xs text-muted mt-1">
+                已加密存储；留空则保持不变，修改则重新加密。
+              </p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">快模型（简单任务）</label>
+            <label className="block text-sm font-medium text-secondary mb-1">
+              快模型（简单任务）
+            </label>
             <input
               type="text"
               value={fastModel}
               onChange={(e) => setFastModel(e.target.value)}
               placeholder="qwen/qwen-2.5-72b-instruct"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full surface-card border border-subtle rounded-lg px-3 py-2 text-sm text-primary placeholder:text-muted focus:ring-2 focus:ring-accent-blue focus:border-accent-blue outline-none transition-colors"
             />
-            <p className="text-xs text-gray-500 mt-1">填写对应平台的模型 ID</p>
+            <p className="text-xs text-muted mt-1">填写对应平台的模型 ID</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">慢模型（复杂任务）</label>
+            <label className="block text-sm font-medium text-secondary mb-1">
+              慢模型（复杂任务）
+            </label>
             <input
               type="text"
               value={slowModel}
               onChange={(e) => setSlowModel(e.target.value)}
               placeholder="qwen/qwen-2.5-72b-instruct"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full surface-card border border-subtle rounded-lg px-3 py-2 text-sm text-primary placeholder:text-muted focus:ring-2 focus:ring-accent-blue focus:border-accent-blue outline-none transition-colors"
             />
           </div>
 
-          <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
+          <div className="surface-card rounded-lg p-3 text-xs text-secondary border border-subtle">
             <p className="font-medium mb-1">💡 配置示例（OpenRouter）</p>
-            <p>API 地址：<code className="bg-blue-100 px-1 rounded">https://openrouter.ai/api/v1</code></p>
-            <p>快/慢模型：<code className="bg-blue-100 px-1 rounded">qwen/qwen-2.5-72b-instruct</code></p>
+            <p>
+              API 地址：
+              <code className="ml-1 px-1 py-0.5 rounded text-accent" style={{ background: "var(--bg-overlay)" }}>
+                https://openrouter.ai/api/v1
+              </code>
+            </p>
+            <p>
+              快/慢模型：
+              <code className="ml-1 px-1 py-0.5 rounded text-accent" style={{ background: "var(--bg-overlay)" }}>
+                qwen/qwen-2.5-72b-instruct
+              </code>
+            </p>
             <p className="mt-1 font-medium">💡 配置示例（硅基流动）</p>
-            <p>API 地址：<code className="bg-blue-100 px-1 rounded">https://api.siliconflow.cn/v1</code></p>
-            <p>快/慢模型：<code className="bg-blue-100 px-1 rounded">Qwen/Qwen2.5-72B-Instruct</code></p>
+            <p>
+              API 地址：
+              <code className="ml-1 px-1 py-0.5 rounded text-accent" style={{ background: "var(--bg-overlay)" }}>
+                https://api.siliconflow.cn/v1
+              </code>
+            </p>
+            <p>
+              快/慢模型：
+              <code className="ml-1 px-1 py-0.5 rounded text-accent" style={{ background: "var(--bg-overlay)" }}>
+                Qwen/Qwen2.5-72B-Instruct
+              </code>
+            </p>
           </div>
 
           <div className="pt-4 flex gap-3">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              className="flex-1 px-4 py-2 surface-card border border-subtle rounded-lg text-secondary hover:text-primary hover:border-default transition-colors"
             >
               取消
             </button>
             <button
               onClick={handleSave}
-              className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              className="flex-1 px-4 py-2 bg-accent-blue text-white rounded-lg hover:opacity-90 transition-opacity"
             >
               {saved ? "已保存!" : "保存设置"}
             </button>

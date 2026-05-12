@@ -39,12 +39,16 @@ import { circuitBreakers, CircuitBreakerError } from "./circuit-breaker.js";
 
 // Phase 4: Permission Layer + Redaction imports (lazy loaded to avoid circular deps)
 let phase4Module: typeof import("./phase4/index.js") | null = null;
-
 async function getPhase4() {
-  if (!phase4Module) {
-    phase4Module = await import("./phase4/index.js");
-  }
+  if (!phase4Module) phase4Module = await import("./phase4/index.js");
   return phase4Module;
+}
+
+// Task archive: module-level cache to avoid repeated dynamic imports per request
+let taskArchiveModule: typeof import("../db/task-archive-repo.js") | null = null;
+async function getTaskArchiveRepos() {
+  if (!taskArchiveModule) taskArchiveModule = await import("../db/task-archive-repo.js");
+  return taskArchiveModule;
 }
 
 // ── Gating: Gated Delegation v2 ───────────────────────────────────────────────
@@ -485,23 +489,9 @@ async function callManagerModel(input: {
   ];
 
   try {
-    // 有透传 key 或 baseUrl 时，走 callOpenAIWithOptions（支持自定义 baseUrl/apiKey）
-    // 注意：仅传 fastModel 时不足以触发此分支，避免向 callOpenAIWithOptions 传 undefined apiKey
-    const hasAuthOverride = reqApiKey || reqLlmBaseUrl;
-    return await circuitBreakers.llm.execute(async () => {
-      if (hasAuthOverride) {
-        const resp = await callOpenAIWithOptions(
-          effectiveFastModel,
-          messages,
-          reqApiKey || config.openaiApiKey || undefined,
-          effectiveBaseUrl
-        );
-        return resp.content;
-      }
-      // 无鉴权透传，走默认路径（callModelFull 内部读 config）
-      const resp = await callModelFull(effectiveFastModel, messages);
-      return resp.content;
-    });
+    return await circuitBreakers.llm.execute(async () =>
+      _callFastModel(effectiveFastModel, messages, effectiveBaseUrl, reqApiKey)
+    );
   } catch (e: any) {
     if (e instanceof CircuitBreakerError) {
       const retryMsg = e.retryAfter ? ` (retry in ${e.retryAfter}s)` : "";
@@ -511,6 +501,28 @@ async function callManagerModel(input: {
     }
     throw e;
   }
+}
+
+// ── 共用 Fast Model 调用逻辑 ───────────────────────────────────────────────
+/** 抽取 callManagerModel 与 callDirectReplyModel 的共用调用逻辑 */
+async function _callFastModel(
+  effectiveFastModel: string,
+  messages: ChatMessage[],
+  effectiveBaseUrl: string | undefined,
+  reqApiKey: string | undefined
+): Promise<string> {
+  const hasAuthOverride = reqApiKey || effectiveBaseUrl;
+  if (hasAuthOverride) {
+    const resp = await callOpenAIWithOptions(
+      effectiveFastModel,
+      messages,
+      reqApiKey || config.openaiApiKey || undefined,
+      effectiveBaseUrl
+    );
+    return resp.content;
+  }
+  const resp = await callModelFull(effectiveFastModel, messages);
+  return resp.content;
 }
 
 // ── 直接回答模型调用 (Direct Reply Model) ─────────────────────────────────
@@ -550,21 +562,7 @@ async function callDirectReplyModel(input: {
   ];
 
   try {
-    // 有透传 key 或 baseUrl 时，走 callOpenAIWithOptions（支持自定义 baseUrl/apiKey）
-    // 注意：仅传 fastModel 时不足以触发此分支，避免向 callOpenAIWithOptions 传 undefined apiKey
-    const hasAuthOverride = reqApiKey || reqLlmBaseUrl;
-    if (hasAuthOverride) {
-      const resp = await callOpenAIWithOptions(
-        effectiveFastModel,
-        messages,
-        reqApiKey || config.openaiApiKey || undefined,
-        effectiveBaseUrl
-      );
-      return resp.content;
-    }
-    // 无鉴权透传，走默认路径（callModelFull 内部读 config）
-    const resp = await callModelFull(effectiveFastModel, messages);
-    return resp.content;
+    return await _callFastModel(effectiveFastModel, messages, effectiveBaseUrl, reqApiKey);
   } catch (e: any) {
     console.error("[llm-native-router] Direct reply model call failed:", e.message);
     throw e;
@@ -590,7 +588,7 @@ function splitManagerOutput(output: string): { userFacingText: string; jsonPart:
     userFacingText = output.slice(0, jsonMatch.index).trim();
   } else {
     // 如果没有找到 ```json 块，尝试匹配裸 JSON
-    const bareJsonMatch = output.match(/(\{[\s\S]*\})/);
+    const bareJsonMatch = output.match(/(\{[\s\S]*?\})/);
     if (bareJsonMatch) {
       jsonPart = bareJsonMatch[1];
       userFacingText = output.slice(0, bareJsonMatch.index).trim();
@@ -622,7 +620,7 @@ function parseGatedDecision(
   try {
     const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
     const bareMatch = text.match(/```\s*([\s\S]*?)\s*```/);
-    const braceMatch = text.match(/(\{[\s\S]*\})/);
+    const braceMatch = text.match(/(\{[\s\S]*?\})/);
 
     const match =
       jsonMatch?.[1] ??
@@ -961,7 +959,7 @@ async function writeTaskArchiveAndCommand(
   let commandRecord: { id: string } | null = null;
 
   try {
-    const { TaskArchiveRepo, TaskArchiveEventRepo } = await import("../db/task-archive-repo.js");
+    const { TaskArchiveRepo, TaskArchiveEventRepo } = await getTaskArchiveRepos();
     archiveRecord = await TaskArchiveRepo.create({
       task_id: taskId,
       user_id,
@@ -984,7 +982,7 @@ async function writeTaskArchiveAndCommand(
   }
 
   try {
-    const { TaskCommandRepo, TaskArchiveEventRepo } = await import("../db/task-archive-repo.js");
+    const { TaskCommandRepo, TaskArchiveEventRepo } = await getTaskArchiveRepos();
     if (processedCommand) {
       commandRecord = await TaskCommandRepo.create({
         task_id: taskId,
@@ -1048,7 +1046,7 @@ async function routeByDecision(
       // B39-02 fix: ask_clarification 写 task_archives，便于追踪 ClarifyQuestion 后续状态
       const clarifyingTaskId = uuid();
       try {
-        const { TaskArchiveRepo, TaskArchiveEventRepo } = await import("../db/task-archive-repo.js");
+        const { TaskArchiveRepo, TaskArchiveEventRepo } = await getTaskArchiveRepos();
         await TaskArchiveRepo.create({
           task_id: clarifyingTaskId,
           user_id,
