@@ -7,8 +7,6 @@ import {
   usePatchTask,
   useTaskSummary,
 } from "@/hooks/useQueries";
-import { TracePanel } from "@/components/workbench/TracePanel";
-import { EvidencePanel } from "@/components/workbench/EvidencePanel";
 import { TYPE_CONFIG, SOURCE_CONFIG } from "@/lib/constants";
 import { timeAgo } from "@/lib/utils";
 

@@ -732,22 +732,26 @@ function parseGatedDecision(
     return runGatedDelegation(scores, llmConfidenceHint, features, kbSignals, estimatedTokens);
   } catch (e) {
     const err = e as Error & { code?: string };
-    // 已知的协议异常（HIGH_SEVERITY）→ 重新抛出，交给外层处理
+    // 已知的协议异常 → 重新抛出，交给外层统一处理
     if (err.code === "SCHEMA_VERSION_MISSING" || err.code === "SCHEMA_VERSION_UNKNOWN") throw e;
-    // R-07: 结构化诊断日志 — 区分 JSON 解析错误与其他异常
-    if (e instanceof SyntaxError) {
-      console.warn("[parseGatedDecision] JSON parse failed:", {
-        message: err.message,
-        textSnippet: text.slice(0, 300),
-      });
-    } else {
-      console.warn("[parseGatedDecision] unexpected error:", {
-        type: (e as object)?.constructor?.name ?? "Unknown",
-        message: err.message,
-        textSnippet: text.slice(0, 300),
-      });
-    }
-    return null;
+    // R-07: JSON 解析失败和其他未知异常都视为协议违规，统一抛出
+    const isSyntax = e instanceof SyntaxError;
+    console.warn(`[parseGatedDecision] ${isSyntax ? "JSON parse failed" : "unexpected error"}:`, {
+      type: isSyntax ? "SyntaxError" : ((e as object)?.constructor?.name ?? "Unknown"),
+      message: err.message,
+      textSnippet: text.slice(0, 300),
+    });
+    throw Object.assign(
+      new Error(`[parseGatedDecision] PROTOCOL_VIOLATION: ${isSyntax ? "JSON parse failed" : err.message}`),
+      {
+        code: "PROTOCOL_VIOLATION",
+        textSnippet: text.slice(0, 500),
+        matchedJson: null,
+        jsonMatch: false,
+        bareMatch: false,
+        braceMatch: false,
+      }
+    );
   }
 }
 
