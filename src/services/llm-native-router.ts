@@ -93,13 +93,15 @@ export interface GatedDelegationContext {
  * @param llmConfidenceHint         LLM 自报置信度
  * @param features                  LLM 输出的结构化特征
  * @param knowledgeBoundarySignals   KB-1: 知识边界信号（可选）
+ * @param estimatedTokens           GF-02: 预估 token 数（可选），用于 cost_penalty
  * @returns GatedDelegationContext（含所有中间结果，供 trace/debug/benchmark 使用）
  */
 export function runGatedDelegation(
   llmScores: Record<ManagerDecisionType, number>,
   llmConfidenceHint: number,
   features: DecisionFeatures,
-  knowledgeBoundarySignals?: KnowledgeBoundarySignal[]
+  knowledgeBoundarySignals?: KnowledgeBoundarySignal[],
+  estimatedTokens?: number
 ): GatedDelegationContext {
   // G1: 计算 system_confidence（含 KB 知识边界校准）
   const systemConfidence = calculateSystemConfidence(
@@ -110,12 +112,13 @@ export function runGatedDelegation(
     knowledgeBoundarySignals
   );
 
-  // G2: Policy 校准（含 KB 知识边界校准）
+  // G2: Policy 校准（含 KB 知识边界校准 + GF-02 cost_penalty）
   const calibrated: CalibratedDecision = calibrateWithPolicy(
     llmScores,
     features,
     DEFAULT_GATING_CONFIG,
-    knowledgeBoundarySignals
+    knowledgeBoundarySignals,
+    estimatedTokens
   );
 
   // G3: 判断是否需要 rerank
@@ -278,9 +281,11 @@ export async function routeWithManagerDecision(
   console.log(`[llm-native-router] [DEBUG] Manager output (first 600 chars):\n---\n${managerOutput.slice(0, 600)}\n---`);
 
   // Phase 3.2: parseGatedDecision 不再返回 null，schema_version 缺失/未知时直接 throw PROTOCOL_VIOLATION
+  // GF-02: 估算 token 数（中文按 2chars/token，英文按 4chars/token 粗估；混合取 3chars/token）
+  const estimatedTokens = Math.round(message.length / 3);
   let gatedResult: ReturnType<typeof parseGatedDecision>;
   try {
-    gatedResult = parseGatedDecision(managerOutput, kbSignals);
+    gatedResult = parseGatedDecision(managerOutput, kbSignals, estimatedTokens);
   } catch (err: any) {
     // PROTOCOL_VIOLATION: 立刻失败，打结构化日志，不走 L0 fallback 拖超时
     if (err.code === "SCHEMA_VERSION_MISSING" || err.code === "SCHEMA_VERSION_UNKNOWN") {
@@ -415,14 +420,33 @@ export async function routeWithManagerDecision(
 
     }).catch((e: Error) => console.error("[llm-native-router] delegation_log write FAILED (normal direct_answer):", e.message, e.stack));
 
-    // 检测模型意图是否原本想委派（降级回退处理）
+    // R-08: 降级检测 — 模型原本打算委派，但被系统降为 direct_answer
+    // 优先复用 parsedOutput.userFacingText（Text+JSON 模式下模型已生成人话回复）
+    // 只有文本太短（可能是安抚占位语）时才发额外的 callDirectReplyModel
     const modelIntent = modelJson?.decision_type || "";
     const isDelegateIntent = modelIntent === "execute_task" || modelIntent === "delegate_to_slow";
 
     if (isDelegateIntent) {
-      console.log("[llm-native-router] Route downgrade detected: model intended to delegate, generating real reply via fallback model");
+      const SUBSTANTIVE_MIN_LEN = 30; // 短于此长度视为安抚占位语
+      const hasSubstantiveText = parsedOutput.userFacingText.trim().length >= SUBSTANTIVE_MIN_LEN;
+
+      if (hasSubstantiveText) {
+        // 模型已经给出实质性回复，直接用，省一次 LLM 调用
+        console.log(`[llm-native-router] Route downgrade detected: reusing Manager userFacingText (len=${parsedOutput.userFacingText.length})`);
+        return {
+          message: parsedOutput.userFacingText,
+          decision: null,
+          routing_layer: "L0",
+          decision_type: "direct_answer",
+          raw_manager_output: managerOutput,
+          delegation_log_id: directAnswerLogId,
+        };
+      }
+
+      // userFacingText 太短（安抚占位语），需要额外生成真实回复
+      console.log("[llm-native-router] Route downgrade detected: userFacingText too short, generating real reply via callDirectReplyModel");
       const realReply = await callDirectReplyModel({
-        message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext
+        message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext,
       });
       console.log(`[llm-native-router] Fallback reply generated, length: ${realReply.length}`);
       return {
@@ -503,6 +527,14 @@ async function callManagerModel(input: {
   }
 }
 
+// ── Direct Reply 缓存（进程级）── R-08 修复
+// 降级场景下同 message 不重复调用 LLM（模块级 Map，进程重启自动清空）
+const _directReplyCache = new Map<string, Promise<string>>();
+function _getDirectReplyCacheKey(message: string): string {
+  // 用 message 前 200 字做 key
+  return message.slice(0, 200);
+}
+
 // ── 共用 Fast Model 调用逻辑 ───────────────────────────────────────────────
 /** 抽取 callManagerModel 与 callDirectReplyModel 的共用调用逻辑 */
 async function _callFastModel(
@@ -544,6 +576,13 @@ async function callDirectReplyModel(input: {
 }): Promise<string> {
   const { message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext } = input;
 
+  // R-08 修复：进程级缓存，避免同 message 重复调用
+  const cacheKey = _getDirectReplyCacheKey(message);
+  if (_directReplyCache.has(cacheKey)) {
+    console.log(`[llm-native-router] [R-08] Direct reply cache hit for key=${cacheKey.slice(0, 80)}...`);
+    return _directReplyCache.get(cacheKey)!;
+  }
+
   // 前端透传优先于环境变量
   const effectiveFastModel = fastModel || config.fastModel;
   const effectiveBaseUrl = reqLlmBaseUrl || config.openaiBaseUrl || undefined;
@@ -561,12 +600,14 @@ async function callDirectReplyModel(input: {
     { role: "user", content: userContent },
   ];
 
-  try {
-    return await _callFastModel(effectiveFastModel, messages, effectiveBaseUrl, reqApiKey);
-  } catch (e: any) {
-    console.error("[llm-native-router] Direct reply model call failed:", e.message);
-    throw e;
-  }
+  // R-08 修复：先缓存 Promise，再执行，避免并发重复调用
+  const callPromise = _callFastModel(effectiveFastModel, messages, effectiveBaseUrl, reqApiKey)
+    .catch((e: any) => {
+      console.error("[llm-native-router] Direct reply model call failed:", e.message);
+      throw e;
+    });
+  _directReplyCache.set(cacheKey, callPromise);
+  return callPromise;
 }
 
 // ── Gated Delegation: 解析 v2 格式 ───────────────────────────────────────────
@@ -626,7 +667,8 @@ function splitManagerOutput(output: string): { userFacingText: string; jsonPart:
 
 function parseGatedDecision(
   text: string,
-  kbSignals?: KnowledgeBoundarySignal[]
+  kbSignals?: KnowledgeBoundarySignal[],
+  estimatedTokens?: number
 ): GatedDelegationContext | null {
   try {
     const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
@@ -693,10 +735,25 @@ function parseGatedDecision(
       is_continuation: Boolean(raw.features?.is_continuation),
     };
 
-    // KB-1: 传入知识边界信号，供 G1/G2 校准使用
-    return runGatedDelegation(scores, llmConfidenceHint, features, kbSignals);
+    // KB-1: 传入知识边界信号，供 G1/G2 校准使用；GF-02: 传入预估 token 数
+    return runGatedDelegation(scores, llmConfidenceHint, features, kbSignals, estimatedTokens);
   } catch (e) {
-    console.warn("[parseGatedDecision] failed:", (e as Error).message);
+    const err = e as Error & { code?: string };
+    // 已知的协议异常（HIGH_SEVERITY）→ 重新抛出，交给外层处理
+    if (err.code === "SCHEMA_VERSION_MISSING" || err.code === "SCHEMA_VERSION_UNKNOWN") throw e;
+    // R-07: 结构化诊断日志 — 区分 JSON 解析错误与其他异常
+    if (e instanceof SyntaxError) {
+      console.warn("[parseGatedDecision] JSON parse failed:", {
+        message: err.message,
+        textSnippet: text.slice(0, 300),
+      });
+    } else {
+      console.warn("[parseGatedDecision] unexpected error:", {
+        type: (e as object)?.constructor?.name ?? "Unknown",
+        message: err.message,
+        textSnippet: text.slice(0, 300),
+      });
+    }
     return null;
   }
 }

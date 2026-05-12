@@ -40,13 +40,15 @@ export interface CalibratedDecision {
  * @param features                  LLM 输出的结构化特征
  * @param config                    可配置参数（默认 DEFAULT_GATING_CONFIG）
  * @param knowledgeBoundarySignals   KB-1: 知识边界信号数组（可选）
+ * @param estimatedTokens           GF-02: 预估 token 数，用于 cost_penalty 计算（可选）
  * @returns 校准后的分数和最终动作
  */
 export function calibrateWithPolicy(
   llmScores: Record<ManagerDecisionType, number>,
   features: DecisionFeatures,
   config: GatingConfig = DEFAULT_GATING_CONFIG,
-  knowledgeBoundarySignals?: KnowledgeBoundarySignal[]
+  knowledgeBoundarySignals?: KnowledgeBoundarySignal[],
+  estimatedTokens?: number
 ): CalibratedDecision {
   let scores = { ...llmScores };
   const policyOverrides: PolicyOverride[] = [];
@@ -66,7 +68,27 @@ export function calibrateWithPolicy(
     scores.ask_clarification = penalizedClarScore;
   }
 
-  // 2. 应用 KB-1 知识边界校准（位于硬规则之后，阈值之前）
+  // 2. GF-02: cost_penalty — 按预估 token 数对 delegate_to_slow 施加成本惩罚
+  // 公式：score *= (1 - (tokens/1000) * delegate_token_penalty)
+  // 默认 delegate_token_penalty=0.02，1000 tokens 惩罚 2%，不影响小消息路由
+  if (estimatedTokens != null && estimatedTokens > 0 && config.cost_penalty) {
+    const rawDelegateScore = scores.delegate_to_slow;
+    const penaltyRate = (estimatedTokens / 1000) * config.cost_penalty.delegate_token_penalty;
+    const penalizedDelegateScore = rawDelegateScore * (1 - penaltyRate);
+    if (Math.abs(penalizedDelegateScore - rawDelegateScore) > 0.001) {
+      scores.delegate_to_slow = Math.max(0, penalizedDelegateScore);
+      policyOverrides.push({
+        rule: "cost_penalty_delegate_tokens",
+        action: "penalize",
+        target: "delegate_to_slow",
+        original_score: rawDelegateScore,
+        adjusted_score: scores.delegate_to_slow,
+        reason: `GF-02 cost_penalty: estimatedTokens=${estimatedTokens}, penaltyRate=${penaltyRate.toFixed(4)}`,
+      });
+    }
+  }
+
+  // 3. 应用 KB-1 知识边界校准（位于硬规则之后，阈值之前）
   // KB-1 校准原则：
   // - 压低 direct_answer（因为参数内不可靠回答不应该高置信直答）
   // - 轻抬 delegate_to_slow（让知识边界问题更容易进入深度处理）
@@ -132,7 +154,7 @@ export function calibrateWithPolicy(
     }
   }
 
-  // 3. 应用硬编码规则（boost/penalize/block）
+  // 4. 应用硬编码规则（boost/penalize/block）
   for (const rule of HARD_POLICY_RULES) {
     if (!rule.condition(features)) continue;
 
@@ -175,7 +197,7 @@ export function calibrateWithPolicy(
     }
   }
 
-  // 4. 应用配置化阈值（低于阈值 → 置零，等效于否决该动作）
+  // 5. 应用配置化阈值（低于阈值 → 置零，等效于否决该动作）
   for (const [action, threshold] of Object.entries(config.thresholds)) {
     const act = action as ManagerDecisionType;
     if (scores[act] < threshold) {
@@ -194,7 +216,7 @@ export function calibrateWithPolicy(
     }
   }
 
-  // 5. 选取得分最高的有效动作
+  // 6. 选取得分最高的有效动作
   const finalAction = getSelectedAction(scores);
 
   return { adjustedScores: scores, policyOverrides, finalAction };

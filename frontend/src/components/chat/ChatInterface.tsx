@@ -313,93 +313,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
     setTimeout(poll, POLL_INTERVAL);
   };
 
-  const handleSend = async () => {
-    const text = input.trim();
-    if (!text || loading) return;
-    const userMsg: Message = { id: uuid(), role: "user", content: text };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setLoading(true);
-    // Phase 1.5/2.0: 发送前清除临时状态
-    setClarifyQuestion(null);
-    setStatusMsg(null);
-    try {
-      const history = messages.map((m) => ({ role: m.role, content: m.content, decision_id: m.decision?.id }));
-
-      const streamed = await sendStreaming(text, history);
-      if (!streamed) {
-        const data = await sendFallback(text, history);
-        if (data.task_id) onTaskIdChange?.(data.task_id);
-        const replyContent = data.message || "⚠️ 收到空响应，请检查后端日志。";
-        const routingLayer = data.decision?.routing?.routing_layer;
-
-        // O-002: 如果后端返回了 delegation，说明这是 orchestrator 路径
-        if (data.delegation) {
-          const assistantMsgId = uuid();
-          const taskId = data.delegation.task_id;
-
-          // 先显示快模型回复 + pending 状态
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: assistantMsgId,
-              role: "assistant",
-              content: replyContent,
-              decision: data.decision,
-              delegation: { status: "pending", taskId },
-              routing_layer: routingLayer,
-            },
-          ]);
-
-          // 后台轮询慢模型结果
-          pollDelegation(assistantMsgId, taskId);
-        } else if (data.decision?.execution?.did_fallback) {
-          setShowFallbackAnim({
-            fromModel: data.decision.routing.selected_model,
-            toModel: data.decision.execution.model_used,
-            reason: data.decision.execution.fallback_reason || "质量不达标",
-          });
-          setTimeout(() => {
-            setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision, routing_layer: routingLayer }]);
-            setShowFallbackAnim(null);
-          }, 3000);
-        } else {
-          setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision, routing_layer: routingLayer }]);
-        }
-      }
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { id: uuid(), role: "assistant", content: `⚠️ 请求失败：${(err as Error)?.message || "请检查API配置或点击右上角设置。"}` },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const isStreaming = messages.some((m) => m.streaming);
-
-  // Phase 1.5: 处理澄清选项点击
-  const handleClarifyOption = (option: string) => {
-    if (!clarifyQuestion) return;
-    // 将选项作为用户输入发送
-    const selectedOption = option;
-    setClarifyQuestion(null);
-    setInput(selectedOption);
-    // 自动发送
-    setTimeout(() => {
-      handleSendWithText(selectedOption);
-    }, 50);
-  };
-
-  // 辅助函数：使用给定文本发送消息
+  // 辅助函数：使用给定文本发送消息（F-10 合并版）
   const handleSendWithText = (text: string) => {
     if (!text.trim() || loading) return;
     const userMsg: Message = { id: uuid(), role: "user", content: text };
@@ -414,16 +328,27 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
         sendFallback(text, history).then((data) => {
           if (data.task_id) onTaskIdChange?.(data.task_id);
           const replyContent = data.message || "⚠️ 收到空响应，请检查后端日志。";
+          const routingLayer = data.decision?.routing?.routing_layer;
           if (data.delegation) {
             const assistantMsgId = uuid();
             const taskId = data.delegation.task_id;
             setMessages((prev) => [
               ...prev,
-              { id: assistantMsgId, role: "assistant", content: replyContent, decision: data.decision, delegation: { status: "pending", taskId }, routing_layer: data.decision?.routing?.routing_layer },
+              { id: assistantMsgId, role: "assistant", content: replyContent, decision: data.decision, delegation: { status: "pending", taskId }, routing_layer: routingLayer },
             ]);
             pollDelegation(assistantMsgId, taskId);
+          } else if (data.decision?.execution?.did_fallback) {
+            setShowFallbackAnim({
+              fromModel: data.decision.routing.selected_model,
+              toModel: data.decision.execution.model_used,
+              reason: data.decision.execution.fallback_reason || "质量不达标",
+            });
+            setTimeout(() => {
+              setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision, routing_layer: routingLayer }]);
+              setShowFallbackAnim(null);
+            }, 3000);
           } else {
-            setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision, routing_layer: data.decision?.routing?.routing_layer }]);
+            setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision, routing_layer: routingLayer }]);
           }
         }).catch((err) => {
           setMessages((prev) => [
@@ -437,6 +362,31 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
         setLoading(false);
       }
     });
+  };
+
+  // F-10: handleSend 合并版，统一调用 handleSendWithText
+  const handleSend = () => {
+    handleSendWithText(input.trim());
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const isStreaming = messages.some((m) => m.streaming);
+
+  // Phase 1.5: 处理澄清选项点击
+  const handleClarifyOption = (option: string) => {
+    if (!clarifyQuestion) return;
+    const selectedOption = option;
+    setClarifyQuestion(null);
+    setInput(selectedOption);
+    setTimeout(() => {
+      handleSendWithText(selectedOption);
+    }, 50);
   };
 
   return (
