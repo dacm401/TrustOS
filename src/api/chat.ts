@@ -30,6 +30,7 @@ import { createThinkingEvent } from "../services/phase3/stream-v2.js";
 import { classifyIntent, shouldSkipLLMRouting, generateQuickResponse } from "../services/intent-classifier.js";
 // Context Boundary V0: Manager 不能直接消费 raw body.history
 import { buildManagerView } from "../services/context/manager-view.js";
+import { buildWorkerResultEnvelope } from "../services/context/worker-result-envelope.js";
 const chatRouter = new Hono();
 
 chatRouter.post("/chat", async (c) => {
@@ -369,15 +370,17 @@ chatRouter.post("/chat", async (c) => {
                 normalizedEvent.stream = normalizedEvent.content;
                 delete normalizedEvent.content;
               }
-              // Provenance: Worker 产出事件
+              // Provenance: Worker 产出事件 — 使用 envelope 生成智能 summaryForManager
               if (normalizedEvent.type === "result" || normalizedEvent.type === "worker_result") {
-                (normalizedEvent as any).meta = {
-                  ...((normalizedEvent as any).meta ?? {}),
-                  origin: "worker",
-                  contentKind: "artifact",
+                const envelope = buildWorkerResultEnvelope({
+                  content: normalizedEvent.stream ?? "",
                   taskId: archiveId,
                   artifactId: archiveId,
-                  summaryForManager: (event as any).summaryForManager ?? "Worker 已完成任务，完整结果已归档。",
+                  summaryForManager: (event as any).summaryForManager,
+                });
+                (normalizedEvent as any).meta = {
+                  ...envelope.meta,
+                  summaryForManager: envelope.brief.summaryForManager,
                 };
               }
               await s.write(`data: ${JSON.stringify(normalizedEvent)}\n\n`);

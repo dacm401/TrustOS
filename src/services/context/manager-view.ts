@@ -58,6 +58,11 @@ export type ManagerViewManifest = {
   droppedStatusMessages: number;
   legacyArtifactCompressed: number;
   keptManagerMessages: number;
+  /**
+   * Context Boundary V1: 使用了 meta.summaryForManager 作为 brief 的次数
+   * 区别于 fallbackSummary（无 summaryForManager 时的兜底）
+   */
+  usedWorkerSummaries: number;
 };
 
 export type ManagerViewResult = {
@@ -132,6 +137,7 @@ export function buildManagerView(
     droppedStatusMessages: 0,
     legacyArtifactCompressed: 0,
     keptManagerMessages: 0,
+    usedWorkerSummaries: 0,
   };
 
   const safe: ManagerViewMessage[] = [];
@@ -144,6 +150,10 @@ export function buildManagerView(
     // 规则 1: Worker artifact 不进入 Manager
     if (origin === "worker" && contentKind === "artifact") {
       manifest.droppedWorkerArtifacts += 1;
+      // V1: 如果 meta 提供了 summaryForManager，计数以便区分 structured vs fallback
+      if (msg.meta?.summaryForManager) {
+        manifest.usedWorkerSummaries += 1;
+      }
       const summary = fallbackSummary(msg);
       safe.push({
         role: "assistant",

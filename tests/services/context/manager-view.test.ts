@@ -206,4 +206,43 @@ describe("buildManagerView", () => {
     expect(result.manifest.safeChars).toBeLessThan(300);
     expect(result.manifest.droppedWorkerArtifacts).toBe(1);
   });
+
+  // ── V1 测试：usedWorkerSummaries ─────────────────────────────────────────
+
+  it("counts usedWorkerSummaries when meta has summaryForManager", () => {
+    const result = buildManagerView([
+      {
+        role: "assistant",
+        content: "x".repeat(3000),
+        meta: {
+          origin: "worker",
+          contentKind: "artifact",
+          taskId: "task_1",
+          summaryForManager: "Worker 已生成 React 登录页，包含表单校验。",
+        },
+      },
+    ]);
+
+    expect(result.manifest.droppedWorkerArtifacts).toBe(1);
+    expect(result.manifest.usedWorkerSummaries).toBe(1);
+    expect(result.manifest.replacedWorkerArtifactsWithBrief).toBe(1);
+    expect(JSON.stringify(result.messages)).toContain("Worker 已生成 React 登录页");
+  });
+
+  it("does not count usedWorkerSummaries when no summaryForManager", () => {
+    const result = buildManagerView([
+      {
+        role: "assistant",
+        content: "x".repeat(3000),
+        meta: {
+          origin: "worker",
+          contentKind: "artifact",
+          taskId: "task_2",
+        },
+      },
+    ]);
+
+    expect(result.manifest.droppedWorkerArtifacts).toBe(1);
+    expect(result.manifest.usedWorkerSummaries).toBe(0);
+  });
 });
