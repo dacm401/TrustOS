@@ -28,6 +28,8 @@ import { handlePermissionResponseMessage } from "../services/permission-manager.
 import { createThinkingEvent } from "../services/phase3/stream-v2.js";
 // Stream V2: 轻量级意图分类器
 import { classifyIntent, shouldSkipLLMRouting, generateQuickResponse } from "../services/intent-classifier.js";
+// Context Boundary V0: Manager 不能直接消费 raw body.history
+import { buildManagerView } from "../services/context/manager-view.js";
 const chatRouter = new Hono();
 
 chatRouter.post("/chat", async (c) => {
@@ -196,13 +198,21 @@ chatRouter.post("/chat", async (c) => {
         });
         const crossSessionContext = cross.crossSessionText || undefined;
 
-        console.log("[chat] calling routeWithManagerDecision for:", body.message?.substring(0, 30));
+        // Context Boundary V0: 构建 Manager Safe View
+        const managerView = buildManagerView(body.history ?? []);
+        console.log("[context-boundary] manager view", {
+          userId,
+          sessionId,
+          stream: true,
+          ...managerView.manifest,
+        });
+
         llmNativeResult = await routeWithManagerDecision({
           message: body.message ?? "",
           user_id: userId,
           session_id: sessionId,
           turn_id: (body.history ?? []).length,
-          history: body.history ?? [],
+          history: managerView.messages,
           language: features.language as "zh" | "en",
           reqApiKey,
           reqLlmBaseUrl,
@@ -379,12 +389,21 @@ chatRouter.post("/chat", async (c) => {
       });
       const crossSessionContext = cross.crossSessionText || undefined;
 
+      // Context Boundary V0: 构建 Manager Safe View
+      const managerView = buildManagerView(body.history ?? []);
+      console.log("[context-boundary] manager view", {
+        userId,
+        sessionId,
+        stream: false,
+        ...managerView.manifest,
+      });
+
       llmNativeResult = await routeWithManagerDecision({
         message: body.message ?? "",
           user_id: userId,
           session_id: sessionId,
           turn_id: (body.history ?? []).length,
-          history: body.history ?? [],
+          history: managerView.messages,
           language: features.language as "zh" | "en",
           reqApiKey,
           reqLlmBaseUrl,
