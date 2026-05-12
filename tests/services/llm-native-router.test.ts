@@ -2,7 +2,8 @@
  * llm-native-router.ts — parseGatedDecision 单元测试
  *
  * T-01: 覆盖核心 JSON 解析与降级逻辑
- * - 无效输入 → null（降级到 direct_answer）
+ * - 无 JSON / 损坏 JSON → null（降级到 direct_answer）
+ * - schema_version 缺失/未知 → throw PROTOCOL_VIOLATION（R-07 修复）
  * - 有效 v4/v3 JSON → GatedDelegationContext
  * - 边界值（confidence 超范围、features 缺失等）
  *
@@ -32,7 +33,7 @@ function makeV4Json(overrides: Record<string, any> = {}): string {
 
 // ── 降级路径测试 ────────────────────────────────────────────────────────────
 
-describe("parseGatedDecision: 降级路径（返回 null）", () => {
+describe("parseGatedDecision: 降级路径（返回 null 或 throw）", () => {
   it("TR-01: 纯文本无 JSON → 返回 null", () => {
     const result = parseGatedDecision("这是一个普通的回答，没有任何 JSON。");
     expect(result).toBeNull();
@@ -44,24 +45,27 @@ describe("parseGatedDecision: 降级路径（返回 null）", () => {
     expect(result).toBeNull();
   });
 
-  it("TR-03: schema_version 缺失 → PROTOCOL_VIOLATION → 返回 null", () => {
+  it("TR-03: schema_version 缺失 → PROTOCOL_VIOLATION → throw", () => {
     const noVersion = JSON.stringify({
       scores: { direct_answer: 0.9, ask_clarification: 0.05, delegate_to_slow: 0.05, execute_task: 0.05 },
       confidence_hint: 0.85,
     });
     // 需要包裹在 ```json 块中才会被解析
-    const result = parseGatedDecision(`\`\`\`json\n${noVersion}\n\`\`\``);
-    expect(result).toBeNull();
+    expect(() =>
+      parseGatedDecision(`\`\`\`json\n${noVersion}\n\`\`\``)
+    ).toThrow("PROTOCOL_VIOLATION: schema_version missing");
   });
 
-  it("TR-04: schema_version 非法 → 返回 null", () => {
-    const result = parseGatedDecision(makeV4Json({ schema_version: "manager_decision_v99" }));
-    expect(result).toBeNull();
+  it("TR-04: schema_version 非法 → PROTOCOL_VIOLATION → throw", () => {
+    expect(() =>
+      parseGatedDecision(makeV4Json({ schema_version: "manager_decision_v99" }))
+    ).toThrow("PROTOCOL_VIOLATION: unknown schema_version");
   });
 
-  it("TR-05: 裸 JSON（无 ```json 包裹）且无 schema_version → 返回 null", () => {
-    const result = parseGatedDecision('{"scores": {"direct_answer": 0.7}}');
-    expect(result).toBeNull();
+  it("TR-05: 裸 JSON（无 ```json 包裹）且无 schema_version → PROTOCOL_VIOLATION → throw", () => {
+    expect(() =>
+      parseGatedDecision('{"scores": {"direct_answer": 0.7}}')
+    ).toThrow("PROTOCOL_VIOLATION: schema_version missing");
   });
 });
 

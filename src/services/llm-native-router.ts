@@ -673,7 +673,7 @@ function parseGatedDecision(
   try {
     const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
     const bareMatch = text.match(/```\s*([\s\S]*?)\s*```/);
-    const braceMatch = text.match(/(\{[\s\S]*?\})/);
+    const braceMatch = text.match(/(\{[\s\S]*\})/);
 
     const match =
       jsonMatch?.[1] ??
