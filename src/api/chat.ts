@@ -173,16 +173,19 @@ chatRouter.post("/chat", async (c) => {
                 stream: quickLang === "zh" ? "✅ 完成" : "✅ Done",
                 routing_layer: "L0",
                 timestamp: Date.now(),
+                meta: { origin: "system", contentKind: "thinking" },
               })}\n\n`);
               await s.write(`data: ${JSON.stringify({
                 type: "fast_reply",
                 stream: quickResponse,
                 routing_layer: "L0",
+                meta: { origin: "manager", contentKind: "chat" },
               })}\n\n`);
               await s.write(`data: ${JSON.stringify({
                 type: "done",
                 stream: quickLang === "zh" ? "已返回答案" : "Answer ready",
                 routing_layer: "L0",
+                meta: { origin: "system", contentKind: "status" },
               })}\n\n`);
             });
           }
@@ -266,6 +269,7 @@ chatRouter.post("/chat", async (c) => {
           await s.write(`data: ${JSON.stringify({
             ...createThinkingEvent("analyzing", lang),
             routing_layer: llmNativeResult.routing_layer,
+            meta: { origin: "system", contentKind: "thinking" },
           })}\n\n`);
 
           // Step 1: Manager 决策
@@ -274,6 +278,7 @@ chatRouter.post("/chat", async (c) => {
             await s.write(`data: ${JSON.stringify({
               ...createThinkingEvent("routing", lang),
               routing_layer: llmNativeResult.routing_layer,
+              meta: { origin: "system", contentKind: "thinking" },
             })}\n\n`);
 
             if (llmNativeResult.decision_type === "direct_answer") {
@@ -282,6 +287,7 @@ chatRouter.post("/chat", async (c) => {
                 type: "fast_reply",
                 stream: llmNativeResult.message,
                 routing_layer: llmNativeResult.routing_layer,
+                meta: { origin: "manager", contentKind: "chat" },
               })}\n\n`);
             } else {
               // 其他动作 → status（安抚消息，不占气泡）
@@ -289,6 +295,7 @@ chatRouter.post("/chat", async (c) => {
                 type: "status",
                 stream: llmNativeResult.message,
                 routing_layer: llmNativeResult.routing_layer,
+                meta: { origin: "system", contentKind: "status" },
               })}\n\n`);
             }
           }
@@ -302,6 +309,7 @@ chatRouter.post("/chat", async (c) => {
               question_text: llmNativeResult.clarifying.question_text,
               options: llmNativeResult.clarifying.options,
               question_id: llmNativeResult.clarifying.question_id,
+              meta: { origin: "manager", contentKind: "chat" },
             })}\n\n`);
           }
 
@@ -311,6 +319,7 @@ chatRouter.post("/chat", async (c) => {
             await s.write(`data: ${JSON.stringify({
               ...createThinkingEvent("planning", lang),
               routing_layer: llmNativeResult.routing_layer,
+              meta: { origin: "system", contentKind: "thinking" },
             })}\n\n`);
 
             if (llmNativeResult.archive_id) {
@@ -319,6 +328,7 @@ chatRouter.post("/chat", async (c) => {
                 type: "status",
                 stream: lang === "zh" ? "📋 任务已记录，等待 Worker 执行..." : "Task archived, waiting for Worker...",
                 routing_layer: llmNativeResult.routing_layer,
+                meta: { origin: "system", contentKind: "status" },
               })}\n\n`);
             } else {
               // delegation 触发但 archive 未创建 → 发 error + done 后立即返回
@@ -326,11 +336,13 @@ chatRouter.post("/chat", async (c) => {
                 type: "error",
                 stream: llmNativeResult.message ?? "任务无法触发，请重试",
                 routing_layer: llmNativeResult.routing_layer,
+                meta: { origin: "system", contentKind: "status" },
               })}\n\n`);
               await s.write(`data: ${JSON.stringify({
                 type: "done",
                 stream: lang === "zh" ? "任务失败" : "Task failed",
                 routing_layer: llmNativeResult.routing_layer,
+                meta: { origin: "system", contentKind: "status" },
               })}\n\n`);
               return;
             }
@@ -340,6 +352,7 @@ chatRouter.post("/chat", async (c) => {
                 type: "status",
                 stream: lang === "zh" ? "🤖 Worker 已启动..." : "Worker started...",
                 routing_layer: llmNativeResult.routing_layer,
+                meta: { origin: "system", contentKind: "status" },
               })}\n\n`);
             }
 
@@ -356,6 +369,17 @@ chatRouter.post("/chat", async (c) => {
                 normalizedEvent.stream = normalizedEvent.content;
                 delete normalizedEvent.content;
               }
+              // Provenance: Worker 产出事件
+              if (normalizedEvent.type === "result" || normalizedEvent.type === "worker_result") {
+                (normalizedEvent as any).meta = {
+                  ...((normalizedEvent as any).meta ?? {}),
+                  origin: "worker",
+                  contentKind: "artifact",
+                  taskId: archiveId,
+                  artifactId: archiveId,
+                  summaryForManager: (event as any).summaryForManager ?? "Worker 已完成任务，完整结果已归档。",
+                };
+              }
               await s.write(`data: ${JSON.stringify(normalizedEvent)}\n\n`);
             }
           }
@@ -368,6 +392,7 @@ chatRouter.post("/chat", async (c) => {
               : (lang === "zh" ? "已返回答案" : "Answer ready"),
             routing_layer: llmNativeResult.routing_layer,
             task_id: archiveId,
+            meta: { origin: "system", contentKind: "status" },
           })}\n\n`);
         } catch (e: any) {
           console.error("[stream-llm] SSE error:", e?.message ?? e);
@@ -478,6 +503,7 @@ chatRouter.post("/chat", async (c) => {
       delegation: llmNativeResult.delegation
         ? { task_id: llmNativeResult.delegation.task_id, status: "triggered" }
         : undefined,
+      meta: { origin: "manager", contentKind: "chat" },
     });
   } catch (error: any) {
     console.error("Chat error:", error);
