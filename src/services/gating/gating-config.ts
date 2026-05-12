@@ -30,6 +30,11 @@ export const DEFAULT_GATING_CONFIG: GatingConfig = {
     high_cost_confidence_floor: 0.70, // 来源：2026-05-06，Phase 5.2，0.75→0.70 对齐 base threshold 0.65 梯度
   },
 
+  // 惩罚衰减下限：避免链式惩罚叠加导致分数过度衰减
+  // 效果：penalized_score = Math.max(penalized_score, score * min_score_ratio)
+  // 保护场景：missing_info + query_too_vague + KB 边界时，delegate_to_slow 不会低于 30%
+  min_score_ratio: 0.30,
+
   // 成本惩罚系数（用于后续 latency/token 预算校准）
   cost_penalty: {
     delegate_token_penalty: 0.02, // 每 1000 token 额外惩罚

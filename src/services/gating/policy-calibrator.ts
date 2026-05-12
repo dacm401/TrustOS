@@ -52,6 +52,9 @@ export function calibrateWithPolicy(
 ): CalibratedDecision {
   let scores = { ...llmScores };
   const policyOverrides: PolicyOverride[] = [];
+  // G2-02: 缓存 LLM 原始分数，用于 policyOverrides.original_score
+  // 确保记录的是 LLM 输出值，而非 KB 调整后的中间值
+  const originalLlmScores = { ...llmScores };
 
   // 1. 应用 clarification 体验成本惩罚（先扣再补，避免 boost 被 penalty 吞掉）
   const clarScore = scores.ask_clarification;
@@ -109,7 +112,7 @@ export function calibrateWithPolicy(
           rule: "kb-strong-boundary-penalty",
           action: "penalize",
           target: "direct_answer",
-          original_score: directScore,
+          original_score: originalLlmScores.direct_answer, // G2-02: 用 LLM 原始分记录
           adjusted_score: newDirectScore,
           reason: `KB signal="${strongestSignal.type}"(strength=${strongestSignal.strength.toFixed(2)})，知识边界问题不应高置信直答`,
         });
@@ -124,7 +127,7 @@ export function calibrateWithPolicy(
           rule: "kb-delegate-boost",
           action: "boost",
           target: "delegate_to_slow",
-          original_score: delegateScore,
+          original_score: originalLlmScores.delegate_to_slow, // G2-02: 用 LLM 原始分记录
           adjusted_score: newDelegateScore,
           reason: `KB signal="${strongestSignal.type}" 提示问题需要深度处理`,
         });
@@ -158,7 +161,8 @@ export function calibrateWithPolicy(
   for (const rule of HARD_POLICY_RULES) {
     if (!rule.condition(features)) continue;
 
-    const originalScore = scores[rule.target] ?? 0;
+    // G2-02: original_score 记录 LLM 原始分，而非 KB 调整后的中间值
+    const originalScore = originalLlmScores[rule.target] ?? scores[rule.target] ?? 0;
 
     if (rule.action === "block") {
       scores[rule.target] = 0;
@@ -194,6 +198,28 @@ export function calibrateWithPolicy(
         adjusted_score: newScore,
         reason: rule.description,
       });
+    }
+  }
+
+  // G1-02: 惩罚衰减下限 — 避免链式惩罚（missing_info + query_too_vague + KB）
+  // 导致 high conf 分数被压至 0.544×，过度惩罚。高置信 LLM 输出应有保底。
+  // 公式：final = max(penalized, original * min_score_ratio)
+  const floorRatio = config.min_score_ratio ?? 0;
+  if (floorRatio > 0) {
+    for (const action of Object.keys(scores) as ManagerDecisionType[]) {
+      const rawScore = originalLlmScores[action] ?? 0;
+      const floor = rawScore * floorRatio;
+      if (scores[action] < floor && scores[action] > 0) {
+        policyOverrides.push({
+          rule: "g1-02-penalty-decay-floor",
+          action: "boost",
+          target: action,
+          original_score: scores[action],
+          adjusted_score: floor,
+          reason: `G1-02 decay floor: penalized=${scores[action].toFixed(3)} < floor=${floor.toFixed(3)}（原始分×${floorRatio}），强制恢复`,
+        });
+        scores[action] = floor;
+      }
     }
   }
 

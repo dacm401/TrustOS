@@ -55,10 +55,13 @@ export function shouldRerank(
   // 若 G2 已选 delegate_to_slow 或 execute_task，且 conf 处于"灰区"（0.60 ≤ conf < 0.70），
   // 则不 rerank：灰区任务本身不贵，rerank 负 ROI（87.8% 走默认分支，保持原选）。
   // 边界：conf=0.60 属于灰区（low 触发线），conf=0.70 属于灰区外（high_cost_floor 线）。
+  // G3-02: 附加 gap 保护 — gap 极小（<0.03）说明 LLM 两个候选区分度极低，
+  // 即使在 grayZone 内也值得 rerank；grayZone 只在 gap 足够大时才短路。
   const grayZone =
     (selectedAction === "delegate_to_slow" || selectedAction === "execute_task") &&
     systemConfidence >= config.rerank.confidence_threshold &&         // ≥ 0.60（灰区下界）
-    systemConfidence < config.rerank.high_cost_confidence_floor;       // < 0.70（灰区上界，左闭右开）
+    systemConfidence < config.rerank.high_cost_confidence_floor &&   // < 0.70（灰区上界，左闭右开）
+    gap >= 0.03;                                                      // G3-02: gap 足够大才短路
   if (grayZone) {
     return {
       should: false,

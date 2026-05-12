@@ -67,7 +67,8 @@ const PATTERN_CLUSTERS: SignalPatternCluster[] = [
     strength: 0.85,
     patterns: [
       { regex: /天气\s*(?:怎么样|如何|好吗)/i, reason: "天气查询意图 + 口语化表达" },
-      { regex: /(?:今天|现在|今晚|今晚).*(?:天气|下雨|降雨|气温|温度|空气质量|雾霾)/i, reason: "时态词 + 天气相关" },
+      // KB-02: 原 .* 会误命中"今天我学了天气学"，改 .*? 非贪婪（遇到第一个天气词即停）
+      { regex: /(?:今天|现在|今晚|今晚).*?(?:天气|下雨|降雨|气温|温度|空气质量|雾霾)/i, reason: "时态词 + 天气相关" },
       { regex: /(?:会|有|下不下|会不会).*下雨/i, reason: "具体天气条件查询（会下雨）" },
       { regex: /weather.*(?:today|now|in\s+\w+)/i, reason: "英文天气查询" },
       { regex: /(?:温度|气温|降雨|雾霾|PM2\.5)/i, reason: "具体气象指标" },

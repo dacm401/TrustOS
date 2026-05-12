@@ -79,6 +79,8 @@ export interface GatingConfig {
   };
   /** G2 跨会话续写提升量（is_continuation=true 且当前非 slow 时抬升 delegate_to_slow） */
   cross_session_boost: number;
+  /** 惩罚衰减下限比例（0.0~1.0）：链式惩罚后各动作分数不低于 LLM 原始分的此比例 */
+  min_score_ratio: number;
 }
 
 // ── Knowledge Boundary Signals (KB-1) ─────────────────────────────────────────
