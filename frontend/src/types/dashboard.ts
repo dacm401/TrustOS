@@ -105,6 +105,18 @@ export interface DecisionFlat {
 /** Union type for both full and flat decision shapes */
 export type Decision = DecisionRecord | DecisionFlat;
 
+/** Provenance meta — origin and content kind for Context Boundary */
+export type ContextOrigin = "user" | "manager" | "worker" | "system" | "tool";
+export type ContextContentKind = "chat" | "status" | "thinking" | "artifact" | "brief" | "decision" | "permission" | "unknown";
+export interface ProvenanceMeta {
+  origin?: ContextOrigin;
+  contentKind?: ContextContentKind;
+  taskId?: string;
+  artifactId?: string;
+  summaryForManager?: string;
+  routingLayer?: string;
+}
+
 /** SSE stream event — union of all event types emitted by /api/chat */
 export interface StreamEvent {
   type?: string;
@@ -121,4 +133,6 @@ export interface StreamEvent {
   slowMessage?: string;
   error?: string;
   message?: string;
+  /** Context Boundary V0.1: provenance meta */
+  meta?: ProvenanceMeta;
 }

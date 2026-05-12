@@ -121,6 +121,15 @@ export interface ChatMessage {
   tool_call_id?: string;
   /** P4: ID of the routing DecisionRecord this message is responding to, used for implicit feedback detection */
   decision_id?: string;
+  /** Context Boundary V0.2: provenance meta from frontend history */
+  meta?: {
+    origin?: "user" | "manager" | "worker" | "system" | "tool";
+    contentKind?: "chat" | "status" | "thinking" | "artifact" | "brief" | "decision" | "permission" | "unknown";
+    taskId?: string;
+    artifactId?: string;
+    summaryForManager?: string;
+    routingLayer?: string;
+  };
 }
 
 export interface ChatRequest {

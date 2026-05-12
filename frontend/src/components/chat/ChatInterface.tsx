@@ -5,7 +5,7 @@ import { MessageBubble } from "./MessageBubble";
 import { ModelSwitchAnim } from "./ModelSwitchAnim";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { getApiConfig } from "@/lib/api";
-import type { Decision, StreamEvent } from "@/types/dashboard";
+import type { Decision, StreamEvent, ProvenanceMeta } from "@/types/dashboard";
 
 interface Message {
   id: string;
@@ -28,6 +28,8 @@ interface Message {
   };
   /** Phase 2.0: 路由分层标识 */
   routing_layer?: "L0" | "L1" | "L2" | "L3";
+  /** Context Boundary V0.2: provenance 来源元信息 */
+  meta?: ProvenanceMeta;
 }
 
 interface ChatInterfaceProps {
@@ -61,7 +63,17 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  const sendStreaming = async (text: string, history: Array<{ role: string; content: string; decision_id?: string }>): Promise<boolean> => {
+  /** Context Boundary V0.2: 从 SSE 事件推断 provenance meta（兼容旧后端未发 meta 的情况） */
+  function inferMetaFromStreamEvent(event: StreamEvent): ProvenanceMeta | undefined {
+    if (event.meta) return event.meta;
+    if (event.type === "fast_reply" || event.type === "clarifying") return { origin: "manager", contentKind: "chat" };
+    if (event.type === "result" || event.type === "worker_result") return { origin: "worker", contentKind: "artifact", taskId: event.task_id, artifactId: event.task_id };
+    if (event.type === "thinking") return { origin: "system", contentKind: "thinking" };
+    if (event.type === "status" || event.type === "done" || event.type === "error") return { origin: "system", contentKind: "status" };
+    return undefined;
+  }
+
+  const sendStreaming = async (text: string, history: Array<{ role: string; content: string; decision_id?: string; meta?: ProvenanceMeta }>): Promise<boolean> => {
     const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = await getApiConfig();
     const body: Record<string, string | number | boolean | object> = {
       user_id: userId,
@@ -114,19 +126,21 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
 
           if (data.type === "chunk") {
             // 标准流式 chunk
+            const inferredMeta = inferMetaFromStreamEvent(data);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, content: m.content + (data.stream ?? ""), routing_layer: data.routing_layer ?? m.routing_layer }
+                  ? { ...m, content: m.content + (data.stream ?? ""), routing_layer: data.routing_layer ?? m.routing_layer, meta: m.meta ?? inferredMeta }
                   : m
               )
             );
           } else if (data.type === "fast_reply") {
             // Phase 2.0: Fast 模型直接回复（带 routing_layer）
+            const inferredMeta = inferMetaFromStreamEvent(data);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, content: data.stream ?? "", routing_layer: data.routing_layer ?? m.routing_layer, streaming: false }
+                  ? { ...m, content: data.stream ?? "", routing_layer: data.routing_layer ?? m.routing_layer, streaming: false, meta: m.meta ?? inferredMeta }
                   : m
               )
             );
@@ -138,10 +152,11 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
               options: data.options,
             });
             // 同时更新 placeholder 消息内容
+            const inferredMeta = inferMetaFromStreamEvent(data);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, content: data.stream ?? "", routing_layer: data.routing_layer ?? m.routing_layer, streaming: false }
+                  ? { ...m, content: data.stream ?? "", routing_layer: data.routing_layer ?? m.routing_layer, streaming: false, meta: m.meta ?? inferredMeta }
                   : m
               )
             );
@@ -157,6 +172,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
             // Phase 2.0: 慢模型完成 → 追加新消息显示结果
             const resultContent = data.stream ?? "";
             setStatusMsg(null);
+            const inferredMeta = inferMetaFromStreamEvent(data);
             setMessages((prev) => [
               ...prev,
               {
@@ -164,6 +180,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
                 role: "assistant",
                 content: resultContent,
                 routing_layer: data.routing_layer as "L0" | "L1" | "L2" | "L3" | undefined,
+                meta: inferredMeta ?? { origin: "worker", contentKind: "artifact" },
               },
             ]);
           } else if (data.type === "done") {
@@ -173,10 +190,11 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
               onTaskIdChange?.(data.task_id);
               setActiveTaskId(data.task_id);
             }
+            const inferredMeta = inferMetaFromStreamEvent(data);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, streaming: false, decision: data.decision, routing_layer: data.routing_layer ?? m.routing_layer }
+                  ? { ...m, streaming: false, decision: data.decision, routing_layer: data.routing_layer ?? m.routing_layer, meta: m.meta ?? inferredMeta }
                   : m
               )
             );
@@ -184,10 +202,11 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
             setThinkingState("error");
             setStatusMsg(null);
             setActiveTaskId(null);
+            const inferredMeta = inferMetaFromStreamEvent(data);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, content: `⚠️ 流式错误：${data.stream ?? data.message ?? "Unknown error"}`, streaming: false }
+                  ? { ...m, content: `⚠️ 流式错误：${data.stream ?? data.message ?? "Unknown error"}`, streaming: false, meta: m.meta ?? inferredMeta }
                   : m
               )
             );
@@ -224,7 +243,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
     }
   };
 
-  const sendFallback = async (text: string, history: Array<{ role: string; content: string; decision_id?: string }>) => {
+  const sendFallback = async (text: string, history: Array<{ role: string; content: string; decision_id?: string; meta?: ProvenanceMeta }>) => {
     const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = await getApiConfig();
     const body: Record<string, string | number | boolean | object> = {
       user_id: userId,
@@ -316,13 +335,18 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
   // 辅助函数：使用给定文本发送消息（F-10 合并版）
   const handleSendWithText = (text: string) => {
     if (!text.trim() || loading) return;
-    const userMsg: Message = { id: uuid(), role: "user", content: text };
+    const userMsg: Message = { id: uuid(), role: "user", content: text, meta: { origin: "user", contentKind: "chat" } };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
     setClarifyQuestion(null);
     setStatusMsg(null);
-    const history = messages.map((m) => ({ role: m.role, content: m.content, decision_id: m.decision?.id }));
+    const history = messages.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+      decision_id: m.decision?.id,
+      meta: m.meta,
+    }));
     sendStreaming(text, history).then((ok) => {
       if (!ok) {
         sendFallback(text, history).then((data) => {
@@ -334,7 +358,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
             const taskId = data.delegation.task_id;
             setMessages((prev) => [
               ...prev,
-              { id: assistantMsgId, role: "assistant", content: replyContent, decision: data.decision, delegation: { status: "pending", taskId }, routing_layer: routingLayer },
+              { id: assistantMsgId, role: "assistant", content: replyContent, decision: data.decision, delegation: { status: "pending", taskId }, routing_layer: routingLayer, meta: { origin: "manager", contentKind: "chat" } },
             ]);
             pollDelegation(assistantMsgId, taskId);
           } else if (data.decision?.execution?.did_fallback) {
@@ -344,16 +368,16 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
               reason: data.decision.execution.fallback_reason || "质量不达标",
             });
             setTimeout(() => {
-              setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision, routing_layer: routingLayer }]);
+              setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision, routing_layer: routingLayer, meta: { origin: "manager", contentKind: "chat" } }]);
               setShowFallbackAnim(null);
             }, 3000);
           } else {
-            setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision, routing_layer: routingLayer }]);
+            setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content: replyContent, decision: data.decision, routing_layer: routingLayer, meta: { origin: "manager", contentKind: "chat" } }]);
           }
         }).catch((err) => {
           setMessages((prev) => [
             ...prev,
-            { id: uuid(), role: "assistant", content: `⚠️ 请求失败：${(err as Error)?.message || "请检查API配置"}` },
+            { id: uuid(), role: "assistant", content: `⚠️ 请求失败：${(err as Error)?.message || "请检查API配置"}`, meta: { origin: "system", contentKind: "status" } },
           ]);
         }).finally(() => {
           setLoading(false);
