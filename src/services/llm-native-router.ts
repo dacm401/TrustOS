@@ -490,8 +490,9 @@ export async function routeWithManagerDecision(
 
   // 对于其他路由动作，使用"人话"作为安抚语，或根据 decision_type 构建澄清/任务消息
   // 这里我们将 parsedOutput.userFacingText 传入 routeByGatedDecision
-  // Sprint 56: 如果 revision guard 触发了 override，注入修订指令到 message
-  const gatedMessage = (revisionGuard.overridden && activeArtifact)
+  // Sprint 56: 如果有 active artifact 且检测到修订意图，注入修订指令到 message
+  // 不论 LLM 是否自己选了 delegate（guard 可能没触发），都需要带 revision payload
+  const gatedMessage = (activeArtifact && revisionGuard.artifactRevisionIntent)
     ? `[Artifact Revision Task]\nArtifact ID: ${activeArtifact.artifactId || "unknown"}\nTask ID: ${activeArtifact.taskId || "unknown"}\nKnown summary: ${activeArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nImportant: This is a revision of an existing Worker artifact. Use the archived artifact as the source of truth. Return the revised complete artifact.`
     : (parsedOutput.userFacingText || message);
   return routeByGatedDecision(gatedResult, { 
