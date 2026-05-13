@@ -78,12 +78,16 @@ async function executeDelegateCommand(
     // 如果是，从 archive 读取原 artifact 内容并注入 prompt
     const isRevisionTask = taskBrief.trim().startsWith("[Artifact Revision Task]") ||
       goal.trim().startsWith("[Artifact Revision Task]");
+    console.log(`[slow-worker] task=${task_id?.slice(0,8)||"?"}: isRevisionTask=${isRevisionTask}, taskBriefPrefix="${(taskBrief ?? "").slice(0, 50)}", goalPrefix="${(goal ?? "").slice(0, 50)}"`);
 
     let originalArtifactContent: string | null = null;
     if (isRevisionTask) {
       try {
+        // Sprint 57: 从 task_brief 提取原始 artifactId，不用新的 archive_id
+        // task_brief 格式: "[Artifact Revision Task]\nArtifact ID: <orig-id>\n..."
+        const origArtifactId = taskBrief.match(/Artifact ID:\s*(\S+)/)?.[1] || archive_id;
         const source = await resolveArtifactRevisionSource({
-          artifactId: archive_id,
+          artifactId: origArtifactId,
           taskId: task_id,
         });
         if (source && source.source === "archive" && source.content.trim()) {

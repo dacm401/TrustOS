@@ -499,7 +499,9 @@ export async function routeWithManagerDecision(
       message: gatedMessage, 
       userFacingText: parsedOutput.userFacingText || gatedMessage,
       user_id, session_id, turn_id, language, reqApiKey, 
-      rawOutput: managerOutput, v2Decision 
+      rawOutput: managerOutput, v2Decision,
+      activeArtifact,
+      artifactRevisionIntent: revisionGuard.artifactRevisionIntent,
   });
 }
 
@@ -847,6 +849,9 @@ interface GatedRouteContext {
   v2Decision: Record<string, unknown> | null;
   /** Sprint 74: Manager 生成的自然语言回复（用户可见） */
   userFacingText?: string;
+  /** Sprint 57: artifact revision routing */
+  activeArtifact?: ActiveArtifactContext;
+  artifactRevisionIntent?: boolean;
 }
 
 async function routeByGatedDecision(
@@ -883,8 +888,13 @@ async function routeByGatedDecision(
       ? {
           command_type: gated.routedAction === "execute_task" ? "execute_plan" as const : "delegate_analysis" as const,
           task_type: "analysis",
-          task_brief: (v2Decision?.command as { task_brief?: string })?.task_brief ?? message.substring(0, 200),
-          goal: (v2Decision?.command as { task_brief?: string })?.task_brief ?? message,
+          // Sprint 57: activeArtifact + revisionIntent 时用结构化消息强制覆盖 task_brief
+          task_brief: (ctx.activeArtifact && ctx.artifactRevisionIntent)
+            ? message
+            : ((v2Decision?.command as { task_brief?: string })?.task_brief ?? message.substring(0, 200)),
+          goal: (ctx.activeArtifact && ctx.artifactRevisionIntent)
+            ? message
+            : ((v2Decision?.command as { task_brief?: string })?.task_brief ?? message),
           constraints: v2Decision && Array.isArray((v2Decision.command as { constraints?: unknown[] })?.constraints) ? (v2Decision.command as { constraints: unknown[] }).constraints as string[] : [],
         }
       : undefined,
