@@ -11,6 +11,7 @@
 import type { ActiveArtifactContext } from "./active-artifact.js";
 
 // ── 阳性关键词（触发 revision） ─────────────────────────────────────────
+// 注意：不要加过于通用的词如"这个页面"——它也会匹配"这个页面包含什么"
 
 const REVISION_PATTERNS_ZH = [
   /修改/,
@@ -21,8 +22,6 @@ const REVISION_PATTERNS_ZH = [
   /继续改/,
   /基于上[一版面个]/,
   /把它/,
-  /这个页面/,
-  /这个按钮/,
   /上一版/,
   /刚才那个/,
   /改一下/,
@@ -47,16 +46,23 @@ const REVISION_PATTERNS_EN = [
 ];
 
 // ── 阴性关键词（不触发 revision——这些只问不修改） ──────────────────────
+// 注：问题词（哪些/什么/哪里）比"包含什么"/"是什么"宽，覆盖更多问句
 
 const NON_REVISION_PATTERNS_ZH = [
   /解释/,
-  /包含什么/,
+  /包含[哪些什么]/,
   /是什么/,
+  /(哪些|什么|哪里)[组件功能部分]/,
   /为什么/,
   /总结/,
   /结构/,
   /怎么用/,
   /如何/,
+  /什么意思/,
+  /道理是什么/,
+  /原理/,
+  /说明/,
+  /介绍一下/,
 ];
 
 const NON_REVISION_PATTERNS_EN = [

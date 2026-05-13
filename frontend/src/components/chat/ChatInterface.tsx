@@ -351,7 +351,8 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
       if (!ok) {
         sendFallback(text, history).then((data) => {
           if (data.task_id) onTaskIdChange?.(data.task_id);
-          const replyContent = data.message || "⚠️ 收到空响应，请检查后端日志。";
+          // Sprint 56 fix: 后端非 SSE 响应用 content 字段（非 message）
+          const replyContent = data.content || data.message || "⚠️ 收到空响应，请检查后端日志。";
           const routingLayer = data.decision?.routing?.routing_layer;
           if (data.delegation) {
             const assistantMsgId = uuid();
