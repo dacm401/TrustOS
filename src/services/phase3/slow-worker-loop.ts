@@ -14,6 +14,8 @@ import { config } from "../../config.js";
 import { callModelFull, callOpenAIWithOptions } from "../../models/model-gateway.js";
 import { TaskArchiveRepo, TaskCommandRepo, TaskWorkerResultRepo } from "../../db/task-archive-repo.js";
 import type { ChatMessage, CommandPayload, TaskState, WorkerResult } from "../../types/index.js";
+// Sprint 57: Artifact revision source resolver
+import { resolveArtifactRevisionSource } from "../artifacts/artifact-source-resolver.js";
 
 // 自适应轮询间隔
 function getPollInterval(elapsedMs: number): number {
@@ -72,12 +74,60 @@ async function executeDelegateCommand(
     const outputFormat = payload_json.required_output?.format ?? "structured_analysis";
     const sections = payload_json.required_output?.sections ?? [];
 
+    // Sprint 57: 检测是否为 artifact revision task
+    // 如果是，从 archive 读取原 artifact 内容并注入 prompt
+    const isRevisionTask = taskBrief.trim().startsWith("[Artifact Revision Task]") ||
+      goal.trim().startsWith("[Artifact Revision Task]");
+
+    let originalArtifactContent: string | null = null;
+    if (isRevisionTask) {
+      try {
+        const source = await resolveArtifactRevisionSource({
+          artifactId: archive_id,
+          taskId: task_id,
+        });
+        if (source && source.source === "archive" && source.content.trim()) {
+          originalArtifactContent = source.content;
+          console.log(`[slow-worker] Revision task ${task_id}: source=archive, contentLen=${source.content.length}`);
+        } else {
+          console.warn(`[slow-worker] Revision task ${task_id}: source=unavailable, proceeding with summary only`);
+        }
+      } catch (e: any) {
+        console.warn(`[slow-worker] Revision task ${task_id}: source resolver failed:`, e.message);
+      }
+    }
+
     const promptSections: string[] = [
       "【Task Brief — 你需要完成的任务】",
       taskBrief,
     ];
     if (goal) {
       promptSections.push("【Goal】", goal);
+    }
+    // Sprint 57: 修订任务注入原 artifact content
+    if (isRevisionTask) {
+      promptSections.push("【This is an artifact revision task.】");
+      if (originalArtifactContent) {
+        promptSections.push(
+          "[Original Artifact Content]",
+          "---",
+          originalArtifactContent,
+          "---"
+        );
+        promptSections.push(
+          "【Instructions】",
+          "- Modify the original artifact above according to the User revision instruction.",
+          "- Return the FULL revised artifact. Do NOT omit unchanged sections.",
+          "- If the instruction is ambiguous, preserve existing functionality.",
+        );
+      } else {
+        promptSections.push(
+          "[Original Artifact] (unavailable)",
+          "- The original artifact could not be retrieved from archive.",
+          "- Base your revision on the Known summary in the Task Brief above.",
+          "- Mark the result as degraded if the revision cannot be reliably performed."
+        );
+      }
     }
     if (constraints.length > 0) {
       promptSections.push("【Constraints】", ...constraints.map((c) => "- " + c));
