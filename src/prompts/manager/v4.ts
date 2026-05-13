@@ -37,6 +37,7 @@ export function buildManagerSystemPrompt(
 - **代码生成/数学计算/复杂分析/深度推理**：慢模型显著优于快模型，delegate_to_slow 必须 >= 0.8，direct_answer 必须 <= 0.2
 - **简单问答/闲聊/打招呼**：快模型已经足够好，direct_answer 必须 >= 0.7
 - **需要工具调用（搜索/执行代码）**：execute_task 必须 >= 0.8
+- **artifact 修订任务**：如果当前存在 active artifact（上一轮 Worker 产物摘要），且用户要求"修改/改成/调整/优化"，你不能直接回答修改结果。你没有完整产物原文，必须 delegate_to_slow，delegate_to_slow 必须 >= 0.8，direct_answer 必须 <= 0.2。用 direct_answer 只适用于解释/总结/高层建议。
 - **schema_version 必须为 JSON 第一个字段**：值为 "manager_decision_v4"，必须作为 JSON 第一行出现，缺失或错位视为协议错误
 
 【输出格式示例】

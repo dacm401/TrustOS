@@ -31,6 +31,8 @@ import { classifyIntent, shouldSkipLLMRouting, generateQuickResponse } from "../
 // Context Boundary V0: Manager 不能直接消费 raw body.history
 import { buildManagerView } from "../services/context/manager-view.js";
 import { buildWorkerResultEnvelope } from "../services/context/worker-result-envelope.js";
+// Sprint 56: Artifact Revision Routing
+import { extractActiveArtifactContext } from "../services/context/active-artifact.js";
 const chatRouter = new Hono();
 
 chatRouter.post("/chat", async (c) => {
@@ -203,12 +205,17 @@ chatRouter.post("/chat", async (c) => {
         const crossSessionContext = cross.crossSessionText || undefined;
 
         // Context Boundary V0: 构建 Manager Safe View
-        const managerView = buildManagerView(body.history ?? []);
+        const rawHistory = body.history ?? [];
+        const managerView = buildManagerView(rawHistory);
+        const activeArtifact = extractActiveArtifactContext(rawHistory);
         console.log("[context-boundary] manager view", {
           userId,
           sessionId,
           stream: true,
           ...managerView.manifest,
+          activeArtifact: Boolean(activeArtifact),
+          activeArtifactId: activeArtifact?.artifactId,
+          activeArtifactSummaryChars: activeArtifact?.summaryForManager?.length ?? 0,
         });
 
         llmNativeResult = await routeWithManagerDecision({
@@ -223,6 +230,7 @@ chatRouter.post("/chat", async (c) => {
           fastModel: effectiveFastModel,
           slowModel: effectiveSlowModel,
           crossSessionContext,
+          activeArtifact,
         });
         console.log("[chat] routeWithManagerDecision done, decision_type:", llmNativeResult?.decision_type, "delegation:", !!llmNativeResult?.delegation);
       } catch (e: any) {
@@ -418,12 +426,17 @@ chatRouter.post("/chat", async (c) => {
       const crossSessionContext = cross.crossSessionText || undefined;
 
       // Context Boundary V0: 构建 Manager Safe View
-      const managerView = buildManagerView(body.history ?? []);
+      const rawHistory = body.history ?? [];
+      const managerView = buildManagerView(rawHistory);
+      const activeArtifact = extractActiveArtifactContext(rawHistory);
       console.log("[context-boundary] manager view", {
         userId,
         sessionId,
         stream: false,
         ...managerView.manifest,
+        activeArtifact: Boolean(activeArtifact),
+        activeArtifactId: activeArtifact?.artifactId,
+        activeArtifactSummaryChars: activeArtifact?.summaryForManager?.length ?? 0,
       });
 
       llmNativeResult = await routeWithManagerDecision({
@@ -438,6 +451,7 @@ chatRouter.post("/chat", async (c) => {
           fastModel: effectiveFastModel,
           slowModel: effectiveSlowModel,
           crossSessionContext,
+          activeArtifact,
         });
     } catch (e: any) {
       return c.json({ error: "LLM-native routing failed: " + e.message }, 500);

@@ -59,6 +59,9 @@ import type { KnowledgeBoundarySignal } from "../types/index.js";
 import { detectSensitiveData } from "./gating/sensitive-data-rule.js";
 // P4: Learning Layer — 用户记忆检索
 import { retrieveMemoriesHybrid, buildCategoryAwareMemoryText } from "./memory-retrieval.js";
+// Sprint 56: Artifact Revision Routing
+import { applyArtifactRevisionRoutingGuard } from "./context/artifact-revision-intent.js";
+import type { ActiveArtifactContext } from "./context/active-artifact.js";
 
 export interface GatedDelegationContext {
   llmScores: Record<ManagerDecisionType, number>;
@@ -172,6 +175,8 @@ export interface LLMNativeRouterInput {
   slowModel?: string;
   /** Sprint 63: 跨会话上下文（active task + history facts） */
   crossSessionContext?: string;
+  /** Sprint 56: 当前对话中最近的可修订 Worker 产物摘要（仅 id + brief，不含 artifact 原文） */
+  activeArtifact?: ActiveArtifactContext;
 }
 
 export interface LLMNativeRouterResult {
@@ -206,7 +211,7 @@ export interface LLMNativeRouterResult {
 export async function routeWithManagerDecision(
   input: LLMNativeRouterInput
 ): Promise<LLMNativeRouterResult> {
-  const { message, user_id, session_id, turn_id, history, language, reqApiKey, reqLlmBaseUrl, fastModel, slowModel, crossSessionContext } = input;
+  const { message, user_id, session_id, turn_id, history, language, reqApiKey, reqLlmBaseUrl, fastModel, slowModel, crossSessionContext, activeArtifact } = input;
 
   // P4: Learning Layer — 检索用户记忆，与 Manager 调用并行执行（节省 200-500ms）
   const memoryPromise = (async () => {
@@ -382,6 +387,26 @@ export async function routeWithManagerDecision(
     // 注意：此时 parsedOutput.userFacingText 应该是模型的安抚语
   }
 
+  // ── Sprint 56: Artifact Revision Routing Guard ─────────────────────────
+  // 如果存在 active artifact 且用户要求修改，Manager 不能 direct_answer
+  // 因为 Manager 只有 brief 没有 artifact 原文，无法可靠地直接修改
+  const revisionGuard = applyArtifactRevisionRoutingGuard({
+    originalAction: gatedResult.routedAction,
+    latestUserMessage: message,
+    activeArtifact,
+  });
+  if (revisionGuard.overridden) {
+    console.log("[artifact-revision-routing]", {
+      activeArtifact: Boolean(activeArtifact),
+      activeArtifactId: activeArtifact?.artifactId,
+      artifactRevisionIntent: revisionGuard.artifactRevisionIntent,
+      originalAction: gatedResult.routedAction,
+      finalAction: revisionGuard.finalAction,
+    });
+    gatedResult.routedAction = revisionGuard.finalAction;
+    gatedResult.finalAction = revisionGuard.finalAction;
+  }
+
   // 检测模型意图与系统路由是否冲突：如果模型原本打算委派，但被降级了（且分数不够高，没触发上面的强制逻辑）
   // 此时必须调用 callDirectReplyModel 生成真实回复，不能只展示安抚语
   if (gatedResult.routedAction === "direct_answer") {
@@ -465,9 +490,13 @@ export async function routeWithManagerDecision(
 
   // 对于其他路由动作，使用"人话"作为安抚语，或根据 decision_type 构建澄清/任务消息
   // 这里我们将 parsedOutput.userFacingText 传入 routeByGatedDecision
+  // Sprint 56: 如果 revision guard 触发了 override，注入修订指令到 message
+  const gatedMessage = (revisionGuard.overridden && activeArtifact)
+    ? `[Artifact Revision Task]\nArtifact ID: ${activeArtifact.artifactId || "unknown"}\nTask ID: ${activeArtifact.taskId || "unknown"}\nKnown summary: ${activeArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nImportant: This is a revision of an existing Worker artifact. Use the archived artifact as the source of truth. Return the revised complete artifact.`
+    : (parsedOutput.userFacingText || message);
   return routeByGatedDecision(gatedResult, { 
-      message: parsedOutput.userFacingText || message, 
-      userFacingText: parsedOutput.userFacingText,
+      message: gatedMessage, 
+      userFacingText: parsedOutput.userFacingText || gatedMessage,
       user_id, session_id, turn_id, language, reqApiKey, 
       rawOutput: managerOutput, v2Decision 
   });
