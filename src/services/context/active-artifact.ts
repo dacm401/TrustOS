@@ -15,6 +15,9 @@ export type ActiveArtifactContext = {
   artifactId?: string;
   summaryForManager: string;
   contentType?: string;
+  /** Sprint 58: 此 artifact 自己的 revision lineage（如果它本身是 revision） */
+  revisionOfArtifactId?: string;
+  revisionOfTaskId?: string;
 };
 
 /**
@@ -45,6 +48,8 @@ export function extractActiveArtifactContext(
         artifactId: meta.artifactId,
         summaryForManager: meta.summaryForManager,
         contentType: (meta as any).contentType,
+        revisionOfArtifactId: (meta as any).revisionOfArtifactId,
+        revisionOfTaskId: (meta as any).revisionOfTaskId,
       };
     }
   }

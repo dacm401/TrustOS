@@ -139,6 +139,8 @@ export type WorkerResultEnvelope = {
     contentKind: "artifact";
     taskId?: string;
     artifactId?: string;
+    revisionOfArtifactId?: string;
+    revisionOfTaskId?: string;
   };
 };
 
@@ -150,6 +152,8 @@ export function buildWorkerResultEnvelope(input: {
   artifactId?: string;
   contentType?: WorkerArtifactContentType;
   summaryForManager?: string;
+  revisionOfArtifactId?: string;
+  revisionOfTaskId?: string;
 }): WorkerResultEnvelope {
   const { content, taskId, artifactId } = input;
   const contentType = input.contentType ?? detectContentType(content);
@@ -174,6 +178,8 @@ export function buildWorkerResultEnvelope(input: {
       contentKind: "artifact",
       taskId,
       artifactId: artifactId ?? taskId,
+      revisionOfArtifactId: input.revisionOfArtifactId,
+      revisionOfTaskId: input.revisionOfTaskId,
     },
   };
 }

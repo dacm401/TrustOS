@@ -115,6 +115,9 @@ export interface ProvenanceMeta {
   artifactId?: string;
   summaryForManager?: string;
   routingLayer?: string;
+  /** Sprint 58: 当 artifact 是 revision 时，记录它从哪个旧 artifact 修订而来 */
+  revisionOfArtifactId?: string;
+  revisionOfTaskId?: string;
 }
 
 /** SSE stream event — union of all event types emitted by /api/chat */

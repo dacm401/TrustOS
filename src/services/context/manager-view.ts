@@ -37,6 +37,9 @@ export type ManagerViewMessageMeta = {
   artifactId?: string;
   summaryForManager?: string;
   routingLayer?: string;
+  /** Sprint 58: 当 artifact 是 revision 时，记录它从哪个旧 artifact 修订而来 */
+  revisionOfArtifactId?: string;
+  revisionOfTaskId?: string;
 };
 
 export type ManagerViewMessage = {

@@ -31,6 +31,7 @@ import { classifyIntent, shouldSkipLLMRouting, generateQuickResponse } from "../
 // Context Boundary V0: Manager 不能直接消费 raw body.history
 import { buildManagerView } from "../services/context/manager-view.js";
 import { buildWorkerResultEnvelope } from "../services/context/worker-result-envelope.js";
+import { detectArtifactRevisionIntent } from "../services/context/artifact-revision-intent.js";
 // Sprint 56: Artifact Revision Routing
 import { extractActiveArtifactContext } from "../services/context/active-artifact.js";
 const chatRouter = new Hono();
@@ -365,6 +366,21 @@ chatRouter.post("/chat", async (c) => {
               })}\n\n`);
             }
 
+            // Sprint 56: 检测 artifact revision intent（后续用于 lineage 追踪）
+            const artifactRevisionIntent = Boolean(activeArtifact && llmNativeResult.delegation) && detectArtifactRevisionIntent({
+              latestUserMessage: body.message ?? "",
+              activeArtifact,
+            });
+
+            console.log("[artifact-lineage]", {
+              isArtifactRevision: Boolean(artifactRevisionIntent),
+              activeArtifactId: activeArtifact?.artifactId,
+              activeTaskId: activeArtifact?.taskId,
+              newArchiveId: archiveId,
+              revisionOfArtifactId: artifactRevisionIntent ? activeArtifact?.artifactId : undefined,
+              revisionOfTaskId: artifactRevisionIntent ? activeArtifact?.taskId : undefined,
+            });
+
             console.log("[chat] entering pollArchiveAndYield for task:", archiveId);
             for await (const event of pollArchiveAndYield(archiveId!, lang, llmNativeResult.delegation_log_id, reqApiKey)) {
               // Debug: 每个 SSE event 都打一条，streaming 时太吵，默认注释掉
@@ -378,6 +394,9 @@ chatRouter.post("/chat", async (c) => {
                 normalizedEvent.stream = normalizedEvent.content;
                 delete normalizedEvent.content;
               }
+              // Sprint 58: 判断是否应标记 lineage（仅当 activeArtifact + revision intent + 实际委托）
+              const isLineageRevision = Boolean(activeArtifact && artifactRevisionIntent && llmNativeResult?.delegation);
+
               // Provenance: Worker 产出事件 — 使用 envelope 生成智能 summaryForManager
               if (normalizedEvent.type === "result" || normalizedEvent.type === "worker_result") {
                 const envelope = buildWorkerResultEnvelope({
@@ -385,6 +404,8 @@ chatRouter.post("/chat", async (c) => {
                   taskId: archiveId,
                   artifactId: archiveId,
                   summaryForManager: (event as any).summaryForManager,
+                  revisionOfArtifactId: isLineageRevision ? activeArtifact!.artifactId : undefined,
+                  revisionOfTaskId: isLineageRevision ? activeArtifact!.taskId : undefined,
                 });
                 (normalizedEvent as any).meta = {
                   ...envelope.meta,
