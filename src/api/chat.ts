@@ -154,6 +154,7 @@ chatRouter.post("/chat", async (c) => {
     if (useStream) {
       // ── SSE 流式分支 ───────────────────────────────────────────────────────────
       let llmNativeResult;
+      let activeArtifact: import("../services/context/active-artifact.js").ActiveArtifactContext | undefined;
       try {
         // Stream V2: 轻量级意图预分类（<10ms）
         const intentStart = Date.now();
@@ -208,7 +209,7 @@ chatRouter.post("/chat", async (c) => {
         // Context Boundary V0: 构建 Manager Safe View
         const rawHistory = body.history ?? [];
         const managerView = buildManagerView(rawHistory);
-        const activeArtifact = extractActiveArtifactContext(rawHistory);
+        activeArtifact = extractActiveArtifactContext(rawHistory);
         console.log("[context-boundary] manager view", {
           userId,
           sessionId,
