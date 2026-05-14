@@ -6,7 +6,7 @@ import { config } from "../../config.js";
 // 默认 client（使用环境变量配置）
 const defaultClientOptions: ConstructorParameters<typeof OpenAI>[0] = {
   apiKey: config.openaiApiKey,
-  timeout: 120_000, // 120s timeout（Qwen2.5-72B 生成代码可能 30s+，原 30s 不够）
+  timeout: 180_000, // 180s timeout（DeepSeek-V4-Flash/Qwen2.5-72B API 有时需要 120s+）
 };
 if (config.openaiBaseUrl) {
   defaultClientOptions.baseURL = config.openaiBaseUrl;
@@ -81,7 +81,7 @@ export async function callOpenAIWithOptions(
   baseURL?: string,
   tools?: ToolParam[]
 ): Promise<ModelResponse> {
-  const opts: ConstructorParameters<typeof OpenAI>[0] = { apiKey, timeout: 120_000 };
+  const opts: ConstructorParameters<typeof OpenAI>[0] = { apiKey, timeout: 180_000 };
   if (baseURL) opts.baseURL = baseURL;
   const client = new OpenAI(opts);
   return callChat(client, model, messages, tools);

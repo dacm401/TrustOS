@@ -16,6 +16,8 @@
 import { v4 as uuid } from "uuid";
 import { config } from "../config.js";
 import { callModelFull, callOpenAIWithOptions } from "../models/model-gateway.js";
+import { countTokens } from "../models/token-counter.js";
+import { calcActualCost } from "../config/pricing.js";
 import type { ChatMessage } from "../types/index.js";
 import type {
   ManagerDecision,
@@ -29,6 +31,11 @@ import type {
   DecisionFeatures,
   AmbiguitySignal,
 } from "../types/index.js";
+import type {
+  CallLedgerEntry,
+  RequestLedger,
+  SecurityScopeFlags,
+} from "../types/call-ledger.js";
 import { DECISION_TO_LAYER, assertUnreachable } from "../types/index.js";
 import { parseAndValidate } from "./decision-validator.js";
 import { taskPlanner } from "./task-planner.js";
@@ -62,6 +69,8 @@ import { retrieveMemoriesHybrid, buildCategoryAwareMemoryText } from "./memory-r
 // Sprint 56: Artifact Revision Routing
 import { applyArtifactRevisionRoutingGuard } from "./context/artifact-revision-intent.js";
 import type { ActiveArtifactContext } from "./context/active-artifact.js";
+// Sprint 60P: Execution Policy Layer
+import { evaluateExecutionPolicy } from "./policy/execution-policy.js";
 
 export interface GatedDelegationContext {
   llmScores: Record<ManagerDecisionType, number>;
@@ -204,6 +213,10 @@ export interface LLMNativeRouterResult {
   command_id?: string;
   /** G4: delegation_logs 表的主键 ID（用于异步回写 execution 结果） */
   delegation_log_id?: string;
+  /** Sprint 59P: Call Ledger — 本次请求的所有模型调用记录 */
+  callLedger?: CallLedgerEntry[];
+  /** Sprint 59P: Request Ledger — 本次请求的汇总账本 */
+  requestSummary?: RequestLedger;
 }
 
 // ── 主入口 ───────────────────────────────────────────────────────────────────
@@ -212,6 +225,37 @@ export async function routeWithManagerDecision(
   input: LLMNativeRouterInput
 ): Promise<LLMNativeRouterResult> {
   const { message, user_id, session_id, turn_id, history, language, reqApiKey, reqLlmBaseUrl, fastModel, slowModel, crossSessionContext, activeArtifact } = input;
+
+  // Sprint 59P: Call Ledger — 本次请求的所有模型调用记录
+  const callLedger: CallLedgerEntry[] = [];
+  const ledgerRequestStart = Date.now();
+  const ledgerTraceId = uuid();
+
+  // 快路径启发式判断
+  const fastPathHeuristic = (() => {
+    // 简单问候/常见短回复
+    const trimmed = message.trim().toLowerCase();
+    const greetings = ["hi", "hello", "你好", "早上好", "下午好", "晚上好", "好的", "谢谢", "thanks", "ok", "okay", "yes", "no", "是", "否", "好", "行", "嗯", "好的"];
+    if (greetings.includes(trimmed) || trimmed.length <= 2) {
+      return { couldHave: true, reason: "short_greeting_or_ack" };
+    }
+    // 纯确认性回复
+    if (["很好", "可以", "不错", "继续"].includes(trimmed)) {
+      return { couldHave: true, reason: "simple_acknowledgment" };
+    }
+    return { couldHave: false, reason: "sufficiently_complex" };
+  })();
+
+  // Sprint 60P: Execution Policy Layer — 规则先于 LLM 调用做决策
+  const policyDecision = evaluateExecutionPolicy(message, activeArtifact);
+  console.log(`[execution-policy] route=${policyDecision.route}, managerRequired=${policyDecision.managerLlmRequired}, reason=${policyDecision.reason}`);
+
+  // Policy Context：贯穿本次请求，用于 ledger 和安全标记
+  const policyCtx = {
+    route: policyDecision.route,
+    managerLlmBypassed: !policyDecision.managerLlmRequired,
+    bypassReason: policyDecision.managerLlmRequired ? "policy_required_manager" : policyDecision.reason,
+  };
 
   // P4: Learning Layer — 检索用户记忆，与 Manager 调用并行执行（节省 200-500ms）
   const memoryPromise = (async () => {
@@ -238,16 +282,181 @@ export async function routeWithManagerDecision(
     }
   })();
 
+  // ── Sprint 60P: Policy-first Bypass ─────────────────────────────────────────
+  // 规则命中的任务绕过 Manager LLM，直接路由到 Worker（或直接返回）
+  // 注意：Context Boundary 和 provenance 仍然执行，只是省掉 Manager LLM 思考
+
+  // 路由 1: local_answer_from_meta — 不调任何模型
+  if (policyDecision.route === "local_answer_from_meta") {
+    const memory = await memoryPromise; // 等 memory，但不发到模型
+    const localAnswer = memory
+      ? `[本地元数据回答]\n\n${memory}\n\n（以上内容来自你的历史记忆，不是 AI 模型生成的回复）`
+      : "我没有足够的历史数据来回答这个问题。请提供更多信息。";
+    console.log(`[execution-policy] Bypass: local_answer_from_meta, returning local answer`);
+    return withLedger({
+      message: localAnswer,
+      decision: null,
+      routing_layer: "L0",
+      decision_type: "direct_answer",
+      delegation_log_id: undefined,
+    }, {
+      callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+      userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
+      policyRoute: policyDecision.route, managerLlmBypassed: true, bypassReason: policyDecision.reason,
+    }, {
+      // Sprint 60P-H1: 按接收方拆分安全字段（local_answer_from_meta 纯本地）
+      sentArtifactContentToManagerRemote: false,
+      sentArtifactContentToWorkerRemote: false,
+      sentRawHistoryToRemote: false,
+      memoryWasRetrieved: memory !== undefined,
+      memoryWasSentToManager: false,
+      sensitiveMemoryWasSent: false,
+      remoteContextBytesToManager: 0,
+      remoteContextBytesToWorker: 0,
+      artifactContentBytesToWorker: 0,
+    });
+  }
+
+  // 路由 2 & 3: direct_artifact_revision / direct_create_artifact — 绕过 Manager LLM
+  if (policyDecision.route === "direct_artifact_revision" || policyDecision.route === "direct_create_artifact") {
+    const memory = await memoryPromise; // 等 memory，但不发到 Manager LLM
+
+    // 构造 bypass 的 GatedDelegationContext（跳过 Manager LLM）
+    // 评分：强推 delegate_to_slow，confidence = 1.0（规则确定性）
+    const routedAction: ManagerDecisionType = "delegate_to_slow";
+    const bypassGated: GatedDelegationContext = {
+      llmScores: {
+        direct_answer: 0,
+        ask_clarification: 0,
+        delegate_to_slow: 1.0,
+        execute_task: 0,
+      },
+      llmConfidenceHint: 1.0,
+      features: {
+        missing_info: false,
+        needs_long_reasoning: false,
+        needs_external_tool: false,
+        high_risk_action: false,
+        query_too_vague: false,
+        requires_multi_step: false,
+        is_continuation: policyDecision.route === "direct_artifact_revision",
+      },
+      systemConfidence: 1.0,
+      calibratedScores: {
+        direct_answer: 0,
+        ask_clarification: 0,
+        delegate_to_slow: 1.0,
+        execute_task: 0,
+      },
+      finalAction: routedAction,
+      routedAction,
+      policyOverrides: [{
+        rule: "policy_bypass",
+        action: "force",
+        target: routedAction,
+        original_score: 1.0,
+        adjusted_score: 1.0,
+        reason: `Execution Policy bypass: ${policyDecision.route}`,
+      }],
+      rerankResult: undefined,
+      rerankGap: 0,
+      grayzone_shortcut: undefined,
+      knowledgeBoundarySignals: [],
+    };
+
+    // Sprint 56: revision guard 仍然执行（不能跳过安全边界）
+    const revisionGuard = applyArtifactRevisionRoutingGuard({
+      originalAction: routedAction,
+      latestUserMessage: message,
+      activeArtifact,
+    });
+
+    // 构造发给 Worker 的修订消息
+    const gatedMessage = (activeArtifact && revisionGuard.artifactRevisionIntent)
+      ? `[Artifact Revision Task]\nArtifact ID: ${activeArtifact.artifactId || "unknown"}\nTask ID: ${activeArtifact.taskId || "unknown"}\nKnown summary: ${activeArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nImportant: This is a revision of an existing Worker artifact. Use the archived artifact as the source of truth. Return the revised complete artifact.`
+      : message;
+
+    console.log(`[execution-policy] Bypass: ${policyDecision.route}, calling routeByGatedDecision directly (manager LLM skipped)`);
+
+    const gatedRouteResult = await routeByGatedDecision(bypassGated, {
+      message: gatedMessage,
+      userFacingText: language === "zh" ? "好的，我来修改。" : "Got it, let me modify that.",
+      user_id, session_id, turn_id, language, reqApiKey,
+      rawOutput: `[Policy Bypass] ${policyDecision.route}: ${message}`,
+      v2Decision: null,
+      activeArtifact,
+      artifactRevisionIntent: revisionGuard.artifactRevisionIntent,
+      traceId: ledgerTraceId,
+    });
+
+    const delegated = Boolean(gatedRouteResult.delegation && gatedRouteResult.delegation.status === "triggered");
+    const sentArtifactContentToWorker = Boolean(activeArtifact && revisionGuard.artifactRevisionIntent && delegated);
+
+    return withLedger(gatedRouteResult, {
+      callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+      userId: user_id, sessionId: session_id, delegated, fastPathHeuristic,
+      policyRoute: policyDecision.route, managerLlmBypassed: true, bypassReason: policyDecision.reason,
+    }, {
+      // Sprint 60P-H1: 按接收方拆分安全字段
+      sentArtifactContentToManagerRemote: false, // bypass 路径不调 Manager
+      sentArtifactContentToWorkerRemote: sentArtifactContentToWorker,
+      sentRawHistoryToRemote: false,
+      memoryWasRetrieved: memory !== undefined,
+      memoryWasSentToManager: false, // Policy bypass 确保不发 memory 到 Manager
+      sensitiveMemoryWasSent: false,
+      remoteContextBytesToManager: 0,
+      remoteContextBytesToWorker: sentArtifactContentToWorker ? countTokens(gatedMessage) : 0,
+      artifactContentBytesToWorker: sentArtifactContentToWorker ? countTokens(gatedMessage) : 0,
+    });
+  }
+
   // Step 1: 调用 Fast 模型（与 Memory 检索并行，节省总延迟）
   let managerOutput: string;
   let userMemories: string | undefined;
+  let managerCallLatencyMs = 0;
+  let managerWasCircuitBroken = false;
   try {
+    const managerCallStart = Date.now();
     [managerOutput, userMemories] = await Promise.all([
       callManagerModel({ message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext, userMemories: undefined }),
       memoryPromise,
     ]);
+    managerCallLatencyMs = Date.now() - managerCallStart;
+
+    // Sprint 59P: 记录 Manager 模型调用
+    const managerInputTokens = estimateManagerInputTokens(message, history.filter((m) => m.role !== "system").slice(-6), crossSessionContext);
+    const managerOutputTokens = countTokens(managerOutput);
+    const effectiveModel = fastModel || config.fastModel;
+    callLedger.push({
+      traceId: uuid(),
+      modelRole: "manager",
+      modelName: effectiveModel,
+      inputTokens: managerInputTokens,
+      outputTokens: managerOutputTokens,
+      estimatedCost: calcActualCost(effectiveModel, managerInputTokens, managerOutputTokens, 0),
+      latencyMs: managerCallLatencyMs,
+      startedAt: managerCallStart,
+      completedAt: Date.now(),
+      usedAuthOverride: Boolean(reqApiKey || reqLlmBaseUrl),
+      wasCircuitBroken: false,
+    });
   } catch (e: any) {
     if (e instanceof CircuitBreakerError) {
+      managerWasCircuitBroken = true;
+      // Sprint 59P: 记录熔断调用（token 为 0，成本为 0）
+      callLedger.push({
+        traceId: uuid(),
+        modelRole: "manager",
+        modelName: fastModel || config.fastModel,
+        inputTokens: 0,
+        outputTokens: 0,
+        estimatedCost: 0,
+        latencyMs: 0,
+        startedAt: Date.now(),
+        completedAt: Date.now(),
+        usedAuthOverride: Boolean(reqApiKey || reqLlmBaseUrl),
+        wasCircuitBroken: true,
+      });
       // 熔断：模型服务不可用，快速降级为 direct_answer，告知用户稍后重试
       console.warn(`[routeWithManagerDecision] Circuit breaker open, returning degraded direct_answer`);
       const retryMsg = e.retryAfter
@@ -260,6 +469,18 @@ export async function routeWithManagerDecision(
         decision: null,
         routing_layer: "L0",
         decision_type: "direct_answer",
+        callLedger,
+        requestSummary: buildRequestLedger(
+          ledgerTraceId, user_id, session_id, ledgerRequestStart, callLedger,
+          "direct_answer", "L0", false,
+          // Sprint 60P: 新安全字段（熔断时 memory 未发出）
+          { sentArtifactContentToManagerRemote: false, sentArtifactContentToWorkerRemote: false, sentRawHistoryToRemote: false, memoryWasRetrieved: false, memoryWasSentToManager: false, sensitiveMemoryWasSent: false, remoteContextBytesToManager: 0, remoteContextBytesToWorker: 0, artifactContentBytesToWorker: 0 },
+          { couldHave: false, reason: "circuit_broken_no_model_call" },
+          // Sprint 60P: Policy Layer
+          policyDecision.route,
+          true, // managerLlmBypassed（熔断也算 bypass）
+          "circuit_breaker_open",
+        ),
       };
     }
     throw e;
@@ -321,7 +542,7 @@ export async function routeWithManagerDecision(
         console.error("[llm-native-router] Failed to create protocol violation archive:", archiveErr.message);
       }
 
-      return {
+      return withLedger({
         message: language === "zh"
           ? "⚠️ Manager 路由协议错误，请检查模型输出格式。"
           : "⚠️ Manager routing protocol error, please check model output format.",
@@ -331,7 +552,13 @@ export async function routeWithManagerDecision(
         raw_manager_output: managerOutput,
         delegation_log_id: undefined,
         archive_id: failedArchiveId,
-      };
+      }, {
+        callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+        userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
+        policyRoute: policyDecision.route,
+        managerLlmBypassed: false,
+        bypassReason: "manager_llm_called_protocol_error",
+      });
     }
     // 其他未知异常重新抛出
     throw err;
@@ -343,20 +570,32 @@ export async function routeWithManagerDecision(
     // 尝试旧 v1 格式作为 backward compatibility fallback
     const decision = parseAndValidate(managerOutput);
     if (decision) {
-      return routeByDecision(decision, { message, user_id, session_id, language, reqApiKey, raw: managerOutput });
+      return withLedger(await routeByDecision(decision, { message, user_id, session_id, language, reqApiKey, raw: managerOutput }), {
+        callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+        userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
+        policyRoute: policyDecision.route,
+        managerLlmBypassed: false,
+        bypassReason: "manager_llm_called_parse_fallback",
+      });
     }
     // Sprint 72 fix: LLM 有时返回截断/乱码 JSON，直接吐出 JSON 是错误的
     // 改为：使用 splitManagerOutput 提取人话回复
     console.warn("[llm-native-router] ManagerDecision parse failed, fallback to direct_answer");
     const parsedOutput = splitManagerOutput(managerOutput);
-    return {
+    return withLedger({
       message: parsedOutput.userFacingText || (language === "zh" ? "好的，让我看看。" : "Got it, let me check."),
       decision: null,
       routing_layer: "L0",
       decision_type: "direct_answer",
       raw_manager_output: managerOutput,
       delegation_log_id: undefined,
-    };
+    }, {
+      callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+      userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
+      policyRoute: policyDecision.route,
+      managerLlmBypassed: false,
+      bypassReason: "manager_llm_called_json_parse_failed",
+    });
   }
 
   // Step 4: 按 Gated Delegation 最终结果路由（KB signals 已在 gatedResult.knowledgeBoundarySignals 中）
@@ -403,8 +642,8 @@ export async function routeWithManagerDecision(
       originalAction: gatedResult.routedAction,
       finalAction: revisionGuard.finalAction,
     });
-    gatedResult.routedAction = revisionGuard.finalAction;
-    gatedResult.finalAction = revisionGuard.finalAction;
+    gatedResult.routedAction = revisionGuard.finalAction as ManagerDecisionType;
+    gatedResult.finalAction = revisionGuard.finalAction as ManagerDecisionType;
   }
 
   // 检测模型意图与系统路由是否冲突：如果模型原本打算委派，但被降级了（且分数不够高，没触发上面的强制逻辑）
@@ -451,41 +690,80 @@ export async function routeWithManagerDecision(
       if (hasSubstantiveText) {
         // 模型已经给出实质性回复，直接用，省一次 LLM 调用
         console.log(`[llm-native-router] Route downgrade detected: reusing Manager userFacingText (len=${parsedOutput.userFacingText.length})`);
-        return {
+        return withLedger({
           message: parsedOutput.userFacingText,
           decision: null,
           routing_layer: "L0",
           decision_type: "direct_answer",
           raw_manager_output: managerOutput,
           delegation_log_id: directAnswerLogId,
-        };
+        }, {
+          callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+          userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
+          policyRoute: policyDecision.route,
+          managerLlmBypassed: false,
+          bypassReason: "manager_llm_called_direct_answer_reuse",
+        });
       }
 
       // userFacingText 太短（安抚占位语），需要额外生成真实回复
       console.log("[llm-native-router] Route downgrade detected: userFacingText too short, generating real reply via callDirectReplyModel");
+      const directReplyStart = Date.now();
       const realReply = await callDirectReplyModel({
         message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext,
       });
+      const directReplyLatencyMs = Date.now() - directReplyStart;
+      // Sprint 59P: 记录 DirectReply 模型调用
+      if (callLedger.length === 1) {
+        const drInputTokens = estimateDirectReplyInputTokens(message, history.filter((m) => m.role !== "system").slice(-6), crossSessionContext);
+        const drOutputTokens = countTokens(realReply);
+        const effectiveModel = fastModel || config.fastModel;
+        callLedger.push({
+          traceId: uuid(),
+          modelRole: "worker_direct_reply",
+          modelName: effectiveModel,
+          inputTokens: drInputTokens,
+          outputTokens: drOutputTokens,
+          estimatedCost: calcActualCost(effectiveModel, drInputTokens, drOutputTokens, 0),
+          latencyMs: directReplyLatencyMs,
+          startedAt: directReplyStart,
+          completedAt: Date.now(),
+          usedAuthOverride: Boolean(reqApiKey || reqLlmBaseUrl),
+          wasCircuitBroken: false,
+        });
+      }
       console.log(`[llm-native-router] Fallback reply generated, length: ${realReply.length}`);
-      return {
+      return withLedger({
         message: realReply,
         decision: null,
         routing_layer: "L0",
         decision_type: "direct_answer",
         raw_manager_output: managerOutput,
         delegation_log_id: directAnswerLogId,
-      };
+      }, {
+        callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+        userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
+        policyRoute: policyDecision.route,
+        managerLlmBypassed: false,
+        bypassReason: "manager_llm_called_direct_reply_fallback",
+      });
     }
 
     console.log("[llm-native-router] Direct answer, using Manager's single-call reply");
-    return {
+    return withLedger({
       message: parsedOutput.userFacingText || (language === "zh" ? "好的。" : "Got it."),
       decision: null,
       routing_layer: "L0",
       decision_type: "direct_answer",
       raw_manager_output: managerOutput,
       delegation_log_id: directAnswerLogId,
-    };
+    }, {
+      callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+      userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
+      policyRoute: policyDecision.route,
+      managerLlmBypassed: false,
+      bypassReason: "manager_llm_called_direct_answer",
+    });
   }
 
   // 对于其他路由动作，使用"人话"作为安抚语，或根据 decision_type 构建澄清/任务消息
@@ -495,17 +773,187 @@ export async function routeWithManagerDecision(
   const gatedMessage = (activeArtifact && revisionGuard.artifactRevisionIntent)
     ? `[Artifact Revision Task]\nArtifact ID: ${activeArtifact.artifactId || "unknown"}\nTask ID: ${activeArtifact.taskId || "unknown"}\nKnown summary: ${activeArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nImportant: This is a revision of an existing Worker artifact. Use the archived artifact as the source of truth. Return the revised complete artifact.`
     : (parsedOutput.userFacingText || message);
-  return routeByGatedDecision(gatedResult, { 
+  const gatedRouteResult = await routeByGatedDecision(gatedResult, { 
       message: gatedMessage, 
       userFacingText: parsedOutput.userFacingText || gatedMessage,
       user_id, session_id, turn_id, language, reqApiKey, 
       rawOutput: managerOutput, v2Decision,
       activeArtifact,
       artifactRevisionIntent: revisionGuard.artifactRevisionIntent,
+      traceId: ledgerTraceId,
+  });
+
+  // Sprint 59P: 计算安全范围标记
+  const delegated = Boolean(gatedRouteResult.delegation && gatedRouteResult.delegation.status === "triggered");
+  const sentArtifactContentToWorker = Boolean(activeArtifact && revisionGuard.artifactRevisionIntent && delegated);
+
+  return withLedger(gatedRouteResult, {
+    callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+    userId: user_id, sessionId: session_id, delegated, fastPathHeuristic,
+    // Sprint 60P: Policy Layer
+    policyRoute: policyDecision.route,
+    managerLlmBypassed: false, // Manager LLM 实际被调用了
+    bypassReason: "policy_required_manager",
+  }, {
+    // Sprint 60P-H1: 按接收方拆分安全字段
+    sentArtifactContentToManagerRemote: false, // Context Boundary 确保 Manager 不收 artifact
+    sentArtifactContentToWorkerRemote: sentArtifactContentToWorker,
+    sentRawHistoryToRemote: false, // Context Boundary 确保 Manager 只有 filtered view
+    memoryWasRetrieved: userMemories !== undefined,
+    memoryWasSentToManager: false, // callManagerModel 传入 undefined
+    sensitiveMemoryWasSent: false,
+    remoteContextBytesToManager: countTokens(gatedMessage),
+    remoteContextBytesToWorker: sentArtifactContentToWorker ? countTokens(gatedMessage) : 0,
+    artifactContentBytesToWorker: 0, // Manager 路径不直接传 artifact
   });
 }
 
 // ── Fast Manager 调用 ─────────────────────────────────────────────────────────
+// Sprint 59P: Call Ledger 辅助函数
+
+/** 估算 Manager 模型调用的输入 token 数 */
+function estimateManagerInputTokens(
+  message: string,
+  recentHistory: ChatMessage[],
+  crossSessionContext?: string,
+): number {
+  let total = 0;
+  // 系统 prompt 粗略估算（典型的 Manager Prompt 约 2000-4000 chars → 800-2000 tokens）
+  total += 1200;
+  // 跨会话上下文
+  if (crossSessionContext) total += countTokens(crossSessionContext);
+  // 历史消息（6 轮）
+  for (const m of recentHistory) {
+    total += countTokens(m.content);
+  }
+  // 当前消息
+  total += countTokens(message);
+  return total;
+}
+
+/** 估算 Direct Reply 模型调用的输入 token 数 */
+function estimateDirectReplyInputTokens(
+  message: string,
+  recentHistory: ChatMessage[],
+  crossSessionContext?: string,
+): number {
+  let total = 0;
+  // DirectReply 使用简短系统 prompt
+  total += 100;
+  // 跨会话上下文
+  if (crossSessionContext) total += countTokens(crossSessionContext);
+  // 历史消息
+  for (const m of recentHistory) {
+    total += countTokens(m.content);
+  }
+  // 当前消息
+  total += countTokens(message);
+  return total;
+}
+
+/** 为任意 LLMNativeRouterResult 附加 callLedger + requestSummary */
+function withLedger<T extends Partial<LLMNativeRouterResult & { callLedger?: CallLedgerEntry[]; requestSummary?: RequestLedger }>>(
+  result: T,
+  ctx: {
+    callLedger: CallLedgerEntry[];
+    startTime: number;
+    traceId: string;
+    userId: string;
+    sessionId: string;
+    delegated: boolean;
+    fastPathHeuristic: { couldHave: boolean; reason: string };
+    // Sprint 60P: Policy Layer
+    policyRoute: import("../types/call-ledger.js").ExecutionPolicyRoute;
+    managerLlmBypassed: boolean;
+    bypassReason: string;
+  },
+  securityFlags?: Partial<SecurityScopeFlags>,
+): T & { callLedger: CallLedgerEntry[]; requestSummary: RequestLedger } {
+  const resolvedFlags: SecurityScopeFlags = {
+    // Sprint 60P-H1: 按接收方拆分安全字段
+    sentArtifactContentToManagerRemote: securityFlags?.sentArtifactContentToManagerRemote ?? false,
+    sentArtifactContentToWorkerRemote: securityFlags?.sentArtifactContentToWorkerRemote ?? false,
+    sentRawHistoryToRemote: securityFlags?.sentRawHistoryToRemote ?? false,
+    memoryWasRetrieved: securityFlags?.memoryWasRetrieved ?? false,
+    memoryWasSentToManager: securityFlags?.memoryWasSentToManager ?? false,
+    sensitiveMemoryWasSent: securityFlags?.sensitiveMemoryWasSent ?? false,
+    remoteContextBytesToManager: securityFlags?.remoteContextBytesToManager ?? 0,
+    remoteContextBytesToWorker: securityFlags?.remoteContextBytesToWorker ?? 0,
+    artifactContentBytesToWorker: securityFlags?.artifactContentBytesToWorker ?? 0,
+  };
+  return {
+    ...result,
+    callLedger: ctx.callLedger,
+    requestSummary: buildRequestLedger(
+      ctx.traceId, ctx.userId, ctx.sessionId, ctx.startTime, ctx.callLedger,
+      (result as any).decision_type || "unknown",
+      (result as any).routing_layer || "L0",
+      ctx.delegated,
+      resolvedFlags,
+      ctx.fastPathHeuristic,
+      ctx.policyRoute,
+      ctx.managerLlmBypassed,
+      ctx.bypassReason,
+    ),
+  } as T & { callLedger: CallLedgerEntry[]; requestSummary: RequestLedger };
+}
+
+/** 构建 RequestLedger 汇总（在请求结束前调用） */
+function buildRequestLedger(
+  traceId: string,
+  userId: string,
+  sessionId: string,
+  startTime: number,
+  callLedger: CallLedgerEntry[],
+  decisionType: string,
+  routingLayer: string,
+  delegated: boolean,
+  securityFlags: SecurityScopeFlags,
+  fastPathHeuristic: { couldHave: boolean; reason: string },
+  // Sprint 60P: Policy Layer 字段
+  policyRoute: import("../types/call-ledger.js").ExecutionPolicyRoute,
+  managerLlmBypassed: boolean,
+  bypassReason: string,
+): RequestLedger {
+  const totalLatencyMs = Date.now() - startTime;
+  const totalInputTokens = callLedger.reduce((s, e) => s + e.inputTokens, 0);
+  const totalOutputTokens = callLedger.reduce((s, e) => s + e.outputTokens, 0);
+  const estimatedTotalCost = callLedger.reduce((s, e) => s + e.estimatedCost, 0);
+  const managerModelCalls = callLedger.filter((e) => e.modelRole === "manager").length;
+  const slowModelCalls = callLedger.filter((e) => e.modelRole === "worker").length;
+  const workerModelCalls = callLedger.filter((e) => e.modelRole === "worker_direct_reply").length;
+  const managerLatency = callLedger
+    .filter((e) => e.modelRole === "manager")
+    .reduce((s, e) => s + e.latencyMs, 0);
+  const routerTaxRatio = totalLatencyMs > 0 ? managerLatency / totalLatencyMs : 0;
+
+  return {
+    traceId,
+    userId,
+    sessionId,
+    totalLatencyMs,
+    totalModelCalls: callLedger.length,
+    managerModelCalls,
+    slowModelCalls,
+    workerModelCalls,
+    totalInputTokens,
+    totalOutputTokens,
+    estimatedTotalCost,
+    routerTaxRatio: Math.round(routerTaxRatio * 10000) / 10000,
+    delegationAfterManager: delegated,
+    securityScope: securityFlags,
+    policyRoute, // Sprint 60P
+    managerLlmBypassed, // Sprint 60P
+    bypassReason, // Sprint 60P
+    decisionType: decisionType || "unknown",
+    routingLayer: routingLayer || "L0",
+    entries: callLedger,
+    fastPathHeuristic: fastPathHeuristic ? {
+      couldHaveUsedFastPath: fastPathHeuristic.couldHave,
+      reason: fastPathHeuristic.reason,
+    } : undefined,
+  };
+}
 
 async function callManagerModel(input: {
   message: string;
@@ -852,13 +1300,15 @@ interface GatedRouteContext {
   /** Sprint 57: artifact revision routing */
   activeArtifact?: ActiveArtifactContext;
   artifactRevisionIntent?: boolean;
+  /** Sprint 60P-H1: trace ID，用于关联 request ledger 与 worker ledger */
+  traceId?: string;
 }
 
 async function routeByGatedDecision(
   gated: GatedDelegationContext,
   ctx: GatedRouteContext
 ): Promise<LLMNativeRouterResult> {
-  const { message, user_id, session_id, turn_id, task_id, language, reqApiKey, rawOutput, v2Decision } = ctx;
+  const { message, user_id, session_id, turn_id, task_id, language, reqApiKey, rawOutput, v2Decision, traceId } = ctx;
 
   // P2 HITL: 歧义检测（适用于所有决策类型，不限于 ask_clarification）
   const ambiguity = detectDecisionAmbiguity(gated.llmScores, gated.llmConfidenceHint);
@@ -947,8 +1397,8 @@ async function routeByGatedDecision(
     })) ?? [],
   });
 
-  // 按最终路由动作分发，携带 delegation_log_id 供 SSE 异步回写使用
-  return routeByDecision(decision, { ...ctx, raw: rawOutput, delegation_log_id });
+  // 按最终路由动作分发，携带 delegation_log_id 和 traceId 供 SSE 异步回写使用
+  return routeByDecision(decision, { ...ctx, raw: rawOutput, delegation_log_id, traceId });
 }
 
 // ── 决策路由 ─────────────────────────────────────────────────────────────────
@@ -962,6 +1412,8 @@ interface RouteContext {
   raw: string;
   /** G4: delegation_logs 主键 ID（用于异步回写 execution 结果） */
   delegation_log_id?: string;
+  /** Sprint 60P-H1: trace ID，用于关联 request ledger 与 worker ledger */
+  traceId?: string;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -1059,6 +1511,7 @@ async function writeTaskArchiveAndCommand(
   user_id: string,
   eventType: string,
   workerRole: string,
+  traceId: string,
 ): Promise<ArchiveCommandResult> {
   let archiveRecord: { id: string } | null = null;
   let commandRecord: { id: string } | null = null;
@@ -1072,6 +1525,8 @@ async function writeTaskArchiveAndCommand(
       user_input: message,
       task_brief: processedCommand?.task_brief,
       goal: processedCommand?.goal,
+      // Sprint 60P-H1: 存入 slow_execution，供 slow-worker-loop 读取 traceId
+      slow_execution: { traceId },
     });
     await TaskArchiveEventRepo.create({
       archive_id: archiveRecord.id,
@@ -1116,7 +1571,7 @@ async function routeByDecision(
   decision: ManagerDecision,
   ctx: RouteContext
 ): Promise<LLMNativeRouterResult> {
-  const { message, user_id, session_id, language, reqApiKey, raw, delegation_log_id } = ctx;
+  const { message, user_id, session_id, language, reqApiKey, raw, delegation_log_id, traceId } = ctx;
 
   switch (decision.decision_type) {
     case "direct_answer": {
@@ -1225,6 +1680,7 @@ async function routeByDecision(
       const { archiveRecord, commandRecord } = await writeTaskArchiveAndCommand(
         taskId, decision, message, phase4Result.processedCommand,
         session_id, user_id, "delegate_to_slow", "slow_worker",
+        traceId ?? taskId, // 用 traceId 或 taskId 作为 fallback
       );
 
       return {
@@ -1281,6 +1737,7 @@ async function routeByDecision(
       const { archiveRecord, commandRecord } = await writeTaskArchiveAndCommand(
         taskId, decision, message, phase4Result.processedCommand,
         session_id, user_id, "execute_task", "execute_worker",
+        traceId ?? taskId, // 用 traceId 或 taskId 作为 fallback
       );
 
       // TaskPlanner 生成执行计划

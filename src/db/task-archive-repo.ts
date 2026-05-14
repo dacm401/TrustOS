@@ -30,14 +30,17 @@ export const TaskArchiveRepo = {
     user_input: string;
     task_brief?: string;
     goal?: string;
+    /** Sprint 60P-H1: 初始 slow_execution 元数据（可选，用于传递 traceId） */
+    slow_execution?: Record<string, unknown>;
   }): Promise<{ id: string }> {
     const id = uuid();
+    const slowExecJson = input.slow_execution ? JSON.stringify(input.slow_execution) : '{}';
     await query(
       `INSERT INTO task_archives
         (id, session_id, user_id, manager_decision, command,
          user_input, task_brief, state, status, constraints,
          fast_observations, slow_execution)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'delegated', 'pending', '{}', '[]', '{}')`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'delegated', 'pending', '{}', '[]', $8)`,
       [
         id,
         input.session_id,
@@ -46,6 +49,7 @@ export const TaskArchiveRepo = {
         input.decision.command ? JSON.stringify(input.decision.command) : '{}',
         input.user_input,
         input.task_brief ? JSON.stringify({ brief: input.task_brief, goal: input.goal }) : null,
+        slowExecJson,
       ]
     );
     return { id };
@@ -162,13 +166,15 @@ export const TaskArchiveRepo = {
 
   /**
    * 更新 slow_execution（Worker 执行完成后写入）。
+   * Sprint 60P-H1: 使用 JSON Merge Patch（slow_execution || $1）保留原有字段（如 traceId）。
+   * 避免 setSlowExecution 完全覆盖 createArchive 时写入的 traceId。
    */
   async setSlowExecution(
     archiveId: string,
     execution: Record<string, unknown>
   ): Promise<void> {
     await query(
-      `UPDATE task_archives SET slow_execution = $1 WHERE id = $2`,
+      `UPDATE task_archives SET slow_execution = slow_execution || $1::jsonb WHERE id = $2`,
       [JSON.stringify(execution), archiveId]
     );
   },

@@ -20,6 +20,7 @@ import { getContextUserId } from "../middleware/identity.js";
 // SSE 流式轮询（从 orchestrator.ts 迁移出来）
 import { pollArchiveAndYield } from "../services/phase3/sse-poller.js";
 import { routeWithManagerDecision } from "../services/llm-native-router.js";
+import { TaskArchiveRepo } from "../db/task-archive-repo.js";
 // Sprint 63: 跨会话上下文
 import { buildCrossSessionContext } from "../services/cross-session-context.js";
 // Sprint 65: Permission 对话流 + Operation Auth Matrix
@@ -399,7 +400,7 @@ chatRouter.post("/chat", async (c) => {
               const isLineageRevision = Boolean(activeArtifact && artifactRevisionIntent && llmNativeResult?.delegation);
 
               // Provenance: Worker 产出事件 — 使用 envelope 生成智能 summaryForManager
-              if (normalizedEvent.type === "result" || normalizedEvent.type === "worker_result") {
+              if (normalizedEvent.type === "result") {
                 const envelope = buildWorkerResultEnvelope({
                   content: normalizedEvent.stream ?? "",
                   taskId: archiveId,
@@ -427,6 +428,153 @@ chatRouter.post("/chat", async (c) => {
             task_id: archiveId,
             meta: { origin: "system", contentKind: "status" },
           })}\n\n`);
+
+          // Sprint 60P-H1: SSE 流结束后，从 DB 重查 Worker 实际 metrics，重建 requestSummary
+          // 此时 pollArchiveAndYield 已返回（Worker 已完成，archive.slow_execution 已写入）
+          if (llmNativeResult.requestSummary && llmNativeResult.delegation) {
+            const rs = llmNativeResult.requestSummary;
+            const rsStartTime = Date.now() - rs.totalLatencyMs; // 推算请求开始时间
+
+            // 重查 archive，获取 Worker 实际执行数据
+            let workerInputTokens = 0;
+            let workerOutputTokens = 0;
+            let workerCostUsd = 0;
+            let workerLatencyMs = 0;
+            let workerModelName = "unknown";
+            try {
+              const archive = await TaskArchiveRepo.getById(archiveId!);
+              if (archive?.slow_execution && typeof archive.slow_execution === "object") {
+                const exec = archive.slow_execution as Record<string, unknown>;
+                workerInputTokens = (exec.tokens_input as number) ?? 0;
+                workerOutputTokens = (exec.tokens_output as number) ?? 0;
+                workerCostUsd = (exec.cost_usd as number) ?? 0;
+                workerLatencyMs = (exec.duration_ms as number) ?? 0;
+                workerModelName = (exec.model_used as string) || config.slowModel;
+              }
+            } catch (e: any) {
+              console.warn("[chat] Failed to refetch archive for ledger rebuild:", e.message);
+            }
+
+            // 重建 entries：bypass 路径 entries=[]，需要注入 Worker entry
+            const hasWorkerData = workerInputTokens > 0 || workerOutputTokens > 0 || workerLatencyMs > 0;
+            const entries = hasWorkerData
+              ? [
+                  ...rs.entries,
+                  {
+                    traceId: rs.traceId,
+                    modelRole: "worker" as const,
+                    modelName: workerModelName,
+                    inputTokens: workerInputTokens,
+                    outputTokens: workerOutputTokens,
+                    estimatedCost: workerCostUsd,
+                    latencyMs: workerLatencyMs,
+                    startedAt: rsStartTime,
+                    completedAt: Date.now(),
+                    usedAuthOverride: false,
+                    wasCircuitBroken: false,
+                    archiveId: archiveId,
+                    taskId: archiveId,
+                  },
+                ]
+              : rs.entries;
+
+            const totalInputTokens = entries.reduce((s, e) => s + e.inputTokens, 0);
+            const totalOutputTokens = entries.reduce((s, e) => s + e.outputTokens, 0);
+            const estimatedTotalCost = entries.reduce((s, e) => s + e.estimatedCost, 0);
+            const managerModelCalls = entries.filter((e) => e.modelRole === "manager").length;
+            const slowModelCalls = entries.filter((e) => e.modelRole === "worker").length;
+            const workerModelCalls = entries.filter((e) => e.modelRole === "worker_direct_reply").length;
+            const managerLatency = entries
+              .filter((e) => e.modelRole === "manager")
+              .reduce((s, e) => s + e.latencyMs, 0);
+            const totalLatencyMs = Date.now() - rsStartTime;
+            const routerTaxRatio = totalLatencyMs > 0 ? managerLatency / totalLatencyMs : 0;
+
+            const rebuiltSummary = {
+              ...rs,
+              totalLatencyMs,
+              totalModelCalls: entries.length,
+              managerModelCalls,
+              slowModelCalls,
+              workerModelCalls,
+              totalInputTokens,
+              totalOutputTokens,
+              estimatedTotalCost,
+              routerTaxRatio: Math.round(routerTaxRatio * 10000) / 10000,
+              delegationAfterManager: true,
+              entries,
+            };
+
+            const entrySummary = rebuiltSummary.entries.map((e) => ({
+              role: e.modelRole,
+              model: e.modelName,
+              ms: e.latencyMs,
+              inTk: e.inputTokens,
+              outTk: e.outputTokens,
+              cost: e.estimatedCost.toFixed(6),
+              cb: e.wasCircuitBroken,
+            }));
+            console.log(JSON.stringify({
+              msg: "[CALL_LEDGER] Request complete",
+              traceId: rebuiltSummary.traceId,
+              userId: rebuiltSummary.userId,
+              sessionId: rebuiltSummary.sessionId,
+              totalMs: rebuiltSummary.totalLatencyMs,
+              modelCalls: rebuiltSummary.totalModelCalls,
+              managerCalls: rebuiltSummary.managerModelCalls,
+              workerCalls: rebuiltSummary.workerModelCalls,
+              slowModelCalls: rebuiltSummary.slowModelCalls,
+              totalInTk: rebuiltSummary.totalInputTokens,
+              totalOutTk: rebuiltSummary.totalOutputTokens,
+              estCost: rebuiltSummary.estimatedTotalCost.toFixed(6),
+              routerTaxRatio: rebuiltSummary.routerTaxRatio.toFixed(3),
+              decision: rebuiltSummary.decisionType,
+              layer: rebuiltSummary.routingLayer,
+              delegated: rebuiltSummary.delegationAfterManager,
+              policyRoute: rebuiltSummary.policyRoute,
+              managerLlmBypassed: rebuiltSummary.managerLlmBypassed,
+              bypassReason: rebuiltSummary.bypassReason,
+              security: rebuiltSummary.securityScope,
+              fastPath: rebuiltSummary.fastPathHeuristic,
+              entries: entrySummary,
+            }));
+          } else if (llmNativeResult.requestSummary) {
+            // 无 delegation 路径（direct_answer 等），直接用原始 requestSummary
+            const rs = llmNativeResult.requestSummary;
+            const entrySummary = rs.entries.map((e) => ({
+              role: e.modelRole,
+              model: e.modelName,
+              ms: e.latencyMs,
+              inTk: e.inputTokens,
+              outTk: e.outputTokens,
+              cost: e.estimatedCost.toFixed(6),
+              cb: e.wasCircuitBroken,
+            }));
+            console.log(JSON.stringify({
+              msg: "[CALL_LEDGER] Request complete",
+              traceId: rs.traceId,
+              userId: rs.userId,
+              sessionId: rs.sessionId,
+              totalMs: rs.totalLatencyMs,
+              modelCalls: rs.totalModelCalls,
+              managerCalls: rs.managerModelCalls,
+              workerCalls: rs.workerModelCalls,
+              slowModelCalls: rs.slowModelCalls,
+              totalInTk: rs.totalInputTokens,
+              totalOutTk: rs.totalOutputTokens,
+              estCost: rs.estimatedTotalCost.toFixed(6),
+              routerTaxRatio: rs.routerTaxRatio.toFixed(3),
+              decision: rs.decisionType,
+              layer: rs.routingLayer,
+              delegated: rs.delegationAfterManager,
+              policyRoute: rs.policyRoute,
+              managerLlmBypassed: rs.managerLlmBypassed,
+              bypassReason: rs.bypassReason,
+              security: rs.securityScope,
+              fastPath: rs.fastPathHeuristic,
+              entries: entrySummary,
+            }));
+          }
         } catch (e: any) {
           console.error("[stream-llm] SSE error:", e?.message ?? e);
         }
@@ -521,6 +669,44 @@ chatRouter.post("/chat", async (c) => {
         response_text: llmNativeResult.message ?? "",
       },
     }).catch((e) => console.warn("[chat] Failed to log llm-native decision:", e));
+
+    // Sprint 59P: 结构化 Call Ledger 日志输出（非 SSE 分支）
+    if (llmNativeResult.requestSummary) {
+      const rs = llmNativeResult.requestSummary;
+      const logLine = {
+        msg: "[CALL_LEDGER] Request complete",
+        traceId: rs.traceId,
+        userId: rs.userId,
+        sessionId: rs.sessionId,
+        totalMs: rs.totalLatencyMs,
+        modelCalls: rs.totalModelCalls,
+        managerCalls: rs.managerModelCalls,
+        workerCalls: rs.workerModelCalls,
+        slowModelCalls: rs.slowModelCalls,
+        totalInTk: rs.totalInputTokens,
+        totalOutTk: rs.totalOutputTokens,
+        estCost: rs.estimatedTotalCost.toFixed(6),
+        routerTaxRatio: rs.routerTaxRatio.toFixed(3),
+        decision: rs.decisionType,
+        layer: rs.routingLayer,
+        delegated: rs.delegationAfterManager,
+        policyRoute: rs.policyRoute,
+        managerLlmBypassed: rs.managerLlmBypassed,
+        bypassReason: rs.bypassReason,
+        security: rs.securityScope,
+        fastPath: rs.fastPathHeuristic,
+        entries: rs.entries.map((e: any) => ({
+          role: e.modelRole,
+          model: e.modelName,
+          ms: e.latencyMs,
+          inTk: e.inputTokens,
+          outTk: e.outputTokens,
+          cost: e.estimatedCost.toFixed(6),
+          cb: e.wasCircuitBroken,
+        })),
+      };
+      console.log(JSON.stringify(logLine));
+    }
 
     // delegation 触发但 archive 未创建 → 立即返回，不走慢模型等待
     if (llmNativeResult.delegation && !llmNativeResult.archive_id) {

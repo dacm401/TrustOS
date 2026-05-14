@@ -66,6 +66,17 @@ async function executeDelegateCommand(
   await TaskCommandRepo.updateStatus(id, "running", { started_at: new Date() });
   await TaskArchiveRepo.updateState(archive_id, "running" as TaskState);
 
+  // Sprint 60P-H1: 从 archive slow_execution 读取 traceId（用于关联 worker ledger 与 request ledger）
+  let traceId: string | undefined;
+  try {
+    const archive = await TaskArchiveRepo.getById(archive_id);
+    if (archive?.slow_execution && typeof archive.slow_execution === "object") {
+      traceId = (archive.slow_execution as Record<string, unknown>).traceId as string | undefined;
+    }
+  } catch (e: any) {
+    console.warn(`[slow-worker] Could not read traceId from archive ${archive_id}:`, e.message);
+  }
+
   try {
     // 构造 Worker Prompt：只读 Archive + Command，不读 history
     const taskBrief = payload_json.task_brief ?? "";
@@ -232,6 +243,22 @@ async function executeDelegateCommand(
       }
       throw validErr;
     }
+
+    // Sprint 60P-H1: 发出 [CALL_LEDGER_WORKER] 日志，供按 traceId 关联 request ledger
+    console.log(JSON.stringify({
+      msg: "[CALL_LEDGER_WORKER] Worker model call complete",
+      traceId: traceId ?? null,
+      archiveId: archive_id,
+      taskId: task_id,
+      model: slowModel,
+      modelRole: "worker",
+      inputTokens,
+      outputTokens,
+      estimatedCost: costUsd,
+      latencyMs: totalMs,
+      startedAt: startTime,
+      completedAt: Date.now(),
+    }));
 
     console.log(`[slow-worker] Completed task ${task_id} in ${totalMs}ms, ${inputTokens}+${outputTokens} tokens`);
   } catch (err: any) {
