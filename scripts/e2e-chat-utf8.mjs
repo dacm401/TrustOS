@@ -212,6 +212,7 @@ async function sendMessage(message, history) {
   let ledger = null;
   let artifactId = undefined;
   let taskId = undefined;
+  let artifactMeta = null; // Sprint 60P-H2: artifact metadata for next-turn revision detection
 
   const reader = resp.body.getReader();
   let buffer = "";
@@ -237,6 +238,8 @@ async function sendMessage(message, history) {
       }
       if (event.type === "done") {
         if (event.task_id) taskId = event.task_id;
+        // Sprint 60P-H2: 捕获 artifactMeta，用于下一轮 history 重建
+        if (event.artifactMeta) artifactMeta = event.artifactMeta;
       }
       if (event.type === "artifact" || event.artifact_id) {
         artifactId = event.artifact_id ?? event.artifactId;
@@ -262,7 +265,7 @@ async function sendMessage(message, history) {
 
   // ledger 可能通过 console.log 输出到 server 日志，此处无法直接读取
   // 实际验证通过观察服务端日志的 [CALL_LEDGER] 行
-  return { reply, ledger, artifactId: artifactId ?? taskId };
+  return { reply, ledger, artifactId: artifactId ?? taskId, artifactMeta };
 }
 
 // ── Parse ledger from server log line ─────────────────────────────────────────
@@ -308,7 +311,7 @@ async function main() {
     }
     const totalMs = Date.now() - t0;
 
-    const { reply, ledger, artifactId } = result;
+    const { reply, ledger, artifactId, artifactMeta } = result;
     const preview = reply.slice(0, 120).replace(/\n/g, " ");
     console.log(`  Reply   : ${preview}${reply.length > 120 ? "..." : ""}`);
     console.log(`  TotalMs : ${totalMs}ms`);
@@ -327,8 +330,22 @@ async function main() {
     }
 
     // Build history for next turn
+    // Sprint 60P-H2 Evidence Patch: 若有 artifactMeta，附加 meta 字段
+    // 这样 extractActiveArtifactContext 能找到 origin=worker 的消息，从而触发 direct_artifact_revision
     history.push({ role: "user", content: msg });
-    history.push({ role: "assistant", content: reply });
+    const assistantEntry = { role: "assistant", content: reply };
+    if (artifactMeta && artifactMeta.origin === "worker") {
+      assistantEntry.meta = {
+        origin: artifactMeta.origin,
+        contentKind: artifactMeta.contentKind,
+        taskId: artifactMeta.taskId,
+        artifactId: artifactMeta.artifactId,
+        summaryForManager: artifactMeta.summaryForManager,
+        revisionOfArtifactId: artifactMeta.revisionOfArtifactId,
+        revisionOfTaskId: artifactMeta.revisionOfTaskId,
+      };
+    }
+    history.push(assistantEntry);
 
     results.push({
       msgIndex: i + 1,

@@ -385,6 +385,10 @@ chatRouter.post("/chat", async (c) => {
               revisionOfTaskId: artifactRevisionIntent ? activeArtifact?.taskId : undefined,
             });
 
+            // Sprint 60P-H2 Evidence Patch: 捕获 SSE result 事件的 artifact meta
+            // 供下一轮 extractActiveArtifactContext 识别 revision source
+            let artifactMetaFromSSE: Record<string, unknown> | null = null;
+
             console.log("[chat] entering pollArchiveAndYield for task:", archiveId);
             for await (const event of pollArchiveAndYield(archiveId!, lang, llmNativeResult.delegation_log_id, reqApiKey)) {
               // Debug: 每个 SSE event 都打一条，streaming 时太吵，默认注释掉
@@ -411,9 +415,19 @@ chatRouter.post("/chat", async (c) => {
                   revisionOfArtifactId: isLineageRevision ? activeArtifact!.artifactId : undefined,
                   revisionOfTaskId: isLineageRevision ? activeArtifact!.taskId : undefined,
                 });
-                (normalizedEvent as any).meta = {
+                normalizedEvent.meta = {
                   ...envelope.meta,
                   summaryForManager: envelope.brief.summaryForManager,
+                };
+                // Sprint 60P-H2 Evidence Patch: 捕获 meta 供 done 事件回传
+                artifactMetaFromSSE = {
+                  origin: envelope.meta.origin,
+                  contentKind: envelope.meta.contentKind,
+                  taskId: archiveId,
+                  artifactId: archiveId,
+                  summaryForManager: envelope.brief.summaryForManager,
+                  revisionOfArtifactId: envelope.meta.revisionOfArtifactId,
+                  revisionOfTaskId: envelope.meta.revisionOfTaskId,
                 };
               }
               await s.write(`data: ${JSON.stringify(normalizedEvent)}\n\n`);
@@ -542,7 +556,8 @@ chatRouter.post("/chat", async (c) => {
             }));
           }
 
-          // Done — 嵌入 ledger 字段（供 harness SSE 解析）
+          // Done — 嵌入 ledger + artifactMeta 字段（供 harness SSE 解析）
+          // Sprint 60P-H2 Evidence Patch: artifactMeta 让下一轮能识别 revision source
           await s.write(`data: ${JSON.stringify({
             type: "done",
             stream: llmNativeResult.delegation
@@ -551,6 +566,7 @@ chatRouter.post("/chat", async (c) => {
             routing_layer: llmNativeResult.routing_layer,
             task_id: archiveId,
             ledger: ledgerPayload,
+            artifactMeta: artifactMetaFromSSE ?? null,  // ← 让 harness 能重建带 meta 的 history
             meta: { origin: "system", contentKind: "status" },
           })}\n\n`);
         } catch (e: any) {
