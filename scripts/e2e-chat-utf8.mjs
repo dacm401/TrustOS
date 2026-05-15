@@ -20,6 +20,8 @@
 
 import { parseArgs } from "node:util";
 
+const pad = (s, n) => String(s).padEnd(n, " ").slice(0, n);
+
 // ── CLI args ──────────────────────────────────────────────────────────────────
 
 const { values: args } = parseArgs({
@@ -72,10 +74,103 @@ const SCENARIOS = {
  * }} LedgerResult
  */
 
+// ── Ledger merge helper ─────────────────────────────────────────────────────
+
+/**
+ * 深度合并两个 ledger 对象。entries 数组以 source 为主（覆盖），其他字段浅合并。
+ */
+function mergeLedger(base, source) {
+  if (!source) return base ?? {};
+  if (!base) return source;
+  const merged = { ...base, ...source };
+  // entries 保留 source 的（通常 done 事件里的最完整）
+  if (source.entries?.length) merged.entries = source.entries;
+  return merged;
+}
+
+// ── Ledger summary formatter ────────────────────────────────────────────────
+
+/**
+ * 从 ledger 对象提取关键指标，打印格式化摘要表。
+ * ledger 结构（来自 SSE event.ledger）：
+ * {
+ *   managerCalls, workerCalls, totalModelCalls,
+ *   entries: [{ role, model, inputTokens, outputTokens,
+ *               latencyMs, estimatedCostUsd, pricingKnown, pricingSource }],
+ *   security: { sentArtifactContentToManagerRemote, sentArtifactContentToWorkerRemote,
+ *               sentRawHistoryToWorkerRemote, sentRawMemoryToWorkerRemote,
+ *               sensitiveMemoryWasSent, artifactContentBytesToWorker, ... },
+ *   securityScope: { ... }   // 可能放在 securityScope 字段
+ * }
+ */
+function printLedgerSummary(ledger) {
+  if (!ledger) {
+    console.log("  Ledger  : (not in SSE — check server log [CALL_LEDGER])");
+    return;
+  }
+
+  const mc = ledger.managerCalls ?? "?";
+  const wc = ledger.workerCalls ?? "?";
+  const tc = ledger.totalModelCalls ?? "?";
+
+  console.log(`  ┌─ Ledger ─────────────────────────────────────────────`);
+  console.log(`  │  managerCalls=${mc}  workerCalls=${wc}  totalModelCalls=${tc}`);
+
+  const entries = ledger.entries ?? [];
+  if (entries.length > 0) {
+    console.log(`  │  Entries:`);
+    for (const e of entries) {
+      const role = e.modelRole ?? e.role ?? "?";
+      const model = e.model ?? "?";
+      const inTk = e.inputTokens ?? "?";
+      const outTk = e.outputTokens ?? "?";
+      const ms = e.latencyMs ?? "?";
+      const known = e.pricingKnown !== undefined ? String(e.pricingKnown) : "?";
+      const cost = e.estimatedCostUsd != null
+        ? `$${e.estimatedCostUsd.toFixed(6)}`
+        : (e.estimatedCost != null ? `$${Number(e.estimatedCost).toFixed(6)}` : "null");
+      const src = e.pricingSource ?? (known === "true" ? "configured" : "unknown");
+      console.log(
+        `  │    [${role}] ${model}  in=${inTk} out=${outTk} ms=${ms}  cost=${cost}  known=${known}(${src})`,
+      );
+    }
+  } else {
+    console.log(`  │  Entries: (empty)`);
+  }
+
+  // Security Scope — 从 ledger.security 或 ledger.securityScope 提取
+  const sec = ledger.security ?? ledger.securityScope ?? null;
+  if (sec && typeof sec === "object") {
+    const fields = [
+      ["artifactToManager",   sec.sentArtifactContentToManagerRemote],
+      ["artifactToWorker",    sec.sentArtifactContentToWorkerRemote],
+      ["rawHistoryToWorker",  sec.sentRawHistoryToWorkerRemote],
+      ["rawMemoryToWorker",   sec.sentRawMemoryToWorkerRemote],
+      ["sensitiveMemSent",     sec.sensitiveMemoryWasSent],
+      ["artifactBytesWorker", sec.artifactContentBytesToWorker],
+      ["remoteCtxManager",    sec.remoteContextBytesToManager],
+      ["remoteCtxWorker",     sec.remoteContextBytesToWorker],
+    ];
+    const shown = fields.filter(([, v]) => v !== undefined && v !== null);
+    if (shown.length > 0) {
+      console.log(`  │  Security Scope:`);
+      for (const [k, v] of shown) {
+        console.log(`  │    ${k} = ${JSON.stringify(v)}`);
+      }
+    }
+  }
+
+  console.log(`  └─────────────────────────────────────────────────────`);
+}
+
+// ── Lineage tracker ──────────────────────────────────────────────────────────
+
+const lineage = []; // [{ artifactId, revisionOf, msgIndex }]
+
 // ── Send message (SSE) ────────────────────────────────────────────────────────
 
 /**
- * 发送单条消息，返回 assistant 回复内容 + ledger 数据。
+ * 发送单条消息，返回 assistant 回复内容 + ledger 数据 + artifactId。
  * @param {string} message
  * @param {Array<{role:string; content:string}>} history
  * @returns {Promise<{ reply: string; ledger: LedgerResult | null; artifactId?: string }>}
@@ -144,11 +239,21 @@ async function sendMessage(message, history) {
         if (event.task_id) taskId = event.task_id;
       }
       if (event.type === "artifact" || event.artifact_id) {
-        artifactId = event.artifact_id;
+        artifactId = event.artifact_id ?? event.artifactId;
       }
-      // 提取 ledger（从 data 块或 chunk 里的 JSON 注释）
-      if (event.type === "meta" && event.ledger) {
-        ledger = event.ledger;
+      // 提取 ledger（从 meta 或 ledger 事件）
+      if ((event.type === "meta" || event.type === "ledger" || event.type === "done") && event.ledger) {
+        ledger = mergeLedger(ledger, event.ledger);
+      }
+      // 直接在 event 顶层嵌入 security 时也提取
+      if ((event.type === "meta" || event.type === "done") && event.security) {
+        if (!ledger) ledger = {};
+        ledger.security = { ...(ledger.security ?? {}), ...event.security };
+      }
+      // securityScope 变体
+      if ((event.type === "meta" || event.type === "done") && event.securityScope) {
+        if (!ledger) ledger = {};
+        ledger.securityScope = { ...(ledger.securityScope ?? {}), ...event.securityScope };
       }
     }
   }
@@ -209,10 +314,16 @@ async function main() {
     console.log(`  TotalMs : ${totalMs}ms`);
     if (artifactId) console.log(`  ArtifactId/TaskId: ${artifactId}`);
 
-    if (ledger) {
-      console.log(`  Ledger  :`, JSON.stringify(ledger, null, 2));
-    } else {
-      console.log(`  Ledger  : (from server log — check [CALL_LEDGER] line in backend output)`);
+    // 打印格式化 ledger 摘要表
+    printLedgerSummary(ledger);
+
+    // 记录 lineage（用于追踪 revisionOf 链）
+    if (artifactId) {
+      const entry = { artifactId, revisionOf: ledger?.revisionOfArtifactId ?? null, msgIndex: i + 1 };
+      lineage.push(entry);
+      if (entry.revisionOf) {
+        console.log(`  Lineage : revisionOf = ${entry.revisionOf}`);
+      }
     }
 
     // Build history for next turn
@@ -234,6 +345,42 @@ async function main() {
   console.log("E2E Summary");
   console.log("=".repeat(70));
   console.log(`Session ID: ${SESSION_ID}`);
+  console.log(`\nArtifact Lineage Chain:`);
+  for (const entry of lineage) {
+    const revOf = entry.revisionOf ?? "(new artifact)";
+    console.log(`  MSG${entry.msgIndex}: artifact=${entry.artifactId ?? "?"}  revisionOf=${revOf}`);
+  }
+
+  console.log(`\nLedger Summary Table:`);
+  console.log(`  ${pad("MSG",4)} ${pad("managerCalls",12)} ${pad("workerCalls",12)} ${pad("totalCalls",11)} ${pad("estCost",18)} ${pad("known",6)} ${pad("estSource",12)}`);
+  console.log(`  ${"─".repeat(80)}`);
+
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    const led = r.ledger;
+    const mc  = led?.managerCalls    ?? "-";
+    const wc  = led?.workerCalls     ?? "-";
+    const tc  = led?.totalModelCalls ?? "-";
+    const entries = led?.entries ?? [];
+    // 取第一条 entry 的 cost 作为代表（通常只有一条 worker call）
+    const firstEntry = entries[0];
+    const cost = firstEntry
+      ? (firstEntry.estimatedCostUsd != null
+          ? `$${firstEntry.estimatedCostUsd.toFixed(6)}`
+          : (firstEntry.estimatedCost != null
+              ? `$${Number(firstEntry.estimatedCost).toFixed(6)}`
+              : "null"))
+      : "-";
+    const known = firstEntry
+      ? String(firstEntry.pricingKnown ?? "?")
+      : "-";
+    const src = firstEntry?.pricingSource ?? "-";
+
+    console.log(
+      `  ${pad(`MSG${i + 1}`, 4)} ${pad(String(mc), 12)} ${pad(String(wc), 12)} ${pad(String(tc), 11)} ${pad(cost, 18)} ${pad(known, 6)} ${pad(src, 12)}`,
+    );
+  }
+
   console.log(`\nVerification checklist (check server logs for [CALL_LEDGER]):\n`);
   console.log(`  MSG1: policyRoute=direct_create_artifact OR manager_llm_required→delegate`);
   console.log(`        workerCalls=1, artifact_A generated`);
