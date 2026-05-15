@@ -37,6 +37,8 @@ import { detectArtifactRevisionIntent } from "../services/context/artifact-revis
 import { extractActiveArtifactContext } from "../services/context/active-artifact.js";
 // Sprint 60P-H2: pricingKnown 支持
 import { calcActualCostEx } from "../config/pricing.js";
+// Sprint 61P: Context Packaging — Worker Context Package 组装函数
+import { buildWorkerContextPackage, type ContextPackageMode } from "../services/context/context-package.js";
 const chatRouter = new Hono();
 
 chatRouter.post("/chat", async (c) => {
@@ -238,6 +240,39 @@ chatRouter.post("/chat", async (c) => {
           activeArtifact,
         });
         console.log("[chat] routeWithManagerDecision done, decision_type:", llmNativeResult?.decision_type, "delegation:", !!llmNativeResult?.delegation);
+
+        // Sprint 61P: ContextPackage V0 trace — 仅用同步可用数据构建
+        // V0: confirmedFacts / evidenceContent / memorySummary / archivedArtifactSource = undefined（V1 并行拉取）
+        // archiveId / activeArtifact / lang / message 在此处已确定可用
+        const policyRoute = llmNativeResult.requestSummary?.policyRoute;
+        let contextPackageMode: ContextPackageMode = "full_delegation";
+        if (policyRoute === "direct_artifact_revision") contextPackageMode = "bypass_revision";
+        else if (policyRoute === "direct_create_artifact") contextPackageMode = "bypass_create";
+        const contextPackageTrace = buildWorkerContextPackage({
+          command: llmNativeResult.decision?.command as any ?? {
+            command_type: "delegate_analysis",
+            task_type: "analysis",
+            task_brief: "",
+            goal: "",
+          },
+          message: body.message ?? "",
+          language: features.language as "zh" | "en",
+          mode: contextPackageMode,
+          activeArtifactContext: activeArtifact,
+          // V0: 以下字段 V1 再并行拉取
+          confirmedFacts: undefined,
+          evidenceContent: undefined,
+          memorySummary: undefined,
+          archivedArtifactSource: undefined,
+        });
+        console.log("[context-package] SSE trace", {
+          traceId: llmNativeResult.requestSummary?.traceId,
+          mode: contextPackageMode,
+          policyRoute,
+          isRevisionTask: contextPackageTrace.isRevisionTask,
+          hasArchivedArtifact: contextPackageTrace.hasArchivedArtifact,
+          metrics: contextPackageTrace.metrics,
+        });
       } catch (e: any) {
         console.warn("[stream-llm] routeWithManagerDecision failed:", e.message);
         return c.json({ error: "LLM-native routing failed: " + e.message }, 500);
@@ -555,8 +590,9 @@ chatRouter.post("/chat", async (c) => {
             }));
           }
 
-          // Done — 嵌入 ledger + artifactMeta 字段（供 harness SSE 解析）
+          // Done — 嵌入 ledger + artifactMeta + contextPackage 字段（供 harness SSE 解析）
           // Sprint 60P-H2 Evidence Patch: artifactMeta 让下一轮能识别 revision source
+          // Sprint 61P: contextPackage 注入 Worker context 的正式边界 trace
           await s.write(`data: ${JSON.stringify({
             type: "done",
             stream: llmNativeResult.delegation
@@ -566,6 +602,15 @@ chatRouter.post("/chat", async (c) => {
             task_id: archiveId,
             ledger: ledgerPayload,
             artifactMeta: artifactMetaFromSSE ?? null,  // ← 让 harness 能重建带 meta 的 history
+            // Sprint 61P: ContextPackage V0 trace（V0 仅含同步数据；V1 扩展为完整 context）
+            contextPackage: {
+              mode: contextPackageTrace.mode,
+              isRevisionTask: contextPackageTrace.isRevisionTask,
+              hasArchivedArtifact: contextPackageTrace.hasArchivedArtifact,
+              taskTypeLabel: contextPackageTrace.taskTypeLabel,
+              metrics: contextPackageTrace.metrics,
+              boundary: contextPackageTrace.boundary,
+            },
             meta: { origin: "system", contentKind: "status" },
           })}\n\n`);
         } catch (e: any) {
