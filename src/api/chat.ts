@@ -279,6 +279,9 @@ chatRouter.post("/chat", async (c) => {
       return stream(c, async (s) => {
         console.log("[chat] SSE stream started, writing events...");
         try {
+          // Sprint 60P-H2 Evidence Patch: artifactMetaFromSSE 必须在 SSE callback 顶层声明
+          // （done 事件在 delegation block 结束后执行，需要访问此变量）
+          let artifactMetaFromSSE: Record<string, unknown> | null = null;
           // Stream V2: Thinking 状态 - 分析问题
           await s.write(`data: ${JSON.stringify({
             ...createThinkingEvent("analyzing", lang),
@@ -384,10 +387,6 @@ chatRouter.post("/chat", async (c) => {
               revisionOfArtifactId: artifactRevisionIntent ? activeArtifact?.artifactId : undefined,
               revisionOfTaskId: artifactRevisionIntent ? activeArtifact?.taskId : undefined,
             });
-
-            // Sprint 60P-H2 Evidence Patch: 捕获 SSE result 事件的 artifact meta
-            // 供下一轮 extractActiveArtifactContext 识别 revision source
-            let artifactMetaFromSSE: Record<string, unknown> | null = null;
 
             console.log("[chat] entering pollArchiveAndYield for task:", archiveId);
             for await (const event of pollArchiveAndYield(archiveId!, lang, llmNativeResult.delegation_log_id, reqApiKey)) {
