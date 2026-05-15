@@ -35,6 +35,8 @@ import { buildWorkerResultEnvelope } from "../services/context/worker-result-env
 import { detectArtifactRevisionIntent } from "../services/context/artifact-revision-intent.js";
 // Sprint 56: Artifact Revision Routing
 import { extractActiveArtifactContext } from "../services/context/active-artifact.js";
+// Sprint 60P-H2: pricingKnown 支持
+import { calcActualCostEx } from "../config/pricing.js";
 const chatRouter = new Hono();
 
 chatRouter.post("/chat", async (c) => {
@@ -457,6 +459,7 @@ chatRouter.post("/chat", async (c) => {
 
             // 重建 entries：bypass 路径 entries=[]，需要注入 Worker entry
             const hasWorkerData = workerInputTokens > 0 || workerOutputTokens > 0 || workerLatencyMs > 0;
+            const workerCostResult = calcActualCostEx(workerModelName, workerInputTokens, workerOutputTokens, workerCostUsd > 0 ? workerCostUsd : undefined);
             const entries = hasWorkerData
               ? [
                   ...rs.entries,
@@ -466,7 +469,9 @@ chatRouter.post("/chat", async (c) => {
                     modelName: workerModelName,
                     inputTokens: workerInputTokens,
                     outputTokens: workerOutputTokens,
-                    estimatedCost: workerCostUsd,
+                    estimatedCost: workerCostResult.estimatedCostUsd,
+                    pricingKnown: workerCostResult.pricingKnown,
+                    pricingSource: workerCostResult.pricingSource,
                     latencyMs: workerLatencyMs,
                     startedAt: rsStartTime,
                     completedAt: Date.now(),
@@ -480,7 +485,10 @@ chatRouter.post("/chat", async (c) => {
 
             const totalInputTokens = entries.reduce((s, e) => s + e.inputTokens, 0);
             const totalOutputTokens = entries.reduce((s, e) => s + e.outputTokens, 0);
-            const estimatedTotalCost = entries.reduce((s, e) => s + e.estimatedCost, 0);
+            // estimatedTotalCost：只要有一个 entry pricingKnown=false 且 null，整体为 null
+            const estimatedTotalCost = entries.some((e) => e.estimatedCost === null)
+              ? null
+              : entries.reduce((s, e) => (s as number) + (e.estimatedCost as number), 0 as number | null);
             const managerModelCalls = entries.filter((e) => e.modelRole === "manager").length;
             const slowModelCalls = entries.filter((e) => e.modelRole === "worker").length;
             const workerModelCalls = entries.filter((e) => e.modelRole === "worker_direct_reply").length;
@@ -511,7 +519,8 @@ chatRouter.post("/chat", async (c) => {
               ms: e.latencyMs,
               inTk: e.inputTokens,
               outTk: e.outputTokens,
-              cost: e.estimatedCost.toFixed(6),
+              cost: e.estimatedCost != null ? (e.estimatedCost as number).toFixed(6) : null,
+              pricingKnown: (e as any).pricingKnown ?? true,
               cb: e.wasCircuitBroken,
             }));
             console.log(JSON.stringify({
@@ -526,7 +535,7 @@ chatRouter.post("/chat", async (c) => {
               slowModelCalls: rebuiltSummary.slowModelCalls,
               totalInTk: rebuiltSummary.totalInputTokens,
               totalOutTk: rebuiltSummary.totalOutputTokens,
-              estCost: rebuiltSummary.estimatedTotalCost.toFixed(6),
+              estCost: rebuiltSummary.estimatedTotalCost != null ? (rebuiltSummary.estimatedTotalCost as number).toFixed(6) : null,
               routerTaxRatio: rebuiltSummary.routerTaxRatio.toFixed(3),
               decision: rebuiltSummary.decisionType,
               layer: rebuiltSummary.routingLayer,
@@ -547,7 +556,8 @@ chatRouter.post("/chat", async (c) => {
               ms: e.latencyMs,
               inTk: e.inputTokens,
               outTk: e.outputTokens,
-              cost: e.estimatedCost.toFixed(6),
+              cost: e.estimatedCost != null ? (e.estimatedCost as number).toFixed(6) : null,
+              pricingKnown: (e as any).pricingKnown ?? true,
               cb: e.wasCircuitBroken,
             }));
             console.log(JSON.stringify({
@@ -562,7 +572,7 @@ chatRouter.post("/chat", async (c) => {
               slowModelCalls: rs.slowModelCalls,
               totalInTk: rs.totalInputTokens,
               totalOutTk: rs.totalOutputTokens,
-              estCost: rs.estimatedTotalCost.toFixed(6),
+              estCost: rs.estimatedTotalCost != null ? (rs.estimatedTotalCost as number).toFixed(6) : null,
               routerTaxRatio: rs.routerTaxRatio.toFixed(3),
               decision: rs.decisionType,
               layer: rs.routingLayer,
@@ -685,7 +695,7 @@ chatRouter.post("/chat", async (c) => {
         slowModelCalls: rs.slowModelCalls,
         totalInTk: rs.totalInputTokens,
         totalOutTk: rs.totalOutputTokens,
-        estCost: rs.estimatedTotalCost.toFixed(6),
+        estCost: rs.estimatedTotalCost != null ? (rs.estimatedTotalCost as number).toFixed(6) : null,
         routerTaxRatio: rs.routerTaxRatio.toFixed(3),
         decision: rs.decisionType,
         layer: rs.routingLayer,
@@ -701,7 +711,8 @@ chatRouter.post("/chat", async (c) => {
           ms: e.latencyMs,
           inTk: e.inputTokens,
           outTk: e.outputTokens,
-          cost: e.estimatedCost.toFixed(6),
+          cost: e.estimatedCost != null ? (e.estimatedCost as number).toFixed(6) : null,
+          pricingKnown: e.pricingKnown ?? true,
           cb: e.wasCircuitBroken,
         })),
       };

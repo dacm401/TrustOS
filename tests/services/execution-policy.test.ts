@@ -39,6 +39,8 @@ function makeWorkerEntry(overrides: Partial<CallLedgerEntry> = {}): CallLedgerEn
     inputTokens: 500,
     outputTokens: 1200,
     estimatedCost: 0.0029,
+    pricingKnown: true,
+    pricingSource: "configured",
     latencyMs: 45000,
     startedAt: 1700000000000,
     completedAt: 1700000450000,
@@ -184,11 +186,15 @@ describe("CallLedgerEntry: Worker entry structure", () => {
       inputTokens: 800,
       outputTokens: 2000,
       estimatedCost: 0.0048,
+      pricingKnown: true,
+      pricingSource: "configured",
       latencyMs: 60000,
     });
     expect(entry.inputTokens).toBe(800);
     expect(entry.outputTokens).toBe(2000);
     expect(entry.estimatedCost).toBeCloseTo(0.0048);
+    expect(entry.pricingKnown).toBe(true);
+    expect(entry.pricingSource).toBe("configured");
     expect(entry.latencyMs).toBe(60000);
   });
 

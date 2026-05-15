@@ -10,6 +10,7 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
   // SiliconFlow / DeepSeek / Qwen
   "deepseek-ai/DeepSeek-V3":          { input: 0.27,   output: 1.1    },
   "deepseek-ai/DeepSeek-R1":          { input: 0.55,   output: 2.19  },
+  "deepseek-ai/DeepSeek-V4-Flash":    { input: 0.07,   output: 0.28   }, // SiliconFlow 公开价（2025-05）
   "Qwen/Qwen2.5-7B-Instruct":         { input: 0.5,    output: 1.0    },
   "Qwen/Qwen2.5-72B-Instruct":        { input: 0.4,    output: 0.4    },
 };
@@ -40,4 +41,42 @@ export function calcActualCost(
     (inputTokens * pricing.input + outputTokens * pricing.output) /
     1_000_000
   );
+}
+
+/** 扩展版：返回 pricingKnown 字段，避免未知模型静默返回 0 */
+export interface ActualCostResult {
+  /** 估算成本（美元）。若 pricingKnown=false 且无 fallback，则为 null */
+  estimatedCostUsd: number | null;
+  /** 价格表是否包含该模型 */
+  pricingKnown: boolean;
+  /** 价格来源 */
+  pricingSource: "configured" | "fallback" | "unknown";
+}
+
+export function calcActualCostEx(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  fallbackCostUsd?: number,
+): ActualCostResult {
+  const pricing = MODEL_PRICING[model];
+  if (pricing) {
+    return {
+      estimatedCostUsd: (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000,
+      pricingKnown: true,
+      pricingSource: "configured",
+    };
+  }
+  if (fallbackCostUsd != null && fallbackCostUsd > 0) {
+    return {
+      estimatedCostUsd: fallbackCostUsd,
+      pricingKnown: false,
+      pricingSource: "fallback",
+    };
+  }
+  return {
+    estimatedCostUsd: null,
+    pricingKnown: false,
+    pricingSource: "unknown",
+  };
 }

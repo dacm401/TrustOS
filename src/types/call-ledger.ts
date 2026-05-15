@@ -16,8 +16,12 @@ export interface CallLedgerEntry {
   inputTokens: number;
   /** 输出 token 数 */
   outputTokens: number;
-  /** 估算成本（美元） */
-  estimatedCost: number;
+  /** 估算成本（美元）。若价格表中无该模型，则为 null，严禁显示为 0 */
+  estimatedCost: number | null;
+  /** 价格是否已知（来自 pricing.ts 配置） */
+  pricingKnown: boolean;
+  /** 价格来源 */
+  pricingSource: "configured" | "fallback" | "unknown";
   /** 调用延迟（毫秒） */
   latencyMs: number;
   /** 调用开始时间戳 */
@@ -134,8 +138,8 @@ export interface RequestLedger {
   totalInputTokens: number;
   /** 总输出 token 数 */
   totalOutputTokens: number;
-  /** 估算总成本（美元） */
-  estimatedTotalCost: number;
+  /** 估算总成本（美元）。若含未知模型则为 null */
+  estimatedTotalCost: number | null;
   /** Router Tax Ratio = Manager LLM 延迟 / 总延迟 */
   routerTaxRatio: number;
   /** Manager 决策后是否委托了 Worker */

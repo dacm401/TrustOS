@@ -17,7 +17,7 @@ import { v4 as uuid } from "uuid";
 import { config } from "../config.js";
 import { callModelFull, callOpenAIWithOptions } from "../models/model-gateway.js";
 import { countTokens } from "../models/token-counter.js";
-import { calcActualCost } from "../config/pricing.js";
+import { calcActualCost, calcActualCostEx } from "../config/pricing.js";
 import type { ChatMessage } from "../types/index.js";
 import type {
   ManagerDecision,
@@ -427,13 +427,16 @@ export async function routeWithManagerDecision(
     const managerInputTokens = estimateManagerInputTokens(message, history.filter((m) => m.role !== "system").slice(-6), crossSessionContext);
     const managerOutputTokens = countTokens(managerOutput);
     const effectiveModel = fastModel || config.fastModel;
+    const managerCostResult = calcActualCostEx(effectiveModel, managerInputTokens, managerOutputTokens);
     callLedger.push({
       traceId: uuid(),
       modelRole: "manager",
       modelName: effectiveModel,
       inputTokens: managerInputTokens,
       outputTokens: managerOutputTokens,
-      estimatedCost: calcActualCost(effectiveModel, managerInputTokens, managerOutputTokens, 0),
+      estimatedCost: managerCostResult.estimatedCostUsd,
+      pricingKnown: managerCostResult.pricingKnown,
+      pricingSource: managerCostResult.pricingSource,
       latencyMs: managerCallLatencyMs,
       startedAt: managerCallStart,
       completedAt: Date.now(),
@@ -443,14 +446,16 @@ export async function routeWithManagerDecision(
   } catch (e: any) {
     if (e instanceof CircuitBreakerError) {
       managerWasCircuitBroken = true;
-      // Sprint 59P: 记录熔断调用（token 为 0，成本为 0）
+      // Sprint 59P: 记录熔断调用（token 为 0，成本为 null — 无实际调用发生）
       callLedger.push({
         traceId: uuid(),
         modelRole: "manager",
         modelName: fastModel || config.fastModel,
         inputTokens: 0,
         outputTokens: 0,
-        estimatedCost: 0,
+        estimatedCost: null,
+        pricingKnown: false,
+        pricingSource: "unknown" as const,
         latencyMs: 0,
         startedAt: Date.now(),
         completedAt: Date.now(),
@@ -718,13 +723,16 @@ export async function routeWithManagerDecision(
         const drInputTokens = estimateDirectReplyInputTokens(message, history.filter((m) => m.role !== "system").slice(-6), crossSessionContext);
         const drOutputTokens = countTokens(realReply);
         const effectiveModel = fastModel || config.fastModel;
+        const drCostResult = calcActualCostEx(effectiveModel, drInputTokens, drOutputTokens);
         callLedger.push({
           traceId: uuid(),
           modelRole: "worker_direct_reply",
           modelName: effectiveModel,
           inputTokens: drInputTokens,
           outputTokens: drOutputTokens,
-          estimatedCost: calcActualCost(effectiveModel, drInputTokens, drOutputTokens, 0),
+          estimatedCost: drCostResult.estimatedCostUsd,
+          pricingKnown: drCostResult.pricingKnown,
+          pricingSource: drCostResult.pricingSource,
           latencyMs: directReplyLatencyMs,
           startedAt: directReplyStart,
           completedAt: Date.now(),
@@ -918,7 +926,10 @@ function buildRequestLedger(
   const totalLatencyMs = Date.now() - startTime;
   const totalInputTokens = callLedger.reduce((s, e) => s + e.inputTokens, 0);
   const totalOutputTokens = callLedger.reduce((s, e) => s + e.outputTokens, 0);
-  const estimatedTotalCost = callLedger.reduce((s, e) => s + e.estimatedCost, 0);
+  // estimatedTotalCost：任一 entry 为 null（未知定价）则整体为 null，避免静默显示 0
+  const estimatedTotalCost: number | null = callLedger.some((e) => e.estimatedCost === null)
+    ? null
+    : callLedger.reduce((s, e) => (s as number) + (e.estimatedCost as number), 0 as number);
   const managerModelCalls = callLedger.filter((e) => e.modelRole === "manager").length;
   const slowModelCalls = callLedger.filter((e) => e.modelRole === "worker").length;
   const workerModelCalls = callLedger.filter((e) => e.modelRole === "worker_direct_reply").length;
