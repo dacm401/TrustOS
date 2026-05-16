@@ -148,6 +148,17 @@ export interface RequestLedger {
   securityScope: SecurityScopeFlags;
   /** Sprint 60P: Execution Policy 路由 */
   policyRoute: ExecutionPolicyRoute;
+  /** Sprint 62P: Patch-first revision 结果 */
+  patch?: {
+    attempted: boolean;
+    applied: boolean;
+    fallbackToFullRewrite: boolean;
+    fallbackReason?: string;
+    operationCount?: number;
+    patchMode?: string;
+    sourceBytes: number;
+    outputBytes: number;
+  };
   /** Sprint 60P: Manager LLM 是否被绕过（Policy Layer 直接决策） */
   managerLlmBypassed: boolean;
   /** Sprint 60P: 绕过原因 */

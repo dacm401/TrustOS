@@ -403,6 +403,9 @@ export interface ContextPackageV1 {
 
   /** 创建时间 */
   createdAt: string;
+
+  /** Sprint 62P: 建议 Worker 输出模式（full=完整重写, patch=增量修改） */
+  preferredOutputMode?: "full" | "patch";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

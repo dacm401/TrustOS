@@ -16,6 +16,9 @@ import { TaskArchiveRepo, TaskCommandRepo, TaskWorkerResultRepo } from "../../db
 import type { ChatMessage, CommandPayload, TaskState, WorkerResult } from "../../types/index.js";
 // Sprint 57: Artifact revision source resolver
 import { resolveArtifactRevisionSource } from "../artifacts/artifact-source-resolver.js";
+// Sprint 62P: Patch-first Revision
+import type { PatchPlan, PatchResult, PatchOperation, PatchLedgerEntry } from "../patch/patch-types.js";
+import { applyPatchPlan } from "../patch/patch-applier.js";
 
 // 自适应轮询间隔
 function getPollInterval(elapsedMs: number): number {
@@ -188,6 +191,109 @@ async function executeDelegateCommand(
       throw modelErr;
     }
 
+    // ── Sprint 62P: Patch-first Revision V0 ─────────────────────────────────
+    // 尝试解析 Worker 输出为 PatchPlan JSON。如果成功且 patch 可应用，
+    // 用 patched content 替代 Worker 原始输出。如果失败 → fallback full rewrite。
+    // fallback-safe: 任何异常都不影响最终输出，只记录 ledger。
+    let patchEntry: PatchLedgerEntry | undefined;
+    if (isRevisionTask && originalArtifactContent) {
+      try {
+        // 尝试解析为 PatchPlan JSON
+        const trimmed = content.trim();
+        // 尝试找到 JSON 块（可能被 markdown ```json ``` 包裹）
+        const jsonMatch = trimmed.match(/```(?:json)?\s*({[\s\S]*?})\s*```/);
+        const jsonStr = jsonMatch ? jsonMatch[1] : (trimmed.startsWith("{") ? trimmed : null);
+
+        if (jsonStr) {
+          const parsed = JSON.parse(jsonStr) as Partial<PatchPlan>;
+          if (parsed && parsed.targetArtifactId && Array.isArray(parsed.operations)) {
+            const patchPlan: PatchPlan = {
+              patchId: parsed.patchId || `patch_${task_id?.slice(0, 8)}`,
+              traceId: traceId || "unknown",
+              targetArtifactId: parsed.targetArtifactId,
+              revisionInstruction: payload_json.task_brief ?? "",
+              operations: parsed.operations as PatchOperation[],
+              confidence: parsed.confidence ?? 0.5,
+              fallbackToFullRewrite: parsed.fallbackToFullRewrite ?? false,
+            };
+
+            console.log(`[patch-first] Parsed PatchPlan: ${patchPlan.operations.length} ops, confidence=${patchPlan.confidence}, fallback=${patchPlan.fallbackToFullRewrite}`);
+
+            if (!patchPlan.fallbackToFullRewrite) {
+              const patchResult: PatchResult = applyPatchPlan(originalArtifactContent, patchPlan);
+
+              if (patchResult.ok && patchResult.content) {
+                console.log(`[patch-first] ✅ Patch applied: ${patchResult.appliedOperations}/${patchResult.totalOperations} ops, ${patchResult.sourceBytes} → ${patchResult.outputBytes} bytes`);
+                content = patchResult.content;
+                patchEntry = {
+                  attempted: true,
+                  applied: true,
+                  fallbackToFullRewrite: false,
+                  operationCount: patchResult.appliedOperations,
+                  patchMode: undefined,
+                  sourceBytes: patchResult.sourceBytes,
+                  outputBytes: patchResult.outputBytes,
+                };
+              } else {
+                console.warn(`[patch-first] ❌ Patch apply failed: ${patchResult.errors?.join("; ") ?? "unknown"}`);
+                patchEntry = {
+                  attempted: true,
+                  applied: false,
+                  fallbackToFullRewrite: true,
+                  fallbackReason: patchResult.errors?.[0] ?? "patch_apply_failed",
+                  operationCount: patchResult.appliedOperations,
+                  sourceBytes: originalArtifactContent.length,
+                  outputBytes: content.length, // fallback to full rewrite content
+                };
+              }
+            } else {
+              console.log(`[patch-first] Worker indicated fallbackToFullRewrite=true, using full output`);
+              patchEntry = {
+                attempted: false,
+                applied: false,
+                fallbackToFullRewrite: true,
+                fallbackReason: "worker_indicated_fallback",
+                sourceBytes: originalArtifactContent.length,
+                outputBytes: content.length,
+              };
+            }
+          } else {
+            console.log(`[patch-first] JSON parsed but not valid PatchPlan (missing targetArtifactId or operations), using full output as fallback`);
+            patchEntry = {
+              attempted: true,
+              applied: false,
+              fallbackToFullRewrite: true,
+              fallbackReason: "invalid_patch_plan_structure",
+              sourceBytes: originalArtifactContent.length,
+              outputBytes: content.length,
+            };
+          }
+        } else {
+          console.log(`[patch-first] Not JSON output, using full output as fallback`);
+          patchEntry = {
+            attempted: true,
+            applied: false,
+            fallbackToFullRewrite: true,
+            fallbackReason: "not_json_output",
+            sourceBytes: originalArtifactContent.length,
+            outputBytes: content.length,
+          };
+        }
+      } catch (e: any) {
+        console.log(`[patch-first] Parse error: ${e.message}, using full output as fallback`);
+        patchEntry = {
+          attempted: true,
+          applied: false,
+          fallbackToFullRewrite: true,
+          fallbackReason: `parse_error: ${e.message}`,
+          sourceBytes: originalArtifactContent?.length ?? 0,
+          outputBytes: content.length,
+        };
+      }
+    } else {
+      console.log(`[patch-first] Not a revision task or no original artifact content; patch not attempted`);
+    }
+
     const totalMs = Date.now() - startTime;
     const costUsd = estimateCost(inputTokens, outputTokens, slowModel);
 
@@ -245,6 +351,7 @@ async function executeDelegateCommand(
     }
 
     // Sprint 60P-H1: 发出 [CALL_LEDGER_WORKER] 日志，供按 traceId 关联 request ledger
+    // Sprint 62P: 增加 patch-first 字段
     console.log(JSON.stringify({
       msg: "[CALL_LEDGER_WORKER] Worker model call complete",
       traceId: traceId ?? null,
@@ -258,6 +365,7 @@ async function executeDelegateCommand(
       latencyMs: totalMs,
       startedAt: startTime,
       completedAt: Date.now(),
+      patch: patchEntry ?? null,
     }));
 
     console.log(`[slow-worker] Completed task ${task_id} in ${totalMs}ms, ${inputTokens}+${outputTokens} tokens`);

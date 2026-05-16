@@ -50,6 +50,9 @@ export interface BuildContextPackageInput {
   artifactContentBytes?: number;
   artifactContentMode?: "none" | "summary" | "snippet" | "full";
   memorySummary?: string;
+
+  /** Sprint 62P: 是否建议 Worker 输出 patch 而非 full rewrite */
+  preferredOutputMode?: "full" | "patch";
 }
 
 // ── 核心 Builder ─────────────────────────────────────────────────────────────
@@ -76,6 +79,7 @@ export function buildContextPackage(
     artifactContentBytes = 0,
     artifactContentMode = "none",
     memorySummary,
+    preferredOutputMode,
   } = input;
 
   // ── 1. 确定 kind ───────────────────────────────────────────────────────
@@ -167,6 +171,7 @@ export function buildContextPackage(
     securityScope,
     metrics,
     createdAt: new Date().toISOString(),
+    preferredOutputMode,
   };
 }
 
@@ -205,5 +210,6 @@ export function contextPackageToLedgerExtract(
     sendArtifactToWorker: cp.securityScope.sendArtifactToWorker,
     sendRawHistoryToWorker: cp.securityScope.sendRawHistoryToWorker,
     sendMemoryToWorker: cp.securityScope.sendMemoryToWorker,
+    preferredOutputMode: cp.preferredOutputMode,
   };
 }

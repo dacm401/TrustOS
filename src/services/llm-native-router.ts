@@ -74,6 +74,8 @@ import { evaluateExecutionPolicy } from "./policy/execution-policy.js";
 // Sprint 61P: ContextPackage
 import { buildContextPackage } from "./context/context-package-builder.js";
 import type { ContextPackageV1 } from "./context/context-package.js";
+// Sprint 62P: Patch-first Revision
+import { isPatchableSmallEdit } from "./patch/patchability.js";
 
 export interface GatedDelegationContext {
   llmScores: Record<ManagerDecisionType, number>;
@@ -376,9 +378,18 @@ export async function routeWithManagerDecision(
       activeArtifact,
     });
 
+    // Sprint 62P: 判定是否为可 patch 的小修订
+    const patchDecision = (activeArtifact && revisionGuard.artifactRevisionIntent && policyDecision.route === "direct_artifact_revision")
+      ? isPatchableSmallEdit(message)
+      : { patchable: false, reason: "not revision", confidence: 1.0 };
+    console.log(`[patchability] patchable=${patchDecision.patchable}, reason="${patchDecision.reason}", confidence=${patchDecision.confidence}, patchMode=${patchDecision.patchMode}`);
+
     // 构造发给 Worker 的修订消息
     const gatedMessage = (activeArtifact && revisionGuard.artifactRevisionIntent)
-      ? `[Artifact Revision Task]\nArtifact ID: ${activeArtifact.artifactId || "unknown"}\nTask ID: ${activeArtifact.taskId || "unknown"}\nKnown summary: ${activeArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nImportant: This is a revision of an existing Worker artifact. Use the archived artifact as the source of truth. Return the revised complete artifact.`
+      ? (patchDecision.patchable
+        ? `[Artifact Revision Task]\nArtifact ID: ${activeArtifact.artifactId || "unknown"}\nTask ID: ${activeArtifact.taskId || "unknown"}\nKnown summary: ${activeArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nThis is a SMALL EDIT. If possible, output the revised artifact as a JSON patch plan instead of the full content. Format:\n{\n  "patchId": "...",\n  "targetArtifactId": "${activeArtifact.artifactId || "unknown"}",\n  "operations": [\n    { "op": "replace", "find": "target string", "replace": "replacement", "reason": "..." }\n  ],\n  "confidence": 0.85,\n  "fallbackToFullRewrite": false\n}\nIf the change is too complex for a patch, just output the full revised artifact as normal.`
+        : `[Artifact Revision Task]\nArtifact ID: ${activeArtifact.artifactId || "unknown"}\nTask ID: ${activeArtifact.taskId || "unknown"}\nKnown summary: ${activeArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nImportant: This is a revision of an existing Worker artifact. Use the archived artifact as the source of truth. Return the revised complete artifact.`
+      )
       : message;
 
     console.log(`[execution-policy] Bypass: ${policyDecision.route}, calling routeByGatedDecision directly (manager LLM skipped)`);
@@ -409,6 +420,7 @@ export async function routeWithManagerDecision(
       taskKind: policyDecision.route === "direct_artifact_revision" ? "revision" : "create",
       artifactContentBytes: activeArtifact ? countTokens(gatedMessage) : 0,
       artifactContentMode: policyDecision.route === "direct_artifact_revision" ? "full" : "none",
+      preferredOutputMode: patchDecision.patchable ? "patch" : "full",
     });
     gatedRouteResult.contextPackage = cp;
 
