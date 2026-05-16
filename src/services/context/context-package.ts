@@ -312,6 +312,101 @@ function buildRevisionUserMessage(
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sprint 61P: ContextPackage V1 — Runtime Audit Contract
+// PM spec: 每次 Worker 调用都生成结构化上下文包，记录 allowed/denied context
+// ───────────────────────────────────────────────────────────────────────────────
+
+/** ContextPackage 种类 — 标识本次 package 的任务类型 */
+export type ContextPackageKind =
+  | "artifact_create"      // 新建 artifact（policy route = direct_create_artifact）
+  | "artifact_revision"    // 修订 artifact（policy route = direct_artifact_revision）
+  | "direct_answer"        // 直接回答（无 Worker 调用）
+  | "manager_delegation";  // Manager 决定委托（policy route = manager_llm_required → delegate）
+
+/** ContextPackage 安全范围 — 记录每条信息发给了谁 */
+export interface ContextPackageSecurityScope {
+  /** artifact 原文是否发给 Manager 远端 */
+  sendArtifactToManager: boolean;
+  /** artifact 原文是否发给 Worker 远端 */
+  sendArtifactToWorker: boolean;
+  /** raw history 是否发给 Manager */
+  sendRawHistoryToManager: boolean;
+  /** raw history 是否发给 Worker */
+  sendRawHistoryToWorker: boolean;
+  /** memory 摘要是否发给 Manager */
+  sendMemoryToManager: boolean;
+  /** memory 摘要是否发给 Worker */
+  sendMemoryToWorker: boolean;
+  /** 是否含敏感标记的 memory 被发出 */
+  containsSensitiveMemory: boolean;
+}
+
+/** ContextPackage 引用 — 标识被引用的 artifact */
+export interface ContextPackageArtifactRef {
+  artifactId: string;
+  taskId?: string;
+  /** artifact 内容来源 */
+  source: "archive";
+  /** 内容交付模式 */
+  contentMode: "none" | "summary" | "snippet" | "full";
+  /** artifact 内容大小（bytes） */
+  contentBytes: number;
+  /** 给 Manager 看的摘要（不含原文） */
+  summaryForManager?: string;
+}
+
+/** ContextPackage — 运行时审计合同（Sprint 61P 新增） */
+export interface ContextPackageV1 {
+  /** 唯一 package ID */
+  packageId: string;
+  /** 关联的请求 trace ID */
+  traceId: string;
+  /** 任务种类 */
+  kind: ContextPackageKind;
+  /** policy route */
+  policyRoute: string;
+  /** 用户原始指令 */
+  userInstruction: string;
+
+  /** 被引用的 artifact（revision 时存在） */
+  targetArtifact?: ContextPackageArtifactRef;
+  /** revision 源 artifact ID */
+  revisionOfArtifactId?: string;
+  /** revision 源 task ID */
+  revisionOfTaskId?: string;
+
+  /** 允许发送给 Worker 的内容 */
+  allowedContext: {
+    artifactContent?: string;
+    artifactSummary?: string;
+    brief?: string;
+    historySummary?: string;
+    memorySummary?: string;
+  };
+  /** 明确拒绝发送的内容（类型字面量强制为 true） */
+  deniedContext: {
+    rawHistory: true;
+    rawMemory: true;
+    managerInternalReasoning: true;
+  };
+
+  /** 安全范围摘要 */
+  securityScope: ContextPackageSecurityScope;
+
+  /** 上下文度量 */
+  metrics: {
+    inputBytes: number;
+    artifactContentBytes: number;
+    estimatedInputTokens?: number;
+  };
+
+  /** 创建时间 */
+  createdAt: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
 // ── 便捷工具：从 artifactSource 转换为 ContextPackageRevisionSource ──────────────
 
 import type { ArtifactRevisionSource } from "../artifacts/artifact-source-resolver.js";

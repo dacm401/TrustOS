@@ -37,8 +37,9 @@ import { detectArtifactRevisionIntent } from "../services/context/artifact-revis
 import { extractActiveArtifactContext } from "../services/context/active-artifact.js";
 // Sprint 60P-H2: pricingKnown 支持
 import { calcActualCostEx } from "../config/pricing.js";
-// Sprint 61P: Context Packaging — 保留 ContextPackageMode 类型供 V1 使用
-import type { ContextPackageMode } from "../services/context/context-package.js";
+// Sprint 61P: Context Packaging
+import type { ContextPackageV1 } from "../services/context/context-package.js";
+import { contextPackageToLedgerExtract } from "../services/context/context-package-builder.js";
 const chatRouter = new Hono();
 
 chatRouter.post("/chat", async (c) => {
@@ -241,42 +242,16 @@ chatRouter.post("/chat", async (c) => {
         });
         console.log("[chat] routeWithManagerDecision done, decision_type:", llmNativeResult?.decision_type, "delegation:", !!llmNativeResult?.delegation);
 
-        // Sprint 61P: ContextPackage V0 trace
-        // 在 SSE callback 内部内联构建，避免 try 块内闭包 scope 问题
-        // 决策类型在 stream 发起时已确定（delegate_to_slow / direct_answer）
-        const cpDecisionType = llmNativeResult.decision_type ?? "direct_answer";
-        const cpIsDelegated = Boolean(llmNativeResult.delegation);
-        // V0 mode: 根据 decision_type 判断（V1 才用 policyRoute 精确区分）
-        let cpMode: "full_delegation" | "bypass_revision" | "bypass_create" = "full_delegation";
-        if (cpIsDelegated) {
-          // 有 delegation → 取决于是否有 activeArtifact（revision vs new）
-          if (activeArtifact) cpMode = "bypass_revision";
-          else cpMode = "full_delegation";
+        // Sprint 61P: ContextPackage V1 — trace from llm-native-router
+        if (llmNativeResult.contextPackage) {
+          console.log("[context-package] V1 trace", {
+            packageId: llmNativeResult.contextPackage.packageId,
+            kind: llmNativeResult.contextPackage.kind,
+            policyRoute: llmNativeResult.contextPackage.policyRoute,
+            securityScope: llmNativeResult.contextPackage.securityScope,
+            metrics: llmNativeResult.contextPackage.metrics,
+          });
         }
-        // 构建 trace（V0: 不访问 DB，只用同步数据）
-        const cpCommand = (llmNativeResult.decision?.command as any) ?? {
-          command_type: "delegate_analysis",
-          task_type: "analysis",
-          task_brief: "",
-          goal: "",
-        };
-        const cpMetrics = {
-          commandGoalLen: cpCommand.goal?.length ?? 0,
-          commandBriefLen: cpCommand.task_brief?.length ?? 0,
-          commandConstraintsCount: cpCommand.constraints?.length ?? 0,
-          archivedArtifactChars: 0,
-          confirmedFactsCount: 0,
-          evidenceContentCount: 0,
-          memorySummaryLen: 0,
-          totalContextChars: (cpCommand.goal?.length ?? 0) + (cpCommand.task_brief?.length ?? 0),
-        };
-        console.log("[context-package] SSE trace", {
-          traceId: llmNativeResult.requestSummary?.traceId,
-          mode: cpMode,
-          isDelegated: cpIsDelegated,
-          hasActiveArtifact: Boolean(activeArtifact),
-          metrics: cpMetrics,
-        });
       } catch (e: any) {
         console.warn("[stream-llm] routeWithManagerDecision failed:", e.message);
         return c.json({ error: "LLM-native routing failed: " + e.message }, 500);
@@ -599,7 +574,6 @@ chatRouter.post("/chat", async (c) => {
           // Sprint 61P: contextPackage 注入 Worker context 的正式边界 trace
           // 内联声明：在 await 之前声明，所有变量都在 SSE callback scope 内
           const doneIsDel = Boolean(llmNativeResult.delegation);
-          const doneCmd = (llmNativeResult.decision?.command as any) ?? null;
           const doneMsg = doneIsDel
             ? (lang === "zh" ? "✅ 完成" : "✅ Done")
             : (lang === "zh" ? "已返回答案" : "Answer ready");
@@ -611,17 +585,12 @@ chatRouter.post("/chat", async (c) => {
             ledger: ledgerPayload,
             artifactMeta: artifactMetaFromSSE ?? null,
             meta: { origin: "system", contentKind: "status" },
-            // Sprint 61P: ContextPackage V0 trace（所有变量在 SSE callback scope 内）
-            contextPackage: {
-              mode: doneIsDel
-                ? (activeArtifact ? "bypass_revision" : "full_delegation")
-                : "full_delegation",
-              isDelegated: doneIsDel,
-              hasActiveArtifact: Boolean(activeArtifact),
-              commandGoalLen: doneCmd?.goal?.length ?? 0,
-              commandBriefLen: doneCmd?.task_brief?.length ?? 0,
-              commandConstraintsLen: doneCmd?.constraints?.join("").length ?? 0,
-            },
+            // Sprint 61P: ContextPackage V1 — 运行时审计合同
+            contextPackage: llmNativeResult.contextPackage ?? null,
+            // Sprint 61P: ContextPackage ledger 摘要（用于 harness 快速解析）
+            contextPackageExtract: llmNativeResult.contextPackage
+              ? contextPackageToLedgerExtract(llmNativeResult.contextPackage)
+              : null,
           };
           await s.write(`data: ${JSON.stringify(doneObj)}\n\n`);
         } catch (sseErr: any) {

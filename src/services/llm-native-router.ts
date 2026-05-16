@@ -71,6 +71,9 @@ import { applyArtifactRevisionRoutingGuard } from "./context/artifact-revision-i
 import type { ActiveArtifactContext } from "./context/active-artifact.js";
 // Sprint 60P: Execution Policy Layer
 import { evaluateExecutionPolicy } from "./policy/execution-policy.js";
+// Sprint 61P: ContextPackage
+import { buildContextPackage } from "./context/context-package-builder.js";
+import type { ContextPackageV1 } from "./context/context-package.js";
 
 export interface GatedDelegationContext {
   llmScores: Record<ManagerDecisionType, number>;
@@ -215,6 +218,8 @@ export interface LLMNativeRouterResult {
   delegation_log_id?: string;
   /** Sprint 59P: Call Ledger — 本次请求的所有模型调用记录 */
   callLedger?: CallLedgerEntry[];
+  /** Sprint 61P: ContextPackage — 运行时审计合同 */
+  contextPackage?: ContextPackageV1;
   /** Sprint 59P: Request Ledger — 本次请求的汇总账本 */
   requestSummary?: RequestLedger;
 }
@@ -388,6 +393,24 @@ export async function routeWithManagerDecision(
       artifactRevisionIntent: revisionGuard.artifactRevisionIntent,
       traceId: ledgerTraceId,
     });
+
+    // Sprint 61P: build ContextPackage
+    const cp = buildContextPackage({
+      traceId: ledgerTraceId,
+      policyRoute: policyCtx.route,
+      userInstruction: message,
+      activeArtifact: activeArtifact ? {
+        artifactId: activeArtifact.artifactId,
+        taskId: activeArtifact.taskId,
+        summaryForManager: activeArtifact.summaryForManager,
+        revisionOfArtifactId: activeArtifact.revisionOfArtifactId,
+        revisionOfTaskId: activeArtifact.revisionOfTaskId,
+      } : undefined,
+      taskKind: policyDecision.route === "direct_artifact_revision" ? "revision" : "create",
+      artifactContentBytes: activeArtifact ? countTokens(gatedMessage) : 0,
+      artifactContentMode: policyDecision.route === "direct_artifact_revision" ? "full" : "none",
+    });
+    gatedRouteResult.contextPackage = cp;
 
     const delegated = Boolean(gatedRouteResult.delegation && gatedRouteResult.delegation.status === "triggered");
     const sentArtifactContentToWorker = Boolean(activeArtifact && revisionGuard.artifactRevisionIntent && delegated);
@@ -794,6 +817,24 @@ export async function routeWithManagerDecision(
   // Sprint 59P: 计算安全范围标记
   const delegated = Boolean(gatedRouteResult.delegation && gatedRouteResult.delegation.status === "triggered");
   const sentArtifactContentToWorker = Boolean(activeArtifact && revisionGuard.artifactRevisionIntent && delegated);
+
+    // Sprint 61P: build ContextPackage
+    const cp = buildContextPackage({
+      traceId: ledgerTraceId,
+      policyRoute: policyCtx.route,
+      userInstruction: message,
+      activeArtifact: activeArtifact ? {
+        artifactId: activeArtifact.artifactId,
+        taskId: activeArtifact.taskId,
+        summaryForManager: activeArtifact.summaryForManager,
+        revisionOfArtifactId: activeArtifact.revisionOfArtifactId,
+        revisionOfTaskId: activeArtifact.revisionOfTaskId,
+      } : undefined,
+      taskKind: "manager_delegation",
+      artifactContentBytes: sentArtifactContentToWorker ? countTokens(gatedMessage) : 0,
+      artifactContentMode: sentArtifactContentToWorker ? "full" : "none",
+    });
+    gatedRouteResult.contextPackage = cp;
 
   return withLedger(gatedRouteResult, {
     callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
