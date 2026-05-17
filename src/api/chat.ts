@@ -525,6 +525,8 @@ chatRouter.post("/chat", async (c) => {
               decisionType: rs.decisionType,
               fastPathHeuristic: rs.fastPathHeuristic,
               securityScope: rs.securityScope,
+              // Sprint 63P: Local Manager 模式
+              localManager: (rs as any).localManager ?? null,
               totalLatencyMs,
               totalModelCalls: entries.length,
               managerCalls: managerModelCalls,

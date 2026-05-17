@@ -159,6 +159,17 @@ export interface RequestLedger {
     sourceBytes: number;
     outputBytes: number;
   };
+  /** Sprint 63P: Local Manager 模式 */
+  localManager?: {
+    enabled: boolean;
+    mode: string;
+    policyRoute: string;
+    managerLlmRequired: boolean;
+    managerLlmBypassed: boolean;
+    nextAction: string;
+    patchFirstEligible?: boolean;
+    decisionMs: number;
+  };
   /** Sprint 60P: Manager LLM 是否被绕过（Policy Layer 直接决策） */
   managerLlmBypassed: boolean;
   /** Sprint 60P: 绕过原因 */

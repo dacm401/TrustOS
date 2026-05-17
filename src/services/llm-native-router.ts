@@ -76,6 +76,8 @@ import { buildContextPackage } from "./context/context-package-builder.js";
 import type { ContextPackageV1 } from "./context/context-package.js";
 // Sprint 62P: Patch-first Revision
 import { isPatchableSmallEdit } from "./patch/patchability.js";
+// Sprint 63P: Local Manager Mode
+import { runLocalManager, localManagerToLedgerExtract } from "./manager/local-manager-runtime.js";
 
 export interface GatedDelegationContext {
   llmScores: Record<ManagerDecisionType, number>;
@@ -257,6 +259,15 @@ export async function routeWithManagerDecision(
   const policyDecision = evaluateExecutionPolicy(message, activeArtifact);
   console.log(`[execution-policy] route=${policyDecision.route}, managerRequired=${policyDecision.managerLlmRequired}, reason=${policyDecision.reason}`);
 
+  // Sprint 63P: Local Manager Mode — 记录本地控制平面决策
+  const localManagerDecision = runLocalManager({
+    traceId: ledgerTraceId,
+    userInstruction: message,
+    activeArtifact,
+  });
+  const localManagerExtract = localManagerToLedgerExtract(localManagerDecision);
+  console.log(`[local-manager] enabled=true, mode=${localManagerDecision.managerMode}, nextAction=${localManagerDecision.nextAction}, managerLlmRequired=${localManagerDecision.managerLlmRequired}, decisionMs=${localManagerDecision.decisionMs}`);
+
   // Policy Context：贯穿本次请求，用于 ledger 和安全标记
   const policyCtx = {
     route: policyDecision.route,
@@ -310,6 +321,7 @@ export async function routeWithManagerDecision(
       callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
       userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
       policyRoute: policyDecision.route, managerLlmBypassed: true, bypassReason: policyDecision.reason,
+      localManagerExtract,
     }, {
       // Sprint 60P-H1: 按接收方拆分安全字段（local_answer_from_meta 纯本地）
       sentArtifactContentToManagerRemote: false,
@@ -431,6 +443,7 @@ export async function routeWithManagerDecision(
       callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
       userId: user_id, sessionId: session_id, delegated, fastPathHeuristic,
       policyRoute: policyDecision.route, managerLlmBypassed: true, bypassReason: policyDecision.reason,
+      localManagerExtract,
     }, {
       // Sprint 60P-H1: 按接收方拆分安全字段
       sentArtifactContentToManagerRemote: false, // bypass 路径不调 Manager
@@ -598,6 +611,7 @@ export async function routeWithManagerDecision(
         policyRoute: policyDecision.route,
         managerLlmBypassed: false,
         bypassReason: "manager_llm_called_protocol_error",
+        localManagerExtract,
       });
     }
     // 其他未知异常重新抛出
@@ -616,6 +630,7 @@ export async function routeWithManagerDecision(
         policyRoute: policyDecision.route,
         managerLlmBypassed: false,
         bypassReason: "manager_llm_called_parse_fallback",
+        localManagerExtract,
       });
     }
     // Sprint 72 fix: LLM 有时返回截断/乱码 JSON，直接吐出 JSON 是错误的
@@ -635,6 +650,7 @@ export async function routeWithManagerDecision(
       policyRoute: policyDecision.route,
       managerLlmBypassed: false,
       bypassReason: "manager_llm_called_json_parse_failed",
+      localManagerExtract,
     });
   }
 
@@ -743,6 +759,7 @@ export async function routeWithManagerDecision(
           policyRoute: policyDecision.route,
           managerLlmBypassed: false,
           bypassReason: "manager_llm_called_direct_answer_reuse",
+          localManagerExtract,
         });
       }
 
@@ -789,6 +806,7 @@ export async function routeWithManagerDecision(
         policyRoute: policyDecision.route,
         managerLlmBypassed: false,
         bypassReason: "manager_llm_called_direct_reply_fallback",
+        localManagerExtract,
       });
     }
 
@@ -806,6 +824,7 @@ export async function routeWithManagerDecision(
       policyRoute: policyDecision.route,
       managerLlmBypassed: false,
       bypassReason: "manager_llm_called_direct_answer",
+      localManagerExtract,
     });
   }
 
@@ -855,6 +874,7 @@ export async function routeWithManagerDecision(
     policyRoute: policyDecision.route,
     managerLlmBypassed: false, // Manager LLM 实际被调用了
     bypassReason: "policy_required_manager",
+    localManagerExtract,
   }, {
     // Sprint 60P-H1: 按接收方拆分安全字段
     sentArtifactContentToManagerRemote: false, // Context Boundary 确保 Manager 不收 artifact
@@ -927,6 +947,8 @@ function withLedger<T extends Partial<LLMNativeRouterResult & { callLedger?: Cal
     policyRoute: import("../types/call-ledger.js").ExecutionPolicyRoute;
     managerLlmBypassed: boolean;
     bypassReason: string;
+    // Sprint 63P: Local Manager
+    localManagerExtract?: Record<string, unknown>;
   },
   securityFlags?: Partial<SecurityScopeFlags>,
 ): T & { callLedger: CallLedgerEntry[]; requestSummary: RequestLedger } {
@@ -955,6 +977,7 @@ function withLedger<T extends Partial<LLMNativeRouterResult & { callLedger?: Cal
       ctx.policyRoute,
       ctx.managerLlmBypassed,
       ctx.bypassReason,
+      ctx.localManagerExtract,
     ),
   } as T & { callLedger: CallLedgerEntry[]; requestSummary: RequestLedger };
 }
@@ -975,6 +998,8 @@ function buildRequestLedger(
   policyRoute: import("../types/call-ledger.js").ExecutionPolicyRoute,
   managerLlmBypassed: boolean,
   bypassReason: string,
+  // Sprint 63P: Local Manager 字段（可选）
+  localManagerExtract?: Record<string, unknown>,
 ): RequestLedger {
   const totalLatencyMs = Date.now() - startTime;
   const totalInputTokens = callLedger.reduce((s, e) => s + e.inputTokens, 0);
@@ -1009,6 +1034,17 @@ function buildRequestLedger(
     policyRoute, // Sprint 60P
     managerLlmBypassed, // Sprint 60P
     bypassReason, // Sprint 60P
+    // Sprint 63P: Local Manager 字段（可选）
+    localManager: localManagerExtract ? {
+      enabled: localManagerExtract.enabled as boolean,
+      mode: localManagerExtract.mode as string,
+      policyRoute: localManagerExtract.policyRoute as string,
+      managerLlmRequired: localManagerExtract.managerLlmRequired as boolean,
+      managerLlmBypassed: localManagerExtract.managerLlmBypassed as boolean,
+      nextAction: localManagerExtract.nextAction as string,
+      patchFirstEligible: localManagerExtract.patchFirstEligible as boolean | undefined,
+      decisionMs: localManagerExtract.decisionMs as number,
+    } : undefined,
     decisionType: decisionType || "unknown",
     routingLayer: routingLayer || "L0",
     entries: callLedger,
