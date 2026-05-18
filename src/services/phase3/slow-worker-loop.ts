@@ -18,6 +18,9 @@ import type { ChatMessage, CommandPayload, TaskState, WorkerResult } from "../..
 import { resolveArtifactRevisionSource } from "../artifacts/artifact-source-resolver.js";
 // Sprint 62P: Patch-first Revision
 import type { PatchPlan, PatchResult, PatchOperation, PatchLedgerEntry } from "../patch/patch-types.js";
+// Sprint 65P: Verifier V0
+import { verifyArtifact, verificationToLedgerEntry } from "../verifier/artifact-verifier.js";
+import type { VerificationLedgerEntry } from "../verifier/verifier-types.js";
 import { applyPatchPlan } from "../patch/patch-applier.js";
 
 // 自适应轮询间隔
@@ -322,6 +325,39 @@ async function executeDelegateCommand(
     });
 
     // 写 task_archives.slow_execution（供 pollArchiveAndYield 轮询感知）
+    // Sprint 65P: Verifier V0 — 在写入 archive 之前做本地质量检查
+    let verificationEntry: VerificationLedgerEntry | null = null;
+    try {
+      const contentType = (workerResult.structured_result as any)?.contentType
+        ?? (patchEntry?.applied ? "code" : undefined);
+      const verifyResult = verifyArtifact({
+        traceId: traceId ?? archive_id,
+        artifactType: contentType,
+        content,
+        patchApplied: patchEntry?.applied ?? false,
+        security: {
+          // Worker 不发 artifact 给 Manager，history 走 context boundary
+          artifactToManager: false,
+          rawHistoryToWorker: false,
+          rawMemoryToWorker: false,
+        },
+      });
+      verificationEntry = verificationToLedgerEntry(verifyResult);
+      console.log(JSON.stringify({
+        msg: "[VERIFIER_V0] Artifact verification result",
+        traceId: traceId ?? null,
+        archiveId: archive_id,
+        passed: verifyResult.passed,
+        score: verifyResult.score,
+        issueCount: verifyResult.issues.length,
+        errorCount: verificationEntry.errorCount,
+        warningCount: verificationEntry.warningCount,
+        decisionMs: verifyResult.decisionMs,
+      }));
+    } catch (verifyErr: any) {
+      console.warn("[VERIFIER_V0] Verifier threw unexpectedly:", verifyErr.message);
+    }
+
     await TaskArchiveRepo.setSlowExecution(archive_id, {
       result: content,
       confidence: 0.85,
@@ -331,6 +367,8 @@ async function executeDelegateCommand(
       cost_usd: costUsd,
       duration_ms: totalMs,
       completed_at: new Date().toISOString(),
+      // Sprint 65P: Verifier V0 结果
+      verification: verificationEntry ?? undefined,
     });
 
     // 更新 task_commands 状态为 completed
@@ -352,6 +390,7 @@ async function executeDelegateCommand(
 
     // Sprint 60P-H1: 发出 [CALL_LEDGER_WORKER] 日志，供按 traceId 关联 request ledger
     // Sprint 62P: 增加 patch-first 字段
+    // Sprint 65P: 增加 verification 字段
     console.log(JSON.stringify({
       msg: "[CALL_LEDGER_WORKER] Worker model call complete",
       traceId: traceId ?? null,
@@ -366,6 +405,7 @@ async function executeDelegateCommand(
       startedAt: startTime,
       completedAt: Date.now(),
       patch: patchEntry ?? null,
+      verification: verificationEntry ?? null,
     }));
 
     console.log(`[slow-worker] Completed task ${task_id} in ${totalMs}ms, ${inputTokens}+${outputTokens} tokens`);

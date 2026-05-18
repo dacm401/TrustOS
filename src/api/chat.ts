@@ -460,6 +460,8 @@ chatRouter.post("/chat", async (c) => {
           // Sprint 60P-H2: ledger 重建 → 在 done 事件之前完成，以便嵌入 SSE
           // 此时 pollArchiveAndYield 已返回（Worker 已完成，archive.slow_execution 已写入）
           let ledgerPayload: Record<string, unknown> | null = null;
+          // Sprint 65P: Verifier V0 — 从 archive.slow_execution 提取 verification 结果
+          let verificationPayload: Record<string, unknown> | null = null;
           if (llmNativeResult.requestSummary) {
             const rs = llmNativeResult.requestSummary;
             const rsStartTime = Date.now() - rs.totalLatencyMs;
@@ -479,6 +481,10 @@ chatRouter.post("/chat", async (c) => {
                   workerCostUsd = (exec.cost_usd as number) ?? 0;
                   workerLatencyMs = (exec.duration_ms as number) ?? 0;
                   workerModelName = (exec.model_used as string) || config.slowModel;
+                  // Sprint 65P: 提取 Verifier 结果（由 slow-worker-loop 写入）
+                  if (exec.verification && typeof exec.verification === "object") {
+                    verificationPayload = exec.verification as Record<string, unknown>;
+                  }
                 }
               } catch (e: any) {
                 console.warn("[chat] Failed to refetch archive for ledger rebuild:", e.message);
@@ -605,6 +611,8 @@ chatRouter.post("/chat", async (c) => {
               : null,
             // Sprint 64P: Budget Manager 预检结果
             budget: (llmNativeResult.requestSummary as any)?.budget ?? null,
+            // Sprint 65P: Verifier V0 — artifact 质量检查结果
+            verification: verificationPayload,
           };
           await s.write(`data: ${JSON.stringify(doneObj)}\n\n`);
         } catch (sseErr: any) {
