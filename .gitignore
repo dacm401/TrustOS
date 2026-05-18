@@ -10,6 +10,7 @@ coverage/
 # Test outputs
 v_*.txt
 vitest*.txt
+vitest*.json
 tsc_out.txt
 bench_*.txt
 # Frontend build artifacts

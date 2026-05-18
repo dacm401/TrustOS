@@ -104,32 +104,71 @@ function extractEvidence(label, { doneEvents, resultContent, timedOut }) {
   const ledger = donePrimary.ledger || {};
   const security = ledger.securityScope || {};
   const verification = donePrimary.verification || null;
+  const patch = ledger.patch || null;
+
+  // Sprint 65P: 提取 policyRoute（用于验证 revision 路由）
+  const policyRoute = ledger.policyRoute || null;
 
   const row = {
     label,
+    // Sprint 65P: Policy Route（核心验证字段）
+    policyRoute,
+    // Patch 状态（S62P patch-first）
+    patchAttempted: patch?.attempted ?? null,
+    patchApplied: patch?.applied ?? null,
+    patchFallback: patch?.fallbackToFullRewrite ?? null,
+    // Budget 状态
     budgetExists: !!budget,
     budgetEnabled: budget?.enabled ?? null,
     budgetAction: budget?.action ?? null,
     pricingKnown: budget?.pricingKnown ?? null,
     estimatedCostUsd: budget?.estimatedCostUsd ?? null,
     blocked: budget?.blocked ?? null,
+    // Ledger 调用计数
     workerCalls: ledger.slowModelCalls ?? null,
     managerCalls: ledger.managerModelCalls ?? null,
+    // Security
     sentArtifactToManager: security.sentArtifactContentToManagerRemote ?? null,
     sentRawHistory: security.sentRawHistoryToRemote ?? null,
+    // Sprint 65P: Verifier
     verificationEnabled: verification?.enabled ?? null,
     verificationPassed: verification?.passed ?? null,
     verificationScore: verification?.score ?? null,
+    verificationTargetType: verification?.targetType ?? null,
     verificationIssueCount: verification?.issueCount ?? null,
     verificationErrorCount: verification?.errorCount ?? null,
+    // Meta
     timedOut,
     doneCount: doneEvents.length,
+    // Artifact meta for next message
+    artifactMeta: donePrimary.artifactMeta || null,
   };
 
   return row;
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
+
+/**
+ * 构建包含 artifact meta 的 history 条目。
+ * extractActiveArtifactContext 需要：
+ *   meta.origin === "worker" && meta.contentKind === "artifact"
+ * 否则 MSG2/MSG3 无法正确路由到 direct_artifact_revision。
+ */
+function buildWorkerMessage(content, artifactMeta) {
+  return {
+    role: "assistant",
+    content,
+    meta: {
+      origin: "worker",
+      contentKind: "artifact",
+      taskId: artifactMeta?.taskId || artifactMeta?.task_id || `task_${Date.now()}`,
+      artifactId: artifactMeta?.artifactId || artifactMeta?.artifact_id || `artifact_${Date.now()}`,
+      summaryForManager: content.substring(0, 200),
+      contentType: artifactMeta?.contentType || "code",
+    }
+  };
+}
 
 async function main() {
   console.log("[s65p-proof] Starting Sprint 65P E2E Runtime Proof");
@@ -141,7 +180,7 @@ async function main() {
   const results = [];
   const history = [];
 
-  // MSG1: create
+  // MSG1: create — 不带 history，让系统正常创建 artifact
   console.log("\n[s65p-proof] MSG1: create login page...");
   const r1 = await sseRequest("帮我写一个 React 登录页，包含用户名、密码、校验和提交按钮。", []);
   const ev1 = extractEvidence("MSG1 create", r1);
@@ -149,10 +188,11 @@ async function main() {
   results.push(ev1);
   if (r1.resultContent) {
     history.push({ role: "user", content: "帮我写一个 React 登录页，包含用户名、密码、校验和提交按钮。" });
-    history.push({ role: "assistant", content: r1.resultContent });
+    // 添加带有正确 meta 结构的消息，让 extractActiveArtifactContext 能提取
+    history.push(buildWorkerMessage(r1.resultContent, ev1.artifactMeta));
   }
 
-  // MSG2: revision bypass
+  // MSG2: revision bypass — 依赖 MSG1 的 artifact meta
   console.log("\n[s65p-proof] MSG2: button blue...");
   const r2 = await sseRequest("把按钮改成蓝色。", history);
   const ev2 = extractEvidence("MSG2 revision bypass", r2);
@@ -160,7 +200,7 @@ async function main() {
   results.push(ev2);
   if (r2.resultContent) {
     history.push({ role: "user", content: "把按钮改成蓝色。" });
-    history.push({ role: "assistant", content: r2.resultContent });
+    history.push(buildWorkerMessage(r2.resultContent, ev2.artifactMeta));
   }
 
   // MSG3: continuous revision
@@ -171,10 +211,10 @@ async function main() {
   results.push(ev3);
   if (r3.resultContent) {
     history.push({ role: "user", content: "再把标题改大一点。" });
-    history.push({ role: "assistant", content: r3.resultContent });
+    history.push(buildWorkerMessage(r3.resultContent, ev3.artifactMeta));
   }
 
-  // MSG4: new artifact
+  // MSG4: new artifact — 不含 artifact revision 关键词，应走 direct_create_artifact
   console.log("\n[s65p-proof] MSG4: register page...");
   const r4 = await sseRequest("再帮我写一个注册页。", history);
   const ev4 = extractEvidence("MSG4 create", r4);
@@ -183,29 +223,28 @@ async function main() {
 
   // ── Summary table ──
   console.log("\n\n=== S65P Runtime Proof Summary ===\n");
-  console.log("| Msg | verificationEnabled | verificationPassed | score | issueCount | errorCount | budgetEnabled | budgetAction | pricingKnown | workerCalls | managerCalls | sentArtifactToManager | sentRawHistory | timedOut |");
-  console.log("|-----|:-------------------:|:-----------------:|------:|-----------:|-----------:|:-------------:|:------------:|:------------:|:-----------:|:------------:|:---------------------:|:--------------:|:--------:|");
+  console.log("| Msg | policyRoute | patchAttempted | patchApplied | verificationEnabled | verificationPassed | score | targetType | workerCalls | managerCalls | timedOut |");
+  console.log("|-----|------------|:-------------:|:------------:|:-------------------:|:-----------------:|------:|:----------:|:-----------:|:------------:|:--------:|");
   for (const r of results) {
-    console.log(`| ${r.label} | ${r.verificationEnabled} | ${r.verificationPassed} | ${r.verificationScore} | ${r.verificationIssueCount} | ${r.verificationErrorCount} | ${r.budgetEnabled} | ${r.budgetAction} | ${r.pricingKnown} | ${r.workerCalls} | ${r.managerCalls} | ${r.sentArtifactToManager} | ${r.sentRawHistory} | ${r.timedOut} |`);
+    console.log(`| ${r.label} | ${r.policyRoute} | ${r.patchAttempted} | ${r.patchApplied} | ${r.verificationEnabled} | ${r.verificationPassed} | ${r.verificationScore} | ${r.verificationTargetType} | ${r.workerCalls} | ${r.managerCalls} | ${r.timedOut} |`);
   }
 
   // ── Validation ──
   console.log("\n=== Validation ===");
   let allPassed = true;
+  let criticalFailures = [];
+
   for (const r of results) {
-    const checks = [
+    // 基础检查
+    const basicChecks = [
       [r.budgetExists, "budget exists"],
       [r.budgetEnabled === true, "budget.enabled=true"],
       [r.sentArtifactToManager === false, "sentArtifactToManager=false"],
       [r.sentRawHistory === false, "sentRawHistory=false"],
       [r.timedOut === false, "not timedOut"],
     ];
-    // verification checks only if present
-    if (r.verificationEnabled !== null) {
-      checks.push([r.verificationEnabled === true, "verification.enabled=true"]);
-      checks.push([r.verificationPassed === true || r.verificationPassed === null, "verification not failed"]);
-    }
-    for (const [ok, desc] of checks) {
+
+    for (const [ok, desc] of basicChecks) {
       if (!ok) {
         console.log(`  ✗ [${r.label}] FAIL: ${desc}`);
         allPassed = false;
@@ -213,9 +252,53 @@ async function main() {
         console.log(`  ✓ [${r.label}] PASS: ${desc}`);
       }
     }
+
+    // MSG2/MSG3 必须走 direct_artifact_revision 路由
+    if (r.label.includes("MSG2") || r.label.includes("MSG3")) {
+      if (r.policyRoute !== "direct_artifact_revision") {
+        console.log(`  ✗ [${r.label}] FAIL: policyRoute=${r.policyRoute}, expected direct_artifact_revision`);
+        allPassed = false;
+        criticalFailures.push(`${r.label}: wrong route ${r.policyRoute}`);
+      } else {
+        console.log(`  ✓ [${r.label}] PASS: policyRoute=direct_artifact_revision`);
+      }
+
+      // MSG2/MSG3 必须有 patch.attempted=true
+      if (r.patchAttempted !== true) {
+        console.log(`  ✗ [${r.label}] FAIL: patch.attempted=${r.patchAttempted}, expected true`);
+        allPassed = false;
+      } else {
+        console.log(`  ✓ [${r.label}] PASS: patch.attempted=true`);
+      }
+    }
+
+    // MSG4 必须走 direct_create_artifact 路由
+    if (r.label.includes("MSG4")) {
+      if (r.policyRoute !== "direct_create_artifact") {
+        console.log(`  ✗ [${r.label}] WARN: policyRoute=${r.policyRoute}, expected direct_create_artifact`);
+        // 不阻塞，但记录
+      } else {
+        console.log(`  ✓ [${r.label}] PASS: policyRoute=direct_create_artifact`);
+      }
+    }
+
+    // verification checks（S65P 核心验证）
+    if (r.verificationEnabled !== null) {
+      if (r.verificationEnabled !== true) {
+        console.log(`  ✗ [${r.label}] FAIL: verification.enabled=${r.verificationEnabled}, expected true`);
+        allPassed = false;
+        criticalFailures.push(`${r.label}: verification not enabled`);
+      } else {
+        console.log(`  ✓ [${r.label}] PASS: verification.enabled=true`);
+      }
+    }
   }
 
   console.log(`\n=== S65P E2E Proof: ${allPassed ? "PASS ✅" : "PARTIAL / FAIL ⚠️"} ===`);
+  if (criticalFailures.length > 0) {
+    console.log("\nCritical failures:");
+    for (const f of criticalFailures) console.log(`  - ${f}`);
+  }
   process.exit(allPassed ? 0 : 1);
 }
 

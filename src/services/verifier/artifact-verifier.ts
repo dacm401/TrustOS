@@ -230,7 +230,10 @@ export function verifyArtifact(input: ArtifactVerifierInput): VerificationResult
     traceId: input.traceId,
     enabled: true,
     verifierVersion: "v0",
-    targetType: "artifact",
+    // Sprint 65P: 根据 patchApplied 设置正确的 targetType
+    // patch 场景（revision + patch applied）→ "patch"
+    // artifact 场景（create 或 revision + full rewrite）→ "artifact"
+    targetType: input.patchApplied === true ? "patch" : "artifact",
     passed: !hasErrors,
     score,
     issues,

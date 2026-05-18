@@ -16,6 +16,13 @@
  *   VF-12  multiple errors stack (score capped at 0.0)
  *   VF-13  verifierVersion always "v0"
  *   VF-14  passed=true when only warnings
+ *
+ * Sprint 65P Patch-path 扩展：
+ *   VF-15  patchApplied=true → targetType="patch"
+ *   VF-16  patchApplied=false → targetType="artifact"
+ *   VF-17  patchApplied=true + content non-empty → passed=true
+ *   VF-18  patchApplied=true + lineage valid → checks.lineageValid=true
+ *   VF-19  patchApplied=true + lineage mismatch → VF-004 error
  */
 
 import { describe, it, expect } from "vitest";
@@ -301,6 +308,85 @@ describe("Artifact Verifier V0", () => {
     expect(issue?.severity).toBe("warning");
     // Warning only → passed
     expect(result.passed).toBe(true);
+  });
+
+  // ── Sprint 65P Patch-path 扩展 ─────────────────────────────────────────────────
+
+  // VF-15: patchApplied=true → targetType="patch"
+  it("VF-15 patchApplied=true → targetType is 'patch'", () => {
+    const result = verifyArtifact({
+      traceId: "test-vf-15",
+      artifactType: "tsx",
+      content: VALID_REACT,
+      patchApplied: true,
+    });
+    expect(result.targetType).toBe("patch");
+    expect(result.enabled).toBe(true);
+  });
+
+  // VF-16: patchApplied=false/undefined → targetType="artifact"
+  it("VF-16 patchApplied=false → targetType is 'artifact'", () => {
+    const result = verifyArtifact({
+      traceId: "test-vf-16",
+      artifactType: "tsx",
+      content: VALID_REACT,
+      patchApplied: false,
+    });
+    expect(result.targetType).toBe("artifact");
+
+    // Also test undefined (default)
+    const result2 = verifyArtifact({
+      traceId: "test-vf-16b",
+      artifactType: "tsx",
+      content: VALID_REACT,
+    });
+    expect(result2.targetType).toBe("artifact");
+  });
+
+  // VF-17: patchApplied=true + content non-empty → passed=true
+  it("VF-17 patchApplied=true + non-empty content → passed=true", () => {
+    const result = verifyArtifact({
+      traceId: "test-vf-17",
+      artifactType: "tsx",
+      content: VALID_REACT,
+      patchApplied: true,
+    });
+    expect(result.passed).toBe(true);
+    expect(result.checks.patchContentValid).toBe(true);
+    expect(result.checks.nonEmpty).toBe(true);
+  });
+
+  // VF-18: patchApplied=true + lineage valid → checks.lineageValid=true
+  it("VF-18 patchApplied=true + valid lineage → lineageValid=true", () => {
+    const artifactId = "artifact-patch-source-123";
+    const result = verifyArtifact({
+      traceId: "test-vf-18",
+      artifactType: "tsx",
+      content: VALID_REACT,
+      patchApplied: true,
+      revisionOfArtifactId: artifactId,
+      expectedRevisionOfArtifactId: artifactId,
+    });
+    expect(result.passed).toBe(true);
+    expect(result.checks.lineageValid).toBe(true);
+    expect(result.issues.find(i => i.code === "VF-004")).toBeUndefined();
+  });
+
+  // VF-19: patchApplied=true + lineage mismatch → VF-004 error
+  it("VF-19 patchApplied=true + lineage mismatch → VF-004 error", () => {
+    const result = verifyArtifact({
+      traceId: "test-vf-19",
+      artifactType: "tsx",
+      content: VALID_REACT,
+      patchApplied: true,
+      revisionOfArtifactId: "actual-artifact-id",
+      expectedRevisionOfArtifactId: "expected-artifact-id",
+    });
+    expect(result.passed).toBe(false);
+    expect(result.checks.lineageValid).toBe(false);
+    const err = result.issues.find(i => i.code === "VF-004");
+    expect(err).toBeDefined();
+    expect(err?.severity).toBe("error");
   });
 
 });
