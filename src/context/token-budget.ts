@@ -5,6 +5,13 @@ import { countTokens } from "../models/token-counter.js";
 const MODEL_MAX_TOKENS: Record<string, number> = {
   "gpt-4o-mini": 128000, "gpt-4o": 128000,
   "claude-3-5-sonnet-20241022": 200000, "claude-3-5-haiku-20241022": 200000,
+  // DeepSeek / SiliconFlow
+  "deepseek-ai/DeepSeek-V3": 64000,
+  "deepseek-ai/DeepSeek-R1": 64000,
+  "deepseek-ai/DeepSeek-V4-Flash": 64000,
+  // Qwen
+  "Qwen/Qwen2.5-7B-Instruct": 32000,
+  "Qwen/Qwen2.5-72B-Instruct": 32000,
 };
 
 export interface TokenBudget {

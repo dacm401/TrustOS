@@ -40,7 +40,9 @@ export async function callModelWithTools(
 }
 
 export function getAvailableModels(): string[] {
-  return ["gpt-4o-mini", "gpt-4o", "claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022"];
+  const configured = [config.fastModel, config.slowModel, config.compressorModel];
+  const hardcoded = ["gpt-4o-mini", "gpt-4o", "claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022"];
+  return [...new Set([...configured, ...hardcoded])];
 }
 
 // Re-export callOpenAIWithOptions from the OpenAI provider for use by other modules
