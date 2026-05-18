@@ -78,6 +78,9 @@ import type { ContextPackageV1 } from "./context/context-package.js";
 import { isPatchableSmallEdit } from "./patch/patchability.js";
 // Sprint 63P: Local Manager Mode
 import { runLocalManager, localManagerToLedgerExtract } from "./manager/local-manager-runtime.js";
+// Sprint 64P: Budget Manager V0
+import { runBudgetPreflight } from "./budget/budget-manager.js";
+import type { BudgetDecision } from "./budget/budget-manager.js";
 
 export interface GatedDelegationContext {
   llmScores: Record<ManagerDecisionType, number>;
@@ -406,6 +409,77 @@ export async function routeWithManagerDecision(
 
     console.log(`[execution-policy] Bypass: ${policyDecision.route}, calling routeByGatedDecision directly (manager LLM skipped)`);
 
+    // Sprint 64P: Budget Preflight — worker 调用前执行预算预检
+    const workerModel = slowModel || config.slowModel;
+    const bypassBudgetDecision = runBudgetPreflight({
+      traceId: ledgerTraceId,
+      route: policyDecision.route,
+      requestedModel: workerModel,
+      modelRole: "worker",
+      patchFirstEligible: localManagerDecision.patchFirstEligible,
+    });
+    console.log(`[budget-preflight] action=${bypassBudgetDecision.action}, estimatedCostUsd=${bypassBudgetDecision.estimatedCostUsd}, pricingKnown=${bypassBudgetDecision.pricingKnown}, model=${bypassBudgetDecision.selectedModel}`);
+
+    // 如果 budget 阻断，直接返回 friendly message（不调用 Worker）
+    if (bypassBudgetDecision.blocked) {
+      const memory = await memoryPromise;
+      return withLedger({
+        message: language === "zh"
+          ? "这次操作预计成本过高，已被预算策略拦截。如需继续，请调整预算配置。"
+          : "This operation is estimated to exceed the budget and has been blocked. Please adjust budget settings to continue.",
+        decision: null,
+        routing_layer: "L0",
+        decision_type: "direct_answer",
+        budgetDecision: bypassBudgetDecision,
+      }, {
+        callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+        userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
+        policyRoute: policyDecision.route, managerLlmBypassed: true, bypassReason: policyDecision.reason,
+        localManagerExtract,
+        budgetDecision: bypassBudgetDecision,
+      }, {
+        sentArtifactContentToManagerRemote: false,
+        sentArtifactContentToWorkerRemote: false,
+        sentRawHistoryToRemote: false,
+        memoryWasRetrieved: memory !== undefined,
+        memoryWasSentToManager: false,
+        sensitiveMemoryWasSent: false,
+        remoteContextBytesToManager: 0,
+        remoteContextBytesToWorker: 0,
+        artifactContentBytesToWorker: 0,
+      });
+    }
+
+    // ask_user_confirm: 返回确认请求（V0 不做前端弹窗，返回 friendly message）
+    if (bypassBudgetDecision.requiresUserConfirm && !bypassBudgetDecision.blocked) {
+      const memory = await memoryPromise;
+      return withLedger({
+        message: language === "zh"
+          ? `这次操作预计会超过当前预算（$${bypassBudgetDecision.requestBudgetUsd.toFixed(4)}），需要确认后继续。如需继续，请重新发送请求。`
+          : `This operation is estimated to exceed the current budget ($${bypassBudgetDecision.requestBudgetUsd.toFixed(4)}). Please confirm by re-sending the request.`,
+        decision: null,
+        routing_layer: "L0",
+        decision_type: "direct_answer",
+        budgetDecision: bypassBudgetDecision,
+      }, {
+        callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+        userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
+        policyRoute: policyDecision.route, managerLlmBypassed: true, bypassReason: policyDecision.reason,
+        localManagerExtract,
+        budgetDecision: bypassBudgetDecision,
+      }, {
+        sentArtifactContentToManagerRemote: false,
+        sentArtifactContentToWorkerRemote: false,
+        sentRawHistoryToRemote: false,
+        memoryWasRetrieved: memory !== undefined,
+        memoryWasSentToManager: false,
+        sensitiveMemoryWasSent: false,
+        remoteContextBytesToManager: 0,
+        remoteContextBytesToWorker: 0,
+        artifactContentBytesToWorker: 0,
+      });
+    }
+
     const gatedRouteResult = await routeByGatedDecision(bypassGated, {
       message: gatedMessage,
       userFacingText: language === "zh" ? "好的，我来修改。" : "Got it, let me modify that.",
@@ -416,6 +490,8 @@ export async function routeWithManagerDecision(
       artifactRevisionIntent: revisionGuard.artifactRevisionIntent,
       traceId: ledgerTraceId,
     });
+    // 注入 budgetDecision（供 withLedger 使用）
+    (gatedRouteResult as any).budgetDecision = bypassBudgetDecision;
 
     // Sprint 61P: build ContextPackage
     const cp = buildContextPackage({
@@ -444,6 +520,8 @@ export async function routeWithManagerDecision(
       userId: user_id, sessionId: session_id, delegated, fastPathHeuristic,
       policyRoute: policyDecision.route, managerLlmBypassed: true, bypassReason: policyDecision.reason,
       localManagerExtract,
+      // Sprint 64P: Budget Manager — bypass 成功路径也传递 budgetDecision
+      budgetDecision: bypassBudgetDecision,
     }, {
       // Sprint 60P-H1: 按接收方拆分安全字段
       sentArtifactContentToManagerRemote: false, // bypass 路径不调 Manager
@@ -459,6 +537,65 @@ export async function routeWithManagerDecision(
   }
 
   // Step 1: 调用 Fast 模型（与 Memory 检索并行，节省总延迟）
+  // Sprint 64P: Manager LLM Preflight Budget Check
+  const managerModel = fastModel || config.fastModel;
+  const managerBudgetDecision = runBudgetPreflight({
+    traceId: ledgerTraceId,
+    route: policyDecision.route,
+    requestedModel: managerModel,
+    modelRole: "manager",
+  });
+  console.log(`[budget-preflight] manager: action=${managerBudgetDecision.action}, estimatedCostUsd=${managerBudgetDecision.estimatedCostUsd}, pricingKnown=${managerBudgetDecision.pricingKnown}`);
+
+  // 如果 budget 阻断 manager 调用
+  if (managerBudgetDecision.blocked) {
+    return withLedger({
+      message: language === "zh"
+        ? "这次操作预计成本过高，已被预算策略拦截。如需继续，请调整预算配置。"
+        : "This operation is estimated to exceed the budget and has been blocked. Please adjust budget settings to continue.",
+      decision: null,
+      routing_layer: "L0",
+      decision_type: "direct_answer",
+      budgetDecision: managerBudgetDecision,
+    }, {
+      callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+      userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
+      policyRoute: policyDecision.route, managerLlmBypassed: true,
+      bypassReason: "budget_blocked_manager",
+      localManagerExtract,
+      budgetDecision: managerBudgetDecision,
+    }, {
+      sentArtifactContentToManagerRemote: false, sentArtifactContentToWorkerRemote: false,
+      sentRawHistoryToRemote: false, memoryWasRetrieved: false,
+      memoryWasSentToManager: false, sensitiveMemoryWasSent: false,
+      remoteContextBytesToManager: 0, remoteContextBytesToWorker: 0, artifactContentBytesToWorker: 0,
+    });
+  }
+
+  if (managerBudgetDecision.requiresUserConfirm && !managerBudgetDecision.blocked) {
+    return withLedger({
+      message: language === "zh"
+        ? `这次操作预计会超过当前预算（$${managerBudgetDecision.requestBudgetUsd.toFixed(4)}），需要确认后继续。如需继续，请重新发送请求。`
+        : `This operation is estimated to exceed the current budget ($${managerBudgetDecision.requestBudgetUsd.toFixed(4)}). Please confirm by re-sending the request.`,
+      decision: null,
+      routing_layer: "L0",
+      decision_type: "direct_answer",
+      budgetDecision: managerBudgetDecision,
+    }, {
+      callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
+      userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
+      policyRoute: policyDecision.route, managerLlmBypassed: true,
+      bypassReason: "budget_ask_user_confirm_manager",
+      localManagerExtract,
+      budgetDecision: managerBudgetDecision,
+    }, {
+      sentArtifactContentToManagerRemote: false, sentArtifactContentToWorkerRemote: false,
+      sentRawHistoryToRemote: false, memoryWasRetrieved: false,
+      memoryWasSentToManager: false, sensitiveMemoryWasSent: false,
+      remoteContextBytesToManager: 0, remoteContextBytesToWorker: 0, artifactContentBytesToWorker: 0,
+    });
+  }
+
   let managerOutput: string;
   let userMemories: string | undefined;
   let managerCallLatencyMs = 0;
@@ -612,6 +749,7 @@ export async function routeWithManagerDecision(
         managerLlmBypassed: false,
         bypassReason: "manager_llm_called_protocol_error",
         localManagerExtract,
+        budgetDecision: managerBudgetDecision,
       });
     }
     // 其他未知异常重新抛出
@@ -631,6 +769,8 @@ export async function routeWithManagerDecision(
         managerLlmBypassed: false,
         bypassReason: "manager_llm_called_parse_fallback",
         localManagerExtract,
+        // Sprint 64P: Budget Manager（manager fallback 路径）
+        budgetDecision: managerBudgetDecision,
       });
     }
     // Sprint 72 fix: LLM 有时返回截断/乱码 JSON，直接吐出 JSON 是错误的
@@ -651,6 +791,8 @@ export async function routeWithManagerDecision(
       managerLlmBypassed: false,
       bypassReason: "manager_llm_called_json_parse_failed",
       localManagerExtract,
+      // Sprint 64P: Budget Manager（manager fallback 路径）
+      budgetDecision: managerBudgetDecision,
     });
   }
 
@@ -760,6 +902,8 @@ export async function routeWithManagerDecision(
           managerLlmBypassed: false,
           bypassReason: "manager_llm_called_direct_answer_reuse",
           localManagerExtract,
+          // Sprint 64P: Budget Manager（manager route downgrade）
+          budgetDecision: managerBudgetDecision,
         });
       }
 
@@ -807,6 +951,8 @@ export async function routeWithManagerDecision(
         managerLlmBypassed: false,
         bypassReason: "manager_llm_called_direct_reply_fallback",
         localManagerExtract,
+        // Sprint 64P: Budget Manager（manager route downgrade）
+        budgetDecision: managerBudgetDecision,
       });
     }
 
@@ -825,6 +971,8 @@ export async function routeWithManagerDecision(
       managerLlmBypassed: false,
       bypassReason: "manager_llm_called_direct_answer",
       localManagerExtract,
+      // Sprint 64P: Budget Manager（manager route downgrade）
+      budgetDecision: managerBudgetDecision,
     });
   }
 
@@ -875,6 +1023,8 @@ export async function routeWithManagerDecision(
     managerLlmBypassed: false, // Manager LLM 实际被调用了
     bypassReason: "policy_required_manager",
     localManagerExtract,
+    // Sprint 64P: Budget Manager（manager fallback 路径）
+    budgetDecision: managerBudgetDecision,
   }, {
     // Sprint 60P-H1: 按接收方拆分安全字段
     sentArtifactContentToManagerRemote: false, // Context Boundary 确保 Manager 不收 artifact
@@ -949,6 +1099,8 @@ function withLedger<T extends Partial<LLMNativeRouterResult & { callLedger?: Cal
     bypassReason: string;
     // Sprint 63P: Local Manager
     localManagerExtract?: Record<string, unknown>;
+    // Sprint 64P: Budget Manager
+    budgetDecision?: BudgetDecision;
   },
   securityFlags?: Partial<SecurityScopeFlags>,
 ): T & { callLedger: CallLedgerEntry[]; requestSummary: RequestLedger } {
@@ -964,6 +1116,8 @@ function withLedger<T extends Partial<LLMNativeRouterResult & { callLedger?: Cal
     remoteContextBytesToWorker: securityFlags?.remoteContextBytesToWorker ?? 0,
     artifactContentBytesToWorker: securityFlags?.artifactContentBytesToWorker ?? 0,
   };
+  // Sprint 64P: budget 从 result 或 ctx 中提取
+  const budgetDecision = ctx.budgetDecision ?? (result as any).budgetDecision;
   return {
     ...result,
     callLedger: ctx.callLedger,
@@ -978,6 +1132,7 @@ function withLedger<T extends Partial<LLMNativeRouterResult & { callLedger?: Cal
       ctx.managerLlmBypassed,
       ctx.bypassReason,
       ctx.localManagerExtract,
+      budgetDecision,
     ),
   } as T & { callLedger: CallLedgerEntry[]; requestSummary: RequestLedger };
 }
@@ -1000,6 +1155,8 @@ function buildRequestLedger(
   bypassReason: string,
   // Sprint 63P: Local Manager 字段（可选）
   localManagerExtract?: Record<string, unknown>,
+  // Sprint 64P: Budget Manager 字段（可选）
+  budgetDecision?: BudgetDecision,
 ): RequestLedger {
   const totalLatencyMs = Date.now() - startTime;
   const totalInputTokens = callLedger.reduce((s, e) => s + e.inputTokens, 0);
@@ -1044,6 +1201,27 @@ function buildRequestLedger(
       nextAction: localManagerExtract.nextAction as string,
       patchFirstEligible: localManagerExtract.patchFirstEligible as boolean | undefined,
       decisionMs: localManagerExtract.decisionMs as number,
+    } : undefined,
+    // Sprint 64P: Budget Manager 字段（可选）
+    budget: budgetDecision ? {
+      enabled: budgetDecision.enabled,
+      action: budgetDecision.action,
+      reason: budgetDecision.reason,
+      estimatedInputTokens: budgetDecision.estimatedInputTokens,
+      estimatedOutputTokens: budgetDecision.estimatedOutputTokens,
+      estimatedCostUsd: budgetDecision.estimatedCostUsd,
+      pricingKnown: budgetDecision.pricingKnown,
+      requestBudgetUsd: budgetDecision.requestBudgetUsd,
+      sessionBudgetUsd: budgetDecision.sessionBudgetUsd,
+      sessionSpentUsd: budgetDecision.sessionSpentUsd,
+      remainingSessionBudgetUsd: budgetDecision.remainingSessionBudgetUsd,
+      originalModel: budgetDecision.originalModel,
+      selectedModel: budgetDecision.selectedModel,
+      downgraded: budgetDecision.downgraded,
+      preferPatch: budgetDecision.preferPatch,
+      requiresUserConfirm: budgetDecision.requiresUserConfirm,
+      blocked: budgetDecision.blocked,
+      decisionMs: budgetDecision.decisionMs,
     } : undefined,
     decisionType: decisionType || "unknown",
     routingLayer: routingLayer || "L0",

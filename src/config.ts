@@ -1,5 +1,25 @@
 import type { ModelPricing } from "./types/index.js";
 
+// Sprint 64P: 手动加载 .env 文件（不依赖 dotenv 包）
+// 在任何 process.env 读取之前执行
+try {
+  const { readFileSync } = await import("fs");
+  const envContent = readFileSync(".env", "utf8");
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith("#")) {
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx > 0) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
+        if (key && !process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
+  }
+} catch { /* .env not found, skip */ }
+
 export const config = {
   port: parseInt(process.env.BACKEND_PORT || "3001"),
   // Sprint 59: fastModel 改为 Qwen2.5-72B-Instruct

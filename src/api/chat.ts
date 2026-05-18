@@ -197,6 +197,8 @@ chatRouter.post("/chat", async (c) => {
                 stream: quickLang === "zh" ? "已返回答案" : "Answer ready",
                 routing_layer: "L0",
                 meta: { origin: "system", contentKind: "status" },
+                // Sprint 64P: Budget Manager（快速意图路径，预算检查不可用）
+                budget: null,
               })}\n\n`);
             });
           }
@@ -226,19 +228,27 @@ chatRouter.post("/chat", async (c) => {
           activeArtifactSummaryChars: activeArtifact?.summaryForManager?.length ?? 0,
         });
 
-        llmNativeResult = await routeWithManagerDecision({
-          message: body.message ?? "",
-          user_id: userId,
-          session_id: sessionId,
-          turn_id: (body.history ?? []).length,
-          history: managerView.messages,
-          language: features.language as "zh" | "en",
-          reqApiKey,
-          reqLlmBaseUrl,
-          fastModel: effectiveFastModel,
-          slowModel: effectiveSlowModel,
-          crossSessionContext,
-          activeArtifact,
+        llmNativeResult = await Promise.race([
+          routeWithManagerDecision({
+            message: body.message ?? "",
+            user_id: userId,
+            session_id: sessionId,
+            turn_id: (body.history ?? []).length,
+            history: managerView.messages,
+            language: features.language as "zh" | "en",
+            reqApiKey,
+            reqLlmBaseUrl,
+            fastModel: effectiveFastModel,
+            slowModel: effectiveSlowModel,
+            crossSessionContext,
+            activeArtifact,
+          }),
+          new Promise<null>((_, reject) =>
+            setTimeout(() => reject(new Error("routeWithManagerDecision SSE timeout")), 60000)
+          ),
+        ]).catch((e: any) => {
+          console.warn("[chat] SSE routeWithManagerDecision failed/timeout:", e.message);
+          return null;
         });
         console.log("[chat] routeWithManagerDecision done, decision_type:", llmNativeResult?.decision_type, "delegation:", !!llmNativeResult?.delegation);
 
@@ -575,6 +585,8 @@ chatRouter.post("/chat", async (c) => {
           // Sprint 60P-H2 Evidence Patch: artifactMeta 让下一轮能识别 revision source
           // Sprint 61P: contextPackage 注入 Worker context 的正式边界 trace
           // 内联声明：在 await 之前声明，所有变量都在 SSE callback scope 内
+          // Sprint 64P debug：检查 requestSummary 是否含 budget
+          console.log("[chat] requestSummary.budget =", JSON.stringify((llmNativeResult as any).requestSummary?.budget)?.slice(0, 200));
           const doneIsDel = Boolean(llmNativeResult.delegation);
           const doneMsg = doneIsDel
             ? (lang === "zh" ? "✅ 完成" : "✅ Done")
@@ -593,6 +605,8 @@ chatRouter.post("/chat", async (c) => {
             contextPackageExtract: llmNativeResult.contextPackage
               ? contextPackageToLedgerExtract(llmNativeResult.contextPackage)
               : null,
+            // Sprint 64P: Budget Manager 预检结果
+            budget: (llmNativeResult.requestSummary as any)?.budget ?? null,
           };
           await s.write(`data: ${JSON.stringify(doneObj)}\n\n`);
         } catch (sseErr: any) {
@@ -631,7 +645,8 @@ chatRouter.post("/chat", async (c) => {
         activeArtifactSummaryChars: activeArtifact?.summaryForManager?.length ?? 0,
       });
 
-      llmNativeResult = await routeWithManagerDecision({
+      // Sprint 64P: 加超时保护 — 没有 API key 时模型调用会失败/无限等
+      const routePromise = routeWithManagerDecision({
         message: body.message ?? "",
         user_id: userId,
         session_id: sessionId,
@@ -644,6 +659,13 @@ chatRouter.post("/chat", async (c) => {
         slowModel: effectiveSlowModel,
         crossSessionContext,
         activeArtifact,
+      });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("routeWithManagerDecision timeout (no API key or network issue)")), 60000)
+      );
+      llmNativeResult = await Promise.race([routePromise, timeoutPromise]).catch((e: any) => {
+        console.warn("[chat] routeWithManagerDecision failed/timeout:", e.message);
+        return null;
       });
     } catch (e: any) {
       return c.json({ error: "LLM-native routing failed: " + e.message }, 500);

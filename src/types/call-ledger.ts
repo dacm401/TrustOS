@@ -170,6 +170,27 @@ export interface RequestLedger {
     patchFirstEligible?: boolean;
     decisionMs: number;
   };
+  /** Sprint 64P: Budget Manager 预检结果 */
+  budget?: {
+    enabled: boolean;
+    action: "allow" | "downgrade_model" | "prefer_patch" | "ask_user_confirm" | "block";
+    reason: string;
+    estimatedInputTokens: number;
+    estimatedOutputTokens: number;
+    estimatedCostUsd: number | null;
+    pricingKnown: boolean;
+    requestBudgetUsd: number;
+    sessionBudgetUsd?: number;
+    sessionSpentUsd?: number;
+    remainingSessionBudgetUsd?: number;
+    originalModel: string;
+    selectedModel: string;
+    downgraded: boolean;
+    preferPatch: boolean;
+    requiresUserConfirm: boolean;
+    blocked: boolean;
+    decisionMs: number;
+  };
   /** Sprint 60P: Manager LLM 是否被绕过（Policy Layer 直接决策） */
   managerLlmBypassed: boolean;
   /** Sprint 60P: 绕过原因 */
