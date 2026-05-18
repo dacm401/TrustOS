@@ -585,8 +585,6 @@ chatRouter.post("/chat", async (c) => {
           // Sprint 60P-H2 Evidence Patch: artifactMeta 让下一轮能识别 revision source
           // Sprint 61P: contextPackage 注入 Worker context 的正式边界 trace
           // 内联声明：在 await 之前声明，所有变量都在 SSE callback scope 内
-          // Sprint 64P debug：检查 requestSummary 是否含 budget
-          console.log("[chat] requestSummary.budget =", JSON.stringify((llmNativeResult as any).requestSummary?.budget)?.slice(0, 200));
           const doneIsDel = Boolean(llmNativeResult.delegation);
           const doneMsg = doneIsDel
             ? (lang === "zh" ? "✅ 完成" : "✅ Done")

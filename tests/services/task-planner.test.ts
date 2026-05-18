@@ -168,13 +168,13 @@ describe("TaskPlanner", () => {
       expect(messages).toHaveLength(2);
     });
 
-    it("uses default model gpt-4o when model not specified", async () => {
+    it("uses configured default model when model not specified", async () => {
       callModelWithToolsMock.mockResolvedValue(makeTextResponse());
       const planner = new TaskPlanner();
       await planner.plan(BASE_PARAMS);
 
       const [model] = callModelWithToolsMock.mock.calls[0];
-      expect(model).toBe("gpt-4o");
+      expect(model).toBe("deepseek-ai/DeepSeek-V4-Flash");
     });
 
     it("uses the model specified in params", async () => {

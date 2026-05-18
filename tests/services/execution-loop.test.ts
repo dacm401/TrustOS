@@ -528,9 +528,9 @@ describe("ExecutionLoop", () => {
     expect(result.totalSteps).toBe(3);
   });
 
-  // ── TA-001.17: Model defaults to gpt-4o when not specified ─────────────────
+  // ── TA-001.17: Model defaults to configured slowModel when not specified ──────
 
-  it("TA-001.17: defaults to gpt-4o when model not specified in context", async () => {
+  it("TA-001.17: defaults to configured slowModel when model not specified in context", async () => {
     callModelFull.mockResolvedValueOnce(
       makeMockModelResponse("default model used.")
     );
@@ -542,7 +542,7 @@ describe("ExecutionLoop", () => {
     );
 
     expect(callModelFull).toHaveBeenCalledWith(
-      "gpt-4o",
+      "deepseek-ai/DeepSeek-V4-Flash",
       expect.any(Array)
     );
   });

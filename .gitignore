@@ -17,3 +17,24 @@ frontend/node_modules/
 frontend/.next/
 frontend/.vercel/
 frontend/out/
+# Temporary debug/diagnostic scripts (root-level ad-hoc files)
+debug_*.cjs
+debug_*.js
+debug_*.mjs
+diag_*.cjs
+diag_*.js
+diag_*.mjs
+check_*.cjs
+check_*.js
+check_*.mjs
+quick_*.cjs
+quick_*.js
+quick_*.mjs
+budget_e2e_*.js
+budget_non_sse.js
+budget_verify*.js
+start-s*.ps1
+dev/
+# E2E result dumps
+check_*_result.txt
+
