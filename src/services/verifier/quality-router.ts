@@ -24,6 +24,19 @@ import type {
   VerificationLedgerEntry,
 } from "./verifier-types.js";
 
+// ── Per-artifact Verification Store ───────────────────────────────────────────
+// 在 SSE done 后写入，quality router 在下一轮读取。
+// 解决：history 不持久化 verification 的生产场景。
+const _verificationStore = new Map<string, VerificationLedgerEntry>();
+
+export function setArtifactVerification(artifactId: string, entry: VerificationLedgerEntry): void {
+  _verificationStore.set(artifactId, entry);
+}
+
+export function getArtifactVerification(artifactId: string): VerificationLedgerEntry | undefined {
+  return _verificationStore.get(artifactId);
+}
+
 // ── Env Gate ──────────────────────────────────────────────────────────────────
 
 export const QUALITY_ROUTING_ENABLED =
@@ -154,6 +167,10 @@ export function buildArtifactQualityState(
 /**
  * 从 assistant history meta 提取上次 verification 快照。
  *
+ * 优先级：
+ * 1. 优先从 artifact store 读取（chat.ts SSE done 后写入）。
+ * 2. 回退：从 history meta.verification 提取（proof 脚本 / 直接嵌入场景）。
+ *
  * 期望结构：
  * ```
  * {
@@ -168,8 +185,14 @@ export function buildArtifactQualityState(
  */
 export function extractLastVerificationFromHistory(
   history: Array<{ role: string; content?: string; meta?: Record<string, unknown> }>,
+  activeArtifactId?: string,
 ): VerificationLedgerEntry | null {
-  // 从最新的 assistant artifact 消息向前搜索
+  // 1. 优先从 store 读取（生产流程）
+  if (activeArtifactId !== undefined) {
+    const stored = _verificationStore.get(activeArtifactId);
+    if (stored) return stored;
+  }
+  // 2. 回退：从 history meta.verification 提取（proof 脚本 / 直接嵌入）
   for (let i = history.length - 1; i >= 0; i--) {
     const msg = history[i];
     if (

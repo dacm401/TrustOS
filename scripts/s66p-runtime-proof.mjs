@@ -105,7 +105,8 @@ function extractEvidence(label, { doneEvents, resultContent, timedOut }) {
   const patch = ledger.patch || null;
 
   // Sprint 66P: Quality Routing 字段
-  const qualityRouting = ledger.qualityRouting || null;
+  // qualityRouting 在 SSE done 顶层（不在 ledger 里）
+  const qualityRouting = donePrimary.qualityRouting || null;
 
   const policyRoute = ledger.policyRoute || null;
 
@@ -148,7 +149,7 @@ function buildWorkerMessage(content, artifactMeta, verification) {
       artifactId: artifactMeta?.artifactId || artifactMeta?.artifact_id || `artifact_${Date.now()}`,
       summaryForManager: content.substring(0, 200),
       contentType: artifactMeta?.contentType || "code",
-      // Sprint 66P: 把 verification 结果嵌入 history meta，供下一轮 quality routing 读取
+      // Sprint 66P: verification 嵌入 meta.verification（生产代码格式）
       verification: verification || null,
     }
   };

@@ -25,6 +25,8 @@ import { TaskArchiveRepo } from "../db/task-archive-repo.js";
 import { buildCrossSessionContext } from "../services/cross-session-context.js";
 // Sprint 65: Permission 对话流 + Operation Auth Matrix
 import { handlePermissionResponseMessage } from "../services/permission-manager.js";
+// Sprint 66P: Quality-aware Routing — verification store（per-artifact）
+import { setArtifactVerification } from "../services/verifier/quality-router.js";
 // Stream V2: thinking state visualization
 import { createThinkingEvent } from "../services/phase3/stream-v2.js";
 // Stream V2: 轻量级意图分类器
@@ -543,6 +545,8 @@ chatRouter.post("/chat", async (c) => {
               securityScope: rs.securityScope,
               // Sprint 63P: Local Manager 模式
               localManager: (rs as any).localManager ?? null,
+              // Sprint 66P: Quality-aware Routing
+              qualityRouting: (rs as any).qualityRouting ?? null,
               totalLatencyMs,
               totalModelCalls: entries.length,
               managerCalls: managerModelCalls,
@@ -613,8 +617,15 @@ chatRouter.post("/chat", async (c) => {
             budget: (llmNativeResult.requestSummary as any)?.budget ?? null,
             // Sprint 65P: Verifier V0 — artifact 质量检查结果
             verification: verificationPayload,
+            // Sprint 66P: Quality-aware Routing — 直接从 requestSummary 读取（与 budget 同层）
+            qualityRouting: (llmNativeResult.requestSummary as any)?.qualityRouting ?? null,
           };
           await s.write(`data: ${JSON.stringify(doneObj)}\n\n`);
+
+          // Sprint 66P: 把 verification 写入 artifact store（供下一轮 quality routing 读取）
+          if (verificationPayload && artifactMetaFromSSE?.artifactId) {
+            setArtifactVerification(artifactMetaFromSSE.artifactId, verificationPayload as any);
+          }
         } catch (sseErr: any) {
           console.error("[chat] SSE stream error:", sseErr.message);
           // 不再尝试写SSE，直接返回500

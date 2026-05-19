@@ -266,7 +266,11 @@ export async function routeWithManagerDecision(
   console.log(`[execution-policy] route=${policyDecision.route}, managerRequired=${policyDecision.managerLlmRequired}, reason=${policyDecision.reason}`);
 
   // Sprint 66P: Quality-aware Routing — 从 history 提取上次 verification 结果
-  const lastVerification = extractLastVerificationFromHistory(history as Array<{ role: string; content?: string; meta?: Record<string, unknown> }>);
+  // 优先从 artifact store 读取（chat.ts SSE done 后写入），回退从 history meta.verification 提取
+  const lastVerification = extractLastVerificationFromHistory(
+    history as Array<{ role: string; content?: string; meta?: Record<string, unknown> }>,
+    activeArtifact?.artifactId,
+  );
   const artifactIdForQuality = activeArtifact?.artifactId ?? "unknown";
   const qualityRoutingDecision: QualityRoutingDecision = evaluateQualityRouting(artifactIdForQuality, lastVerification);
   console.log(`[quality-routing] decision=${qualityRoutingDecision.decision}, source=${qualityRoutingDecision.source}, lastScore=${qualityRoutingDecision.lastScore}`);
