@@ -81,6 +81,9 @@ import { runLocalManager, localManagerToLedgerExtract } from "./manager/local-ma
 // Sprint 64P: Budget Manager V0
 import { runBudgetPreflight } from "./budget/budget-manager.js";
 import type { BudgetDecision } from "./budget/budget-manager.js";
+// Sprint 66P: Quality-aware Routing
+import { evaluateQualityRouting, extractLastVerificationFromHistory } from "./verifier/quality-router.js";
+import type { QualityRoutingDecision } from "./verifier/verifier-types.js";
 
 export interface GatedDelegationContext {
   llmScores: Record<ManagerDecisionType, number>;
@@ -262,11 +265,18 @@ export async function routeWithManagerDecision(
   const policyDecision = evaluateExecutionPolicy(message, activeArtifact);
   console.log(`[execution-policy] route=${policyDecision.route}, managerRequired=${policyDecision.managerLlmRequired}, reason=${policyDecision.reason}`);
 
+  // Sprint 66P: Quality-aware Routing — 从 history 提取上次 verification 结果
+  const lastVerification = extractLastVerificationFromHistory(history as Array<{ role: string; content?: string; meta?: Record<string, unknown> }>);
+  const artifactIdForQuality = activeArtifact?.artifactId ?? "unknown";
+  const qualityRoutingDecision: QualityRoutingDecision = evaluateQualityRouting(artifactIdForQuality, lastVerification);
+  console.log(`[quality-routing] decision=${qualityRoutingDecision.decision}, source=${qualityRoutingDecision.source}, lastScore=${qualityRoutingDecision.lastScore}`);
+
   // Sprint 63P: Local Manager Mode — 记录本地控制平面决策
   const localManagerDecision = runLocalManager({
     traceId: ledgerTraceId,
     userInstruction: message,
     activeArtifact,
+    qualityRouting: qualityRoutingDecision,  // Sprint 66P: 传入质量路由决策
   });
   const localManagerExtract = localManagerToLedgerExtract(localManagerDecision);
   console.log(`[local-manager] enabled=true, mode=${localManagerDecision.managerMode}, nextAction=${localManagerDecision.nextAction}, managerLlmRequired=${localManagerDecision.managerLlmRequired}, decisionMs=${localManagerDecision.decisionMs}`);
@@ -522,6 +532,8 @@ export async function routeWithManagerDecision(
       localManagerExtract,
       // Sprint 64P: Budget Manager — bypass 成功路径也传递 budgetDecision
       budgetDecision: bypassBudgetDecision,
+      // Sprint 66P: Quality-aware Routing
+      qualityRoutingDecision,
     }, {
       // Sprint 60P-H1: 按接收方拆分安全字段
       sentArtifactContentToManagerRemote: false, // bypass 路径不调 Manager
@@ -1025,6 +1037,8 @@ export async function routeWithManagerDecision(
     localManagerExtract,
     // Sprint 64P: Budget Manager（manager fallback 路径）
     budgetDecision: managerBudgetDecision,
+    // Sprint 66P: Quality-aware Routing
+    qualityRoutingDecision,
   }, {
     // Sprint 60P-H1: 按接收方拆分安全字段
     sentArtifactContentToManagerRemote: false, // Context Boundary 确保 Manager 不收 artifact
@@ -1101,6 +1115,8 @@ function withLedger<T extends Partial<LLMNativeRouterResult & { callLedger?: Cal
     localManagerExtract?: Record<string, unknown>;
     // Sprint 64P: Budget Manager
     budgetDecision?: BudgetDecision;
+    // Sprint 66P: Quality-aware Routing
+    qualityRoutingDecision?: QualityRoutingDecision;
   },
   securityFlags?: Partial<SecurityScopeFlags>,
 ): T & { callLedger: CallLedgerEntry[]; requestSummary: RequestLedger } {
@@ -1118,6 +1134,8 @@ function withLedger<T extends Partial<LLMNativeRouterResult & { callLedger?: Cal
   };
   // Sprint 64P: budget 从 result 或 ctx 中提取
   const budgetDecision = ctx.budgetDecision ?? (result as any).budgetDecision;
+  // Sprint 66P: quality routing 从 ctx 中提取
+  const qualityRoutingDecision = ctx.qualityRoutingDecision;
   return {
     ...result,
     callLedger: ctx.callLedger,
@@ -1133,6 +1151,7 @@ function withLedger<T extends Partial<LLMNativeRouterResult & { callLedger?: Cal
       ctx.bypassReason,
       ctx.localManagerExtract,
       budgetDecision,
+      qualityRoutingDecision,
     ),
   } as T & { callLedger: CallLedgerEntry[]; requestSummary: RequestLedger };
 }
@@ -1157,6 +1176,8 @@ function buildRequestLedger(
   localManagerExtract?: Record<string, unknown>,
   // Sprint 64P: Budget Manager 字段（可选）
   budgetDecision?: BudgetDecision,
+  // Sprint 66P: Quality-aware Routing 字段（可选）
+  qualityRoutingDecision?: QualityRoutingDecision,
 ): RequestLedger {
   const totalLatencyMs = Date.now() - startTime;
   const totalInputTokens = callLedger.reduce((s, e) => s + e.inputTokens, 0);
@@ -1222,6 +1243,15 @@ function buildRequestLedger(
       requiresUserConfirm: budgetDecision.requiresUserConfirm,
       blocked: budgetDecision.blocked,
       decisionMs: budgetDecision.decisionMs,
+    } : undefined,
+    // Sprint 66P: Quality-aware Routing 字段（可选）
+    qualityRouting: qualityRoutingDecision ? {
+      enabled: qualityRoutingDecision.enabled,
+      source: qualityRoutingDecision.source,
+      lastScore: qualityRoutingDecision.lastScore,
+      decision: qualityRoutingDecision.decision,
+      reason: qualityRoutingDecision.reason,
+      decisionMs: qualityRoutingDecision.decisionMs,
     } : undefined,
     decisionType: decisionType || "unknown",
     routingLayer: routingLayer || "L0",

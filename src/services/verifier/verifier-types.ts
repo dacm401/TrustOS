@@ -86,3 +86,55 @@ export interface VerificationLedgerEntry {
   }>;
   decisionMs: number;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 66P: ArtifactQualityState — 上一次验证结果，供 Policy 读取
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 某个 artifact 上一次 Verifier 的质量快照。
+ *
+ * 来源：history 中最近一条带 meta.verification 的 assistant 消息，
+ * 或 SSE done 事件里的 verification 字段。
+ *
+ * Policy-first Router 在决定是否继续 patch-first 时读取此结构。
+ */
+export interface ArtifactQualityState {
+  /** 关联的 artifact ID */
+  artifactId: string;
+  /** 上次是否通过 */
+  lastVerificationPassed: boolean;
+  /** 上次质量分（0.0–1.0） */
+  lastVerificationScore: number;
+  /** 上次 error 数量 */
+  lastVerificationErrorCount: number;
+  /** 上次 warning 数量 */
+  lastVerificationWarningCount: number;
+  /** 验证时间（ISO string） */
+  lastVerifiedAt: string;
+  /** Policy 是否允许 patch-first（由 evaluateQualityRouting 填充） */
+  patchEligible: boolean;
+  /** patch-first 决策原因 */
+  reason: string;
+}
+
+/**
+ * Quality-aware Routing 决策结果。
+ *
+ * 嵌入 SSE done ledger.qualityRouting 字段；
+ * 也作为 Policy hint 传递给下一轮路由决策。
+ */
+export interface QualityRoutingDecision {
+  /** 是否启用（TRUSTOS_QUALITY_ROUTING_ENABLED 控制） */
+  enabled: boolean;
+  /** 决策数据来源 */
+  source: "last_verification" | "no_prior_verification" | "disabled";
+  /** 上次 score（0.0–1.0），无先验数据时为 null */
+  lastScore: number | null;
+  /** 路由决策 */
+  decision: "allow_patch_first" | "prefer_full_rewrite" | "force_full_rewrite" | "block_or_full_rewrite";
+  /** 决策原因 */
+  reason: string;
+  /** 决策耗时（毫秒） */
+  decisionMs: number;
+}

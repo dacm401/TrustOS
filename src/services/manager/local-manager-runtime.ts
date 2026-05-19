@@ -11,6 +11,8 @@ import { v4 as uuid } from "uuid";
 import { evaluateExecutionPolicy } from "../policy/execution-policy.js";
 import type { ActiveArtifactContext } from "../context/active-artifact.js";
 import type { ExecutionPolicyRoute } from "../../types/call-ledger.js";
+// Sprint 66P: Quality-aware Routing
+import type { QualityRoutingDecision } from "../verifier/verifier-types.js";
 
 // ── LocalManagerDecision 类型 ────────────────────────────────────────────────
 
@@ -47,6 +49,8 @@ export interface LocalManagerDecision {
   contextPackageRequired: boolean;
   /** 是否适合 patch-first（仅 revision 时） */
   patchFirstEligible: boolean;
+  /** Sprint 66P: quality routing 降级原因（当 patchFirstEligible 被质量门降级时） */
+  patchFirstDowngradedByQuality?: boolean;
   /** 安全决策（本地输出，不交给模型） */
   security: LocalManagerSecurity;
   /** 决策耗时 ms */
@@ -61,6 +65,8 @@ export interface RunLocalManagerInput {
   traceId: string;
   userInstruction: string;
   activeArtifact?: ActiveArtifactContext;
+  /** Sprint 66P: 上一次 quality routing 决策（来自 extractLastVerificationFromHistory） */
+  qualityRouting?: QualityRoutingDecision | null;
 }
 
 /**
@@ -72,12 +78,16 @@ export interface RunLocalManagerInput {
  * - 安全靠代码，不靠模型自觉
  * - Manager 永远先运行
  * - 决策结果可审计（decisionMs / reason / security）
+ *
+ * Sprint 66P 扩展：
+ * - 接受可选 qualityRouting hint
+ * - 若 decision 为 force_full_rewrite / block_or_full_rewrite，降级 patchFirstEligible
  */
 export function runLocalManager(
   input: RunLocalManagerInput
 ): LocalManagerDecision {
   const start = Date.now();
-  const { traceId, userInstruction, activeArtifact } = input;
+  const { traceId, userInstruction, activeArtifact, qualityRouting } = input;
 
   // 1. 运行 Execution Policy（规则先于 LLM）
   const policyDecision = evaluateExecutionPolicy(
@@ -109,8 +119,24 @@ export function runLocalManager(
   };
 
   // 4. patchFirstEligible：仅 revision 且 policy 已 bypass
-  const patchFirstEligible =
+  let patchFirstEligible =
     nextAction === "direct_artifact_revision" && !managerLlmRequired;
+
+  // Sprint 66P: Quality-aware Routing 降级
+  // 如果上一次 artifact 质量不够，禁止 patch-first
+  let patchFirstDowngradedByQuality = false;
+  if (
+    patchFirstEligible &&
+    qualityRouting?.enabled &&
+    (qualityRouting.decision === "force_full_rewrite" ||
+      qualityRouting.decision === "block_or_full_rewrite")
+  ) {
+    patchFirstEligible = false;
+    patchFirstDowngradedByQuality = true;
+    console.log(
+      `[local-manager] patchFirstEligible downgraded by quality routing: decision=${qualityRouting.decision}, reason=${qualityRouting.reason}`
+    );
+  }
 
   return {
     traceId,
@@ -126,6 +152,7 @@ export function runLocalManager(
       nextAction === "direct_artifact_revision" ||
       nextAction === "manager_llm_fallback",
     patchFirstEligible,
+    patchFirstDowngradedByQuality,
     security,
     decisionMs,
     reason: policyDecision.reason,
@@ -166,8 +193,10 @@ export function localManagerToLedgerExtract(
     managerLlmBypassed: !lm.managerLlmRequired,
     nextAction: lm.nextAction,
     patchFirstEligible: lm.patchFirstEligible,
+    patchFirstDowngradedByQuality: lm.patchFirstDowngradedByQuality ?? false,
     decisionMs: lm.decisionMs,
   };
 }
 
 export { evaluateExecutionPolicy };
+

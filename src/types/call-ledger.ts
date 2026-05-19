@@ -191,6 +191,15 @@ export interface RequestLedger {
     blocked: boolean;
     decisionMs: number;
   };
+  /** Sprint 66P: Quality-aware Routing 决策结果 */
+  qualityRouting?: {
+    enabled: boolean;
+    source: "last_verification" | "no_prior_verification" | "disabled";
+    lastScore: number | null;
+    decision: "allow_patch_first" | "prefer_full_rewrite" | "force_full_rewrite" | "block_or_full_rewrite";
+    reason: string;
+    decisionMs: number;
+  };
   /** Sprint 60P: Manager LLM 是否被绕过（Policy Layer 直接决策） */
   managerLlmBypassed: boolean;
   /** Sprint 60P: 绕过原因 */

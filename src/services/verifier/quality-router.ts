@@ -1,0 +1,186 @@
+/**
+ * Sprint 66P: Quality-aware Routing V0
+ *
+ * 读取上一次 Verifier 结果，决定下一轮是否允许 patch-first。
+ *
+ * 核心规则：
+ *   score >= 0.8            → allow_patch_first
+ *   0.7 <= score < 0.8      → prefer_full_rewrite（不强制，但建议全量）
+ *   score < 0.7             → force_full_rewrite
+ *   security error（errorCount > 0 且 code VF-006/007/008）
+ *                           → block_or_full_rewrite
+ *   无先验数据               → allow_patch_first（保守：不惩罚首次）
+ *
+ * 原则：
+ * - 不调用 LLM
+ * - 不改 DB schema
+ * - 不改 patch 逻辑本身，只影响 patchFirstEligible hint
+ * - V0 不阻断输出，force_full_rewrite 只影响 policy hint
+ */
+
+import type {
+  ArtifactQualityState,
+  QualityRoutingDecision,
+  VerificationLedgerEntry,
+} from "./verifier-types.js";
+
+// ── Env Gate ──────────────────────────────────────────────────────────────────
+
+export const QUALITY_ROUTING_ENABLED =
+  process.env.TRUSTOS_QUALITY_ROUTING_ENABLED !== "false";
+
+// ── Thresholds ────────────────────────────────────────────────────────────────
+
+const SCORE_ALLOW_PATCH_FIRST = 0.8;
+const SCORE_PREFER_FULL_REWRITE = 0.7;
+
+// Security violation codes：任何一个触发 → block
+const SECURITY_VIOLATION_CODES = new Set(["VF-006", "VF-007", "VF-008"]);
+
+// ── Core Decision ─────────────────────────────────────────────────────────────
+
+/**
+ * 根据上一次 VerificationLedgerEntry 做出 quality-aware 路由决策。
+ *
+ * @param artifactId   当前操作的 artifact ID
+ * @param lastEntry    上次 Verifier 结果（无则传 null）
+ * @returns QualityRoutingDecision
+ */
+export function evaluateQualityRouting(
+  artifactId: string,
+  lastEntry: VerificationLedgerEntry | null | undefined,
+): QualityRoutingDecision {
+  const startMs = Date.now();
+
+  if (!QUALITY_ROUTING_ENABLED) {
+    return {
+      enabled: false,
+      source: "disabled",
+      lastScore: null,
+      decision: "allow_patch_first",
+      reason: "quality routing disabled via TRUSTOS_QUALITY_ROUTING_ENABLED=false",
+      decisionMs: Date.now() - startMs,
+    };
+  }
+
+  // 无先验数据：允许 patch-first（不惩罚首次）
+  if (!lastEntry) {
+    return {
+      enabled: true,
+      source: "no_prior_verification",
+      lastScore: null,
+      decision: "allow_patch_first",
+      reason: "no prior verification data; defaulting to allow_patch_first",
+      decisionMs: Date.now() - startMs,
+    };
+  }
+
+  const score = lastEntry.score;
+
+  // 检查安全违规：优先触发，不等分数
+  const hasSecurityViolation = lastEntry.issues?.some(
+    (i) => SECURITY_VIOLATION_CODES.has(i.code) && i.severity === "error",
+  );
+  if (hasSecurityViolation) {
+    return {
+      enabled: true,
+      source: "last_verification",
+      lastScore: score,
+      decision: "block_or_full_rewrite",
+      reason: `security violation detected in last verification (score=${score}); blocking patch-first`,
+      decisionMs: Date.now() - startMs,
+    };
+  }
+
+  // score >= 0.8 → allow
+  if (score >= SCORE_ALLOW_PATCH_FIRST) {
+    return {
+      enabled: true,
+      source: "last_verification",
+      lastScore: score,
+      decision: "allow_patch_first",
+      reason: `last verification score ${score} >= ${SCORE_ALLOW_PATCH_FIRST}; patch-first allowed`,
+      decisionMs: Date.now() - startMs,
+    };
+  }
+
+  // 0.7 <= score < 0.8 → prefer full rewrite
+  if (score >= SCORE_PREFER_FULL_REWRITE) {
+    return {
+      enabled: true,
+      source: "last_verification",
+      lastScore: score,
+      decision: "prefer_full_rewrite",
+      reason: `last verification score ${score} in [${SCORE_PREFER_FULL_REWRITE}, ${SCORE_ALLOW_PATCH_FIRST}); preferring full rewrite`,
+      decisionMs: Date.now() - startMs,
+    };
+  }
+
+  // score < 0.7 → force full rewrite
+  return {
+    enabled: true,
+    source: "last_verification",
+    lastScore: score,
+    decision: "force_full_rewrite",
+    reason: `last verification score ${score} < ${SCORE_PREFER_FULL_REWRITE}; forcing full rewrite`,
+    decisionMs: Date.now() - startMs,
+  };
+}
+
+// ── ArtifactQualityState Builder ──────────────────────────────────────────────
+
+/**
+ * 从 VerificationLedgerEntry + QualityRoutingDecision 构建 ArtifactQualityState。
+ */
+export function buildArtifactQualityState(
+  artifactId: string,
+  lastEntry: VerificationLedgerEntry,
+  routing: QualityRoutingDecision,
+): ArtifactQualityState {
+  return {
+    artifactId,
+    lastVerificationPassed: lastEntry.passed,
+    lastVerificationScore: lastEntry.score,
+    lastVerificationErrorCount: lastEntry.errorCount,
+    lastVerificationWarningCount: lastEntry.warningCount,
+    lastVerifiedAt: new Date().toISOString(),
+    patchEligible: routing.decision === "allow_patch_first",
+    reason: routing.reason,
+  };
+}
+
+// ── Helper: extract from history meta ─────────────────────────────────────────
+
+/**
+ * 从 assistant history meta 提取上次 verification 快照。
+ *
+ * 期望结构：
+ * ```
+ * {
+ *   role: "assistant",
+ *   meta: {
+ *     origin: "worker",
+ *     contentKind: "artifact",
+ *     verification: VerificationLedgerEntry,
+ *   }
+ * }
+ * ```
+ */
+export function extractLastVerificationFromHistory(
+  history: Array<{ role: string; content?: string; meta?: Record<string, unknown> }>,
+): VerificationLedgerEntry | null {
+  // 从最新的 assistant artifact 消息向前搜索
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (
+      msg.role === "assistant" &&
+      msg.meta?.origin === "worker" &&
+      msg.meta?.contentKind === "artifact" &&
+      msg.meta?.verification &&
+      typeof msg.meta.verification === "object"
+    ) {
+      return msg.meta.verification as VerificationLedgerEntry;
+    }
+  }
+  return null;
+}
