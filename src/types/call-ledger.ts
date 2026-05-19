@@ -168,6 +168,8 @@ export interface RequestLedger {
     managerLlmBypassed: boolean;
     nextAction: string;
     patchFirstEligible?: boolean;
+    /** Sprint 66P: quality routing 降级标志（由 patch-first 降级为 full rewrite 时为 true） */
+    patchFirstDowngradedByQuality?: boolean;
     decisionMs: number;
   };
   /** Sprint 64P: Budget Manager 预检结果 */

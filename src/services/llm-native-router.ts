@@ -69,6 +69,7 @@ import { retrieveMemoriesHybrid, buildCategoryAwareMemoryText } from "./memory-r
 // Sprint 56: Artifact Revision Routing
 import { applyArtifactRevisionRoutingGuard } from "./context/artifact-revision-intent.js";
 import type { ActiveArtifactContext } from "./context/active-artifact.js";
+import { extractActiveArtifactContext } from "./context/active-artifact.js";
 // Sprint 60P: Execution Policy Layer
 import { evaluateExecutionPolicy } from "./policy/execution-policy.js";
 // Sprint 61P: ContextPackage
@@ -199,6 +200,12 @@ export interface LLMNativeRouterInput {
   crossSessionContext?: string;
   /** Sprint 56: 当前对话中最近的可修订 Worker 产物摘要（仅 id + brief，不含 artifact 原文） */
   activeArtifact?: ActiveArtifactContext;
+  /**
+   * Sprint 66P: 原始 history（包含完整的 worker artifact meta）。
+   * 用于 quality-aware routing 从 meta.verification 提取上次 verification 结果。
+   * 不经过 buildManagerView，保留完整的 verification 字段。
+   */
+  rawHistory?: Array<{ role: string; content?: string; meta?: Record<string, unknown> }>;
 }
 
 export interface LLMNativeRouterResult {
@@ -241,6 +248,14 @@ export async function routeWithManagerDecision(
 ): Promise<LLMNativeRouterResult> {
   const { message, user_id, session_id, turn_id, history, language, reqApiKey, reqLlmBaseUrl, fastModel, slowModel, crossSessionContext, activeArtifact } = input;
 
+  // Sprint 66P: 当 activeArtifact 未传入时（E2E 直接调 SSR 的场景），
+  // 从 rawHistoryInput 提取，防止 artifactId=undefined 导致 quality routing 失效。
+  // chat.ts 的正常流程已传 activeArtifact，此 fallback 只在直接调 SSR 时生效。
+  const rawHistoryInput = (input as any).rawHistory;
+  const effectiveActiveArtifact = activeArtifact ?? (rawHistoryInput?.length > 0
+    ? extractActiveArtifactContext(rawHistoryInput as any)
+    : undefined);
+
   // Sprint 59P: Call Ledger — 本次请求的所有模型调用记录
   const callLedger: CallLedgerEntry[] = [];
   const ledgerRequestStart = Date.now();
@@ -262,16 +277,33 @@ export async function routeWithManagerDecision(
   })();
 
   // Sprint 60P: Execution Policy Layer — 规则先于 LLM 调用做决策
-  const policyDecision = evaluateExecutionPolicy(message, activeArtifact);
+  const policyDecision = evaluateExecutionPolicy(message, effectiveActiveArtifact);
   console.log(`[execution-policy] route=${policyDecision.route}, managerRequired=${policyDecision.managerLlmRequired}, reason=${policyDecision.reason}`);
 
   // Sprint 66P: Quality-aware Routing — 从 history 提取上次 verification 结果
-  // 优先从 artifact store 读取（chat.ts SSE done 后写入），回退从 history meta.verification 提取
+  // 优先从 artifact store 读取（chat.ts SSE done 后写入）
+  // 回退从 rawHistory（不经过 buildManagerView）提取 meta.verification
+  // 注意：history = managerView.messages，artifact 已被替换为 brief，不能用于 verification 查找
+  // 注意：extractActiveArtifactContext 须从 rawHistoryInput 提取（managerView 过滤掉了 summaryForManager）
+  // rawHistoryInput 已在函数开头声明（line 253）
+  console.log(`[qr-router] rawHistory passed: ${rawHistoryInput ? rawHistoryInput.length + ' items' : 'NONE'}`);
+  console.log(`[qr-router] activeArtifact: artifactId=${effectiveActiveArtifact?.artifactId}, summary=${effectiveActiveArtifact?.summaryForManager?.substring(0, 30)}`);
+  if (rawHistoryInput && rawHistoryInput.length > 0) {
+    const last = rawHistoryInput[rawHistoryInput.length - 1];
+    console.log(`[qr-router] rawHistory last msg: role=${last.role}, origin=${(last.meta as any)?.origin}, kind=${(last.meta as any)?.contentKind}, hasVerif=${!!(last.meta as any)?.verification}`);
+    // 也打印倒数第二条（assistant msg with artifact）
+    for (let i = rawHistoryInput.length - 1; i >= 0; i--) {
+      const m = rawHistoryInput[i];
+      console.log(`[qr-router]   rawHistory[${i}]: role=${m.role}, origin=${(m.meta as any)?.origin}, kind=${(m.meta as any)?.contentKind}, hasVerif=${!!(m.meta as any)?.verification}`);
+      if (m.role === 'assistant' && (m.meta as any)?.contentKind === 'artifact') break;
+    }
+  }
+  const qrHistory = rawHistoryInput ?? history;
   const lastVerification = extractLastVerificationFromHistory(
-    history as Array<{ role: string; content?: string; meta?: Record<string, unknown> }>,
-    activeArtifact?.artifactId,
+    qrHistory as Array<{ role: string; content?: string; meta?: Record<string, unknown> }>,
+    effectiveActiveArtifact?.artifactId,
   );
-  const artifactIdForQuality = activeArtifact?.artifactId ?? "unknown";
+  const artifactIdForQuality = effectiveActiveArtifact?.artifactId ?? "unknown";
   const qualityRoutingDecision: QualityRoutingDecision = evaluateQualityRouting(artifactIdForQuality, lastVerification);
   console.log(`[quality-routing] decision=${qualityRoutingDecision.decision}, source=${qualityRoutingDecision.source}, lastScore=${qualityRoutingDecision.lastScore}`);
 
@@ -279,7 +311,7 @@ export async function routeWithManagerDecision(
   const localManagerDecision = runLocalManager({
     traceId: ledgerTraceId,
     userInstruction: message,
-    activeArtifact,
+    activeArtifact: effectiveActiveArtifact,
     qualityRouting: qualityRoutingDecision,  // Sprint 66P: 传入质量路由决策
   });
   const localManagerExtract = localManagerToLedgerExtract(localManagerDecision);
@@ -404,20 +436,20 @@ export async function routeWithManagerDecision(
     const revisionGuard = applyArtifactRevisionRoutingGuard({
       originalAction: routedAction,
       latestUserMessage: message,
-      activeArtifact,
+      activeArtifact: effectiveActiveArtifact,
     });
 
     // Sprint 62P: 判定是否为可 patch 的小修订
-    const patchDecision = (activeArtifact && revisionGuard.artifactRevisionIntent && policyDecision.route === "direct_artifact_revision")
+    const patchDecision = (effectiveActiveArtifact && revisionGuard.artifactRevisionIntent && policyDecision.route === "direct_artifact_revision")
       ? isPatchableSmallEdit(message)
       : { patchable: false, reason: "not revision", confidence: 1.0 };
     console.log(`[patchability] patchable=${patchDecision.patchable}, reason="${patchDecision.reason}", confidence=${patchDecision.confidence}, patchMode=${patchDecision.patchMode}`);
 
     // 构造发给 Worker 的修订消息
-    const gatedMessage = (activeArtifact && revisionGuard.artifactRevisionIntent)
+    const gatedMessage = (effectiveActiveArtifact && revisionGuard.artifactRevisionIntent)
       ? (patchDecision.patchable
-        ? `[Artifact Revision Task]\nArtifact ID: ${activeArtifact.artifactId || "unknown"}\nTask ID: ${activeArtifact.taskId || "unknown"}\nKnown summary: ${activeArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nThis is a SMALL EDIT. If possible, output the revised artifact as a JSON patch plan instead of the full content. Format:\n{\n  "patchId": "...",\n  "targetArtifactId": "${activeArtifact.artifactId || "unknown"}",\n  "operations": [\n    { "op": "replace", "find": "target string", "replace": "replacement", "reason": "..." }\n  ],\n  "confidence": 0.85,\n  "fallbackToFullRewrite": false\n}\nIf the change is too complex for a patch, just output the full revised artifact as normal.`
-        : `[Artifact Revision Task]\nArtifact ID: ${activeArtifact.artifactId || "unknown"}\nTask ID: ${activeArtifact.taskId || "unknown"}\nKnown summary: ${activeArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nImportant: This is a revision of an existing Worker artifact. Use the archived artifact as the source of truth. Return the revised complete artifact.`
+        ? `[Artifact Revision Task]\nArtifact ID: ${effectiveActiveArtifact.artifactId || "unknown"}\nTask ID: ${effectiveActiveArtifact.taskId || "unknown"}\nKnown summary: ${effectiveActiveArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nThis is a SMALL EDIT. If possible, output the revised artifact as a JSON patch plan instead of the full content. Format:\n{\n  "patchId": "...",\n  "targetArtifactId": "${effectiveActiveArtifact.artifactId || "unknown"}",\n  "operations": [\n    { "op": "replace", "find": "target string", "replace": "replacement", "reason": "..." }\n  ],\n  "confidence": 0.85,\n  "fallbackToFullRewrite": false\n}\nIf the change is too complex for a patch, just output the full revised artifact as normal.`
+        : `[Artifact Revision Task]\nArtifact ID: ${effectiveActiveArtifact.artifactId || "unknown"}\nTask ID: ${effectiveActiveArtifact.taskId || "unknown"}\nKnown summary: ${effectiveActiveArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nImportant: This is a revision of an existing Worker artifact. Use the archived artifact as the source of truth. Return the revised complete artifact.`
       )
       : message;
 
@@ -500,7 +532,7 @@ export async function routeWithManagerDecision(
       user_id, session_id, turn_id, language, reqApiKey,
       rawOutput: `[Policy Bypass] ${policyDecision.route}: ${message}`,
       v2Decision: null,
-      activeArtifact,
+      activeArtifact: effectiveActiveArtifact,
       artifactRevisionIntent: revisionGuard.artifactRevisionIntent,
       traceId: ledgerTraceId,
     });
@@ -512,22 +544,22 @@ export async function routeWithManagerDecision(
       traceId: ledgerTraceId,
       policyRoute: policyCtx.route,
       userInstruction: message,
-      activeArtifact: activeArtifact ? {
-        artifactId: activeArtifact.artifactId,
-        taskId: activeArtifact.taskId,
-        summaryForManager: activeArtifact.summaryForManager,
-        revisionOfArtifactId: activeArtifact.revisionOfArtifactId,
-        revisionOfTaskId: activeArtifact.revisionOfTaskId,
+      activeArtifact: effectiveActiveArtifact ? {
+        artifactId: effectiveActiveArtifact.artifactId,
+        taskId: effectiveActiveArtifact.taskId,
+        summaryForManager: effectiveActiveArtifact.summaryForManager,
+        revisionOfArtifactId: effectiveActiveArtifact.revisionOfArtifactId,
+        revisionOfTaskId: effectiveActiveArtifact.revisionOfTaskId,
       } : undefined,
       taskKind: policyDecision.route === "direct_artifact_revision" ? "revision" : "create",
-      artifactContentBytes: activeArtifact ? countTokens(gatedMessage) : 0,
+      artifactContentBytes: effectiveActiveArtifact ? countTokens(gatedMessage) : 0,
       artifactContentMode: policyDecision.route === "direct_artifact_revision" ? "full" : "none",
       preferredOutputMode: patchDecision.patchable ? "patch" : "full",
     });
     gatedRouteResult.contextPackage = cp;
 
     const delegated = Boolean(gatedRouteResult.delegation && gatedRouteResult.delegation.status === "triggered");
-    const sentArtifactContentToWorker = Boolean(activeArtifact && revisionGuard.artifactRevisionIntent && delegated);
+    const sentArtifactContentToWorker = Boolean(effectiveActiveArtifact && revisionGuard.artifactRevisionIntent && delegated);
 
     return withLedger(gatedRouteResult, {
       callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
@@ -846,12 +878,12 @@ export async function routeWithManagerDecision(
   const revisionGuard = applyArtifactRevisionRoutingGuard({
     originalAction: gatedResult.routedAction,
     latestUserMessage: message,
-    activeArtifact,
+    activeArtifact: effectiveActiveArtifact,
   });
   if (revisionGuard.overridden) {
     console.log("[artifact-revision-routing]", {
-      activeArtifact: Boolean(activeArtifact),
-      activeArtifactId: activeArtifact?.artifactId,
+      activeArtifact: Boolean(effectiveActiveArtifact),
+      activeArtifactId: effectiveActiveArtifact?.artifactId,
       artifactRevisionIntent: revisionGuard.artifactRevisionIntent,
       originalAction: gatedResult.routedAction,
       finalAction: revisionGuard.finalAction,
@@ -996,34 +1028,34 @@ export async function routeWithManagerDecision(
   // 这里我们将 parsedOutput.userFacingText 传入 routeByGatedDecision
   // Sprint 56: 如果有 active artifact 且检测到修订意图，注入修订指令到 message
   // 不论 LLM 是否自己选了 delegate（guard 可能没触发），都需要带 revision payload
-  const gatedMessage = (activeArtifact && revisionGuard.artifactRevisionIntent)
-    ? `[Artifact Revision Task]\nArtifact ID: ${activeArtifact.artifactId || "unknown"}\nTask ID: ${activeArtifact.taskId || "unknown"}\nKnown summary: ${activeArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nImportant: This is a revision of an existing Worker artifact. Use the archived artifact as the source of truth. Return the revised complete artifact.`
+  const gatedMessage = (effectiveActiveArtifact && revisionGuard.artifactRevisionIntent)
+    ? `[Artifact Revision Task]\nArtifact ID: ${effectiveActiveArtifact.artifactId || "unknown"}\nTask ID: ${effectiveActiveArtifact.taskId || "unknown"}\nKnown summary: ${effectiveActiveArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nImportant: This is a revision of an existing Worker artifact. Use the archived artifact as the source of truth. Return the revised complete artifact.`
     : (parsedOutput.userFacingText || message);
   const gatedRouteResult = await routeByGatedDecision(gatedResult, { 
       message: gatedMessage, 
       userFacingText: parsedOutput.userFacingText || gatedMessage,
       user_id, session_id, turn_id, language, reqApiKey, 
       rawOutput: managerOutput, v2Decision,
-      activeArtifact,
+      activeArtifact: effectiveActiveArtifact,
       artifactRevisionIntent: revisionGuard.artifactRevisionIntent,
       traceId: ledgerTraceId,
   });
 
   // Sprint 59P: 计算安全范围标记
   const delegated = Boolean(gatedRouteResult.delegation && gatedRouteResult.delegation.status === "triggered");
-  const sentArtifactContentToWorker = Boolean(activeArtifact && revisionGuard.artifactRevisionIntent && delegated);
+  const sentArtifactContentToWorker = Boolean(effectiveActiveArtifact && revisionGuard.artifactRevisionIntent && delegated);
 
     // Sprint 61P: build ContextPackage
     const cp = buildContextPackage({
       traceId: ledgerTraceId,
       policyRoute: policyCtx.route,
       userInstruction: message,
-      activeArtifact: activeArtifact ? {
-        artifactId: activeArtifact.artifactId,
-        taskId: activeArtifact.taskId,
-        summaryForManager: activeArtifact.summaryForManager,
-        revisionOfArtifactId: activeArtifact.revisionOfArtifactId,
-        revisionOfTaskId: activeArtifact.revisionOfTaskId,
+      activeArtifact: effectiveActiveArtifact ? {
+        artifactId: effectiveActiveArtifact.artifactId,
+        taskId: effectiveActiveArtifact.taskId,
+        summaryForManager: effectiveActiveArtifact.summaryForManager,
+        revisionOfArtifactId: effectiveActiveArtifact.revisionOfArtifactId,
+        revisionOfTaskId: effectiveActiveArtifact.revisionOfTaskId,
       } : undefined,
       taskKind: "manager_delegation",
       artifactContentBytes: sentArtifactContentToWorker ? countTokens(gatedMessage) : 0,
@@ -1225,6 +1257,7 @@ function buildRequestLedger(
       managerLlmBypassed: localManagerExtract.managerLlmBypassed as boolean,
       nextAction: localManagerExtract.nextAction as string,
       patchFirstEligible: localManagerExtract.patchFirstEligible as boolean | undefined,
+      patchFirstDowngradedByQuality: localManagerExtract.patchFirstDowngradedByQuality as boolean | undefined,
       decisionMs: localManagerExtract.decisionMs as number,
     } : undefined,
     // Sprint 64P: Budget Manager 字段（可选）

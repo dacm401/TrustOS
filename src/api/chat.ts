@@ -244,6 +244,7 @@ chatRouter.post("/chat", async (c) => {
             slowModel: effectiveSlowModel,
             crossSessionContext,
             activeArtifact,
+            rawHistory: rawHistory as any, // Sprint 66P: 用于 quality routing 从 meta.verification 读取
           }),
           new Promise<null>((_, reject) =>
             setTimeout(() => reject(new Error("routeWithManagerDecision SSE timeout")), 60000)
@@ -676,6 +677,7 @@ chatRouter.post("/chat", async (c) => {
         slowModel: effectiveSlowModel,
         crossSessionContext,
         activeArtifact,
+        rawHistory: rawHistory as any, // Sprint 66P: 用于 quality routing 从 meta.verification 读取
       });
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("routeWithManagerDecision timeout (no API key or network issue)")), 60000)

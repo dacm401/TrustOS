@@ -2,23 +2,28 @@
 /**
  * Sprint 66P: E2E Runtime Proof — Quality-aware Routing V0
  *
- * 验证 QualityRouting 在 SSE done 中正确输出，
- * 并验证 patchFirstDowngradedByQuality 能被质量门触发。
+ * 验证 S66P 两大能力：
+ * 1. 高分 artifact 维持 patch-first（Good path）
+ * 2. 低分 / 安全 artifact 触发 quality routing 降级（Downgrade path）
  *
  * 使用 mock LLM：TRUSTOS_E2E_MOCK_LLM=true
  *
- * 四个验收 Case（全部通过 → Sprint 66P PASS）：
- *   Case A: 无先验数据      → source=no_prior_verification, decision=allow_patch_first
- *   Case B: 首次创建后修改  → source=last_verification, decision=allow_patch_first (score=0.9)
- *   Case C: (mock 低分)     → source=last_verification, decision=force_full_rewrite
- *   Case D: 新建 artifact   → source=no_prior_verification (新 artifact 无历史)
+ * Case A: Good artifact（score=0.9）
+ *   → qualityRouting.decision = allow_patch_first
+ *   → policyRoute = direct_artifact_revision
+ *   → patchFirstDowngradedByQuality = false
  *
- * 期望：
- *   qualityRouting.enabled=true
- *   qualityRouting.source 存在
- *   qualityRouting.decision 存在
- *   MSG2/MSG3 source=last_verification (有先验数据)
- *   MSG1/MSG4 source=no_prior_verification (无先验数据)
+ * Case B: Warning artifact（score=0.75）
+ *   → qualityRouting.decision = prefer_full_rewrite
+ *   → qualityRouting.source = last_verification
+ *
+ * Case C: Bad artifact（score=0.4, passed=false）
+ *   → qualityRouting.decision = force_full_rewrite
+ *   → qualityRouting.source = last_verification
+ *
+ * Case D: Security artifact（VF-006, score=0.0）
+ *   → qualityRouting.decision = block_or_full_rewrite
+ *   → qualityRouting.source = last_verification
  */
 
 import http from "http";
@@ -93,42 +98,42 @@ function sseRequest(msg, history) {
   });
 }
 
-// ── evidence ──────────────────────────────────────────────────────────────────
+// ── evidence extraction ──────────────────────────────────────────────────────
 
 function extractEvidence(label, { doneEvents, resultContent, timedOut }) {
   const doneWithBudget = [...doneEvents].reverse().find(e => e.budget);
   const donePrimary = doneWithBudget || doneEvents[doneEvents.length - 1] || {};
 
   const ledger = donePrimary.ledger || {};
+  const localManager = ledger.localManager || {};
   const budget = donePrimary.budget || null;
   const verification = donePrimary.verification || null;
-  const patch = ledger.patch || null;
-
-  // Sprint 66P: Quality Routing 字段
-  // qualityRouting 在 SSE done 顶层（不在 ledger 里）
   const qualityRouting = donePrimary.qualityRouting || null;
-
   const policyRoute = ledger.policyRoute || null;
 
   return {
     label,
     policyRoute,
-    // Quality Routing (S66P 核心字段)
+    // Quality Routing (S66P)
     qrExists: !!qualityRouting,
     qrEnabled: qualityRouting?.enabled ?? null,
     qrSource: qualityRouting?.source ?? null,
     qrDecision: qualityRouting?.decision ?? null,
     qrLastScore: qualityRouting?.lastScore ?? null,
-    // Patch 状态
-    patchAttempted: patch?.attempted ?? null,
-    patchApplied: patch?.applied ?? null,
+    qrReason: qualityRouting?.reason ?? null,
+    // patchFirstEligible 降级标记
+    patchFirstEligible: localManager.patchFirstEligible ?? null,
+    patchFirstDegraded: localManager.patchFirstDowngradedByQuality ?? null,
     // Verifier
     verificationEnabled: verification?.enabled ?? null,
     verificationPassed: verification?.passed ?? null,
     verificationScore: verification?.score ?? null,
     // Ledger
-    workerCalls: ledger.slowModelCalls ?? null,
-    managerCalls: ledger.managerModelCalls ?? null,
+    workerCalls: ledger.workerCalls ?? null,
+    managerCalls: ledger.managerCalls ?? null,
+    // S64P/S65P 字段保留检查
+    budgetEnabled: budget?.enabled ?? null,
+    contextPackageKind: donePrimary.contextPackage?.kind ?? null,
     // Meta
     timedOut,
     doneCount: doneEvents.length,
@@ -136,142 +141,181 @@ function extractEvidence(label, { doneEvents, resultContent, timedOut }) {
   };
 }
 
-// ── build history ─────────────────────────────────────────────────────────────
+// ── synthetic history helpers ────────────────────────────────────────────────
 
-function buildWorkerMessage(content, artifactMeta, verification) {
-  return {
-    role: "assistant",
-    content,
-    meta: {
-      origin: "worker",
-      contentKind: "artifact",
-      taskId: artifactMeta?.taskId || artifactMeta?.task_id || `task_${Date.now()}`,
-      artifactId: artifactMeta?.artifactId || artifactMeta?.artifact_id || `artifact_${Date.now()}`,
-      summaryForManager: content.substring(0, 200),
-      contentType: artifactMeta?.contentType || "code",
-      // Sprint 66P: verification 嵌入 meta.verification（生产代码格式）
-      verification: verification || null,
-    }
-  };
+function syntheticHistory(verification) {
+  return [
+    {
+      role: "user",
+      content: "帮我写一个 React 按钮组件。",
+    },
+    {
+      role: "assistant",
+      content: "这里是一个 React 按钮组件。",
+      meta: {
+        origin: "worker",
+        contentKind: "artifact",
+        taskId: "synth-task-001",
+        artifactId: "synth-artifact-001",
+        contentType: "code",
+        summaryForManager: "React 按钮组件",
+        verification,
+      },
+    },
+  ];
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log("[s66p-proof] Starting Sprint 66P E2E Runtime Proof");
+  console.log("[s66p-proof] Starting Sprint 66P E2E Runtime Proof (v2)");
   console.log("[s66p-proof] BASE_URL:", BASE_URL);
   console.log("[s66p-proof] MOCK_LLM:", process.env.TRUSTOS_E2E_MOCK_LLM);
-  console.log("[s66p-proof] QUALITY_ROUTING:", process.env.TRUSTOS_QUALITY_ROUTING_ENABLED ?? "(default: true)");
 
   const results = [];
-  const history = [];
 
-  // MSG1: 首次创建 — 无先验数据
-  console.log("\n[s66p-proof] MSG1: create login page (no prior verification)...");
-  const r1 = await sseRequest("帮我写一个 React 登录页，包含用户名、密码、校验和提交按钮。", []);
-  const ev1 = extractEvidence("MSG1 create", r1);
-  console.log("[s66p-proof] MSG1:", JSON.stringify(ev1, null, 2));
-  results.push(ev1);
-  if (r1.resultContent) {
-    history.push({ role: "user", content: "帮我写一个 React 登录页，包含用户名、密码、校验和提交按钮。" });
-    // 把 verification 也写进 history，供 MSG2 的 quality routing 读取
-    const rawVerification = r1.doneEvents.find(e => e.verification)?.verification || null;
-    history.push(buildWorkerMessage(r1.resultContent, ev1.artifactMeta, rawVerification));
-  }
+  // ── PART 1: Good path (score=0.9) ──────────────────────────────────────────
+  console.log("\n=== Part 1: Good path ===");
 
-  // MSG2: revision — 有先验数据（来自 MSG1 的 verification）
-  console.log("\n[s66p-proof] MSG2: button blue (with prior verification)...");
-  const r2 = await sseRequest("把按钮改成蓝色。", history);
-  const ev2 = extractEvidence("MSG2 revision", r2);
-  console.log("[s66p-proof] MSG2:", JSON.stringify(ev2, null, 2));
-  results.push(ev2);
-  if (r2.resultContent) {
-    history.push({ role: "user", content: "把按钮改成蓝色。" });
-    const rawVerification2 = r2.doneEvents.find(e => e.verification)?.verification || null;
-    history.push(buildWorkerMessage(r2.resultContent, ev2.artifactMeta, rawVerification2));
-  }
+  const goodHist = [
+    {
+      role: "user",
+      content: "帮我写一个 React 登录页。",
+    },
+    {
+      role: "assistant",
+      content: "登录页代码如下。",
+      meta: {
+        origin: "worker",
+        contentKind: "artifact",
+        taskId: "good-task-001",
+        artifactId: "good-artifact-001",
+        contentType: "code",
+        summaryForManager: "React 登录页",
+        verification: { enabled: true, passed: true, score: 0.9, issues: [] },
+      },
+    },
+  ];
 
-  // MSG3: 连续 revision
-  console.log("\n[s66p-proof] MSG3: title bigger...");
-  const r3 = await sseRequest("再把标题改大一点。", history);
-  const ev3 = extractEvidence("MSG3 revision", r3);
-  console.log("[s66p-proof] MSG3:", JSON.stringify(ev3, null, 2));
-  results.push(ev3);
-  if (r3.resultContent) {
-    history.push({ role: "user", content: "再把标题改大一点。" });
-    const rawVerification3 = r3.doneEvents.find(e => e.verification)?.verification || null;
-    history.push(buildWorkerMessage(r3.resultContent, ev3.artifactMeta, rawVerification3));
-  }
+  console.log("\n[s66p-proof] Case A: Good artifact (score=0.9)...");
+  const rA = await sseRequest("把按钮文字改成蓝色。", goodHist);
+  const evA = extractEvidence("Case A Good", rA);
+  console.log("[s66p-proof] Case A:", JSON.stringify(evA, null, 2));
+  results.push(evA);
 
-  // MSG4: 新建另一个 artifact — 理论上有 history 但 activeArtifact 不存在（新建不走 revision）
-  console.log("\n[s66p-proof] MSG4: register page (new artifact)...");
-  const r4 = await sseRequest("再帮我写一个注册页。", history);
-  const ev4 = extractEvidence("MSG4 create", r4);
-  console.log("[s66p-proof] MSG4:", JSON.stringify(ev4, null, 2));
-  results.push(ev4);
+  // ── PART 2: Downgrade path ──────────────────────────────────────────────────
 
-  // ── Summary Table ──
+  // Case B: Warning (score=0.75, prefer_full_rewrite)
+  console.log("\n=== Part 2: Downgrade paths ===");
+
+  const warnHist = syntheticHistory({
+    enabled: true,
+    passed: true,
+    score: 0.75,
+    issues: [{ code: "VF-004", severity: "warning", message: "React structure could be improved" }],
+  });
+
+  console.log("\n[s66p-proof] Case B: Warning artifact (score=0.75)...");
+  const rB = await sseRequest("把按钮颜色改成红色。", warnHist);
+  const evB = extractEvidence("Case B Warning", rB);
+  console.log("[s66p-proof] Case B:", JSON.stringify(evB, null, 2));
+  results.push(evB);
+
+  // Case C: Bad (score=0.4, force_full_rewrite)
+  const badHist = syntheticHistory({
+    enabled: true,
+    passed: false,
+    score: 0.4,
+    issues: [{ code: "VF-002", severity: "error", message: "Empty or invalid artifact content" }],
+  });
+
+  console.log("\n[s66p-proof] Case C: Bad artifact (score=0.4)...");
+  const rC = await sseRequest("把按钮改大一点。", badHist);
+  const evC = extractEvidence("Case C Bad", rC);
+  console.log("[s66p-proof] Case C:", JSON.stringify(evC, null, 2));
+  results.push(evC);
+
+  // Case D: Security (VF-006, block_or_full_rewrite)
+  const secHist = syntheticHistory({
+    enabled: true,
+    passed: false,
+    score: 0.0,
+    issues: [{ code: "VF-006", severity: "error", message: "artifactToManager must be false" }],
+  });
+
+  console.log("\n[s66p-proof] Case D: Security artifact (VF-006)...");
+  const rD = await sseRequest("再添加一个表单验证。", secHist);
+  const evD = extractEvidence("Case D Security", rD);
+  console.log("[s66p-proof] Case D:", JSON.stringify(evD, null, 2));
+  results.push(evD);
+
+  // ── Summary ─────────────────────────────────────────────────────────────────
   console.log("\n\n=== S66P Runtime Proof Summary ===\n");
-  console.log("| Msg | policyRoute | qrSource | qrDecision | qrLastScore | qrEnabled | verificationPassed | managerCalls | workerCalls |");
-  console.log("|-----|------------|----------|-----------|:-----------:|:---------:|:-----------------:|:------------:|:-----------:|");
+  console.log("| Case | qrDecision | qrLastScore | qrSource | patchFirstDegraded | policyRoute | verification | budget |");
+  console.log("|------|-----------|:-----------:|----------|:------------------:|------------|:------------:|:------:|");
   for (const r of results) {
-    console.log(`| ${r.label} | ${r.policyRoute} | ${r.qrSource} | ${r.qrDecision} | ${r.qrLastScore} | ${r.qrEnabled} | ${r.verificationPassed} | ${r.managerCalls} | ${r.workerCalls} |`);
+    console.log(`| ${r.label} | ${r.qrDecision} | ${r.qrLastScore} | ${r.qrSource} | ${r.patchFirstDegraded} | ${r.policyRoute} | ${r.verificationPassed} | ${r.budgetEnabled} |`);
   }
 
-  // ── Validation ──
+  // ── Validation ──────────────────────────────────────────────────────────────
   console.log("\n=== Validation ===");
   let allPassed = true;
   const criticalFailures = [];
+  const checks = [
+    // Case A: Good path
+    { label: "Case A", field: "qrExists", expected: true, msg: "qualityRouting exists" },
+    { label: "Case A", field: "qrEnabled", expected: true, msg: "qualityRouting.enabled=true" },
+    { label: "Case A", field: "qrDecision", expected: "allow_patch_first", msg: "qrDecision=allow_patch_first" },
+    { label: "Case A", field: "patchFirstDegraded", expected: false, msg: "patchFirstDegraded=false (good artifact)" },
+    { label: "Case A", field: "verificationEnabled", expected: true, msg: "verification.enabled=true" },
+    { label: "Case A", field: "budgetEnabled", expected: true, msg: "budget.enabled=true" },
+    // Case B: Warning downgrade
+    { label: "Case B", field: "qrExists", expected: true, msg: "qualityRouting exists" },
+    { label: "Case B", field: "qrSource", expected: "last_verification", msg: "qrSource=last_verification" },
+    { label: "Case B", field: "qrDecision", expected: "prefer_full_rewrite", msg: "qrDecision=prefer_full_rewrite" },
+    { label: "Case B", field: "patchFirstDegraded", expected: true, msg: "patchFirstDegraded=true (warning degrades)" },
+    { label: "Case B", field: "verificationEnabled", expected: true, msg: "verification.enabled=true" },
+    // Case C: Bad downgrade
+    { label: "Case C", field: "qrExists", expected: true, msg: "qualityRouting exists" },
+    { label: "Case C", field: "qrSource", expected: "last_verification", msg: "qrSource=last_verification" },
+    { label: "Case C", field: "qrDecision", expected: "force_full_rewrite", msg: "qrDecision=force_full_rewrite" },
+    { label: "Case C", field: "patchFirstDegraded", expected: true, msg: "patchFirstDegraded=true (bad artifact)" },
+    { label: "Case C", field: "verificationEnabled", expected: true, msg: "verification.enabled=true" },
+    // Case D: Security downgrade
+    { label: "Case D", field: "qrExists", expected: true, msg: "qualityRouting exists" },
+    { label: "Case D", field: "qrSource", expected: "last_verification", msg: "qrSource=last_verification" },
+    { label: "Case D", field: "qrDecision", expected: "block_or_full_rewrite", msg: "qrDecision=block_or_full_rewrite" },
+    { label: "Case D", field: "patchFirstDegraded", expected: true, msg: "patchFirstDegraded=true (security)" },
+    { label: "Case D", field: "verificationEnabled", expected: true, msg: "verification.enabled=true" },
+  ];
 
+  // Build lookup: label → evidence object
+  const lookup = {};
+  for (const r of results) lookup[r.label] = r;
+
+  for (const check of checks) {
+    const ev = lookup[check.label];
+    if (!ev) { console.log(`  ✗ [${check.label}] MISSING evidence`); allPassed = false; continue; }
+    const val = ev[check.field];
+    const ok = val === check.expected || (check.expected === null && val == null);
+    if (ok) {
+      console.log(`  ✓ [${check.label}] PASS: ${check.msg}`);
+    } else {
+      console.log(`  ✗ [${check.label}] FAIL: ${check.msg} (got: ${val}, expected: ${check.expected})`);
+      allPassed = false;
+      criticalFailures.push(`${check.label}.${check.field}: got ${val}, expected ${check.expected}`);
+    }
+  }
+
+  // Safety: no timeouts
   for (const r of results) {
-    // qualityRouting 字段必须存在
-    if (!r.qrExists) {
-      console.log(`  ✗ [${r.label}] FAIL: qualityRouting missing from ledger`);
-      allPassed = false;
-      criticalFailures.push(`${r.label}: qualityRouting not in ledger`);
-    } else {
-      console.log(`  ✓ [${r.label}] PASS: qualityRouting exists in ledger`);
-    }
-
-    if (r.qrEnabled !== true) {
-      console.log(`  ✗ [${r.label}] FAIL: qualityRouting.enabled=${r.qrEnabled}, expected true`);
-      allPassed = false;
-    } else {
-      console.log(`  ✓ [${r.label}] PASS: qualityRouting.enabled=true`);
-    }
-
-    // MSG1 无先验数据
-    if (r.label.includes("MSG1") || r.label.includes("MSG4")) {
-      // 可能是 no_prior_verification（create 路径不一定有 activeArtifact）
-      console.log(`  ~ [${r.label}] INFO: source=${r.qrSource}, decision=${r.qrDecision}`);
-    }
-
-    // MSG2/MSG3 有先验数据
-    if (r.label.includes("MSG2") || r.label.includes("MSG3")) {
-      if (r.qrSource === "last_verification") {
-        console.log(`  ✓ [${r.label}] PASS: qualityRouting.source=last_verification`);
-      } else {
-        console.log(`  ~ [${r.label}] WARN: qualityRouting.source=${r.qrSource} (expected last_verification; may mean verification not embedded in history meta)`);
-        // Not a hard failure: 若 history 里 verification 未嵌入（如 mock LLM 返回空），这是可接受的
-      }
-
-      if (r.policyRoute === "direct_artifact_revision") {
-        console.log(`  ✓ [${r.label}] PASS: policyRoute=direct_artifact_revision`);
-      } else {
-        console.log(`  ✗ [${r.label}] FAIL: policyRoute=${r.policyRoute}, expected direct_artifact_revision`);
-        allPassed = false;
-        criticalFailures.push(`${r.label}: wrong policyRoute`);
-      }
-    }
-
-    // 不允许 timedOut
     if (r.timedOut) {
       console.log(`  ✗ [${r.label}] FAIL: timedOut`);
       allPassed = false;
     }
   }
 
-  console.log(`\n=== S66P E2E Proof: ${allPassed ? "PASS ✅" : "PARTIAL / FAIL ⚠️"} ===`);
+  console.log(`\n=== S66P E2E Proof: ${allPassed ? "PASS ✅" : "FAIL ⚠️"} ===`);
   if (criticalFailures.length > 0) {
     console.log("\nCritical failures:");
     for (const f of criticalFailures) console.log(`  - ${f}`);

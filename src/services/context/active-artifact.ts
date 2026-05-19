@@ -38,12 +38,13 @@ export function extractActiveArtifactContext(
   for (let i = rawHistory.length - 1; i >= 0; i--) {
     const msg = rawHistory[i];
     const meta = msg.meta;
+    console.log(`[active-artifact] [${i}] role=${msg.role}, origin=${meta?.origin}, kind=${meta?.contentKind}, hasSummary=${!!meta?.summaryForManager}`);
     if (
       meta?.origin === "worker" &&
       (meta.contentKind === "artifact" || meta.contentKind === "brief") &&
       meta.summaryForManager
     ) {
-      return {
+      const result = {
         taskId: meta.taskId,
         artifactId: meta.artifactId,
         summaryForManager: meta.summaryForManager,
@@ -51,8 +52,11 @@ export function extractActiveArtifactContext(
         revisionOfArtifactId: (meta as any).revisionOfArtifactId,
         revisionOfTaskId: (meta as any).revisionOfTaskId,
       };
+      console.log(`[active-artifact] FOUND artifact: ${JSON.stringify({artifactId: result.artifactId, summaryChars: result.summaryForManager?.length})}`);
+      return result;
     }
   }
+  console.log(`[active-artifact] NOT FOUND - no worker artifact in ${rawHistory.length} messages`);
 
   return undefined;
 }
