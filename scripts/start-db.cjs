@@ -47,7 +47,7 @@ function main() {
   // 2. Check if postgres container is already healthy
   try {
     const out = execSync(
-      `docker ps --filter "name=trastos-postgres-1" --filter "status=running" --format "{{.Status}}"`,
+      `docker ps --filter "name=trustos-postgres-1" --filter "status=running" --format "{{.Status}}"`,
       { cwd: path.join(__dirname, ".."), encoding: "utf8" }
     ).trim();
     if (out.startsWith("Up") && out.includes("healthy")) {

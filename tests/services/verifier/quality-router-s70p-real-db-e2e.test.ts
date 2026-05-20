@@ -78,27 +78,44 @@ vi.mock(
   () => ({ startExecuteWorker: vi.fn(), stopExecuteWorker: vi.fn() })
 );
 
-// Mock repositories except MemoryEntryRepo (we want real DB for that)
+// Mock repositories but KEEP MemoryEntryRepo real (for retrieveMemoriesHybrid DB query)
 vi.mock(
   "C:/Users/ligua/Desktop/AI项目/trustos/TrustOS/src/db/repositories.js",
-  () => ({
-    MemoryEntryRepo: {
-      create: vi.fn().mockResolvedValue({}),
-      getTopForUser: vi.fn().mockResolvedValue([]),
-      searchByVector: vi.fn().mockResolvedValue([]),
-    },
-    TaskRepo: { findActiveBySession: vi.fn().mockResolvedValue(null) },
-    ExecutionResultRepo: {},
-    GrowthRepo: {},
-    MemoryRepo: { upsertIdentity: vi.fn() },
-    EvidenceRepo: {},
-  })
+  async (importOriginal) => {
+    const actual = await importOriginal<typeof import(
+      "C:/Users/ligua/Desktop/AI项目/trustos/TrustOS/src/db/repositories.js"
+    )>();
+    return {
+      // MemoryEntryRepo: keep real — used by retrieveMemoriesHybrid
+      ...actual, // spread all real exports (DecisionRepo, GrowthRepo, etc.)
+      MemoryEntryRepo: actual.MemoryEntryRepo, // but override to use real one
+      TaskRepo: { findActiveBySession: vi.fn().mockResolvedValue(null) },
+      ExecutionResultRepo: {},
+      GrowthRepo: actual.GrowthRepo, // keep real (used by growth-tracker)
+      MemoryRepo: { upsertIdentity: vi.fn() },
+      EvidenceRepo: {},
+    };
+  }
 );
 
 vi.mock(
   "C:/Users/ligua/Desktop/AI项目/trustos/TrustOS/src/db/task-archive-repo.js",
   () => ({
     TaskArchiveRepo: { findActiveBySession: vi.fn().mockResolvedValue(null) },
+  })
+);
+
+// Mock intent classifier — bypass greeting detection to go through LLM path
+vi.mock(
+  "C:/Users/ligua/Desktop/AI项目/trustos/TrustOS/src/services/intent-classifier.js",
+  () => ({
+    classifyIntent: vi.fn().mockReturnValue({
+      category: "analysis",
+      confidence: 0.8,
+      language: "en",
+    }),
+    shouldSkipLLMRouting: vi.fn().mockReturnValue(false),
+    generateQuickResponse: vi.fn().mockReturnValue(null),
   })
 );
 
@@ -139,8 +156,9 @@ vi.mock(
         workerCalls: 0,
         totalInputTokens: 0,
         totalOutputTokens: 0,
-        estimatedTotalCost: null,
+        estimatedTotalCost: 0,
         budget: null,
+        routerTaxRatio: 0,
         entries: [],
         userId: "test",
         sessionId: "test",
@@ -221,11 +239,14 @@ describe("S70P: Real DB SSR Proof", () => {
 
       const request = new Request("http://localhost:3001/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": TEST_USER_ID, // identity middleware priority 2
+        },
         body: JSON.stringify({
-          message: "hello s70p real db test",
-          userId: TEST_USER_ID,
+          message: "analyze the financial data for the past week",
           sessionId: "s70p-session",
+          stream: true, // must be true to get SSE response
         }),
       });
 

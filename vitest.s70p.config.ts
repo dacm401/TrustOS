@@ -24,6 +24,7 @@ const testDbUrl =
   `postgresql://postgres:postgres@localhost:5432/smartrouter_test`;
 
 export default defineConfig({
+  root: "C:\\Users\\ligua\\Desktop\\AI项目\\trustos\\TrustOS",
   resolve: {
     extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
   },
