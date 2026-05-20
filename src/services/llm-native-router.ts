@@ -1257,9 +1257,12 @@ function buildRequestLedger(
       managerLlmBypassed: localManagerExtract.managerLlmBypassed as boolean,
       nextAction: localManagerExtract.nextAction as string,
       patchFirstEligible: localManagerExtract.patchFirstEligible as boolean | undefined,
+      effectivePatchFirstEligible: localManagerExtract.effectivePatchFirstEligible as boolean | undefined,
       patchFirstBefore: localManagerExtract.patchFirstBefore as boolean | undefined,
       patchFirstDegradedByWarning: localManagerExtract.patchFirstDegradedByWarning as boolean | undefined,
+      patchFirstWarningAdvisory: localManagerExtract.patchFirstWarningAdvisory as boolean | undefined,
       patchFirstDowngradedByQuality: localManagerExtract.patchFirstDowngradedByQuality as boolean | undefined,
+      patchFirstHardDowngrade: localManagerExtract.patchFirstHardDowngrade as boolean | undefined,
       decisionMs: localManagerExtract.decisionMs as number,
     } : undefined,
     // Sprint 64P: Budget Manager 字段（可选）
@@ -1284,6 +1287,7 @@ function buildRequestLedger(
       decisionMs: budgetDecision.decisionMs,
     } : undefined,
     // Sprint 66P: Quality-aware Routing 字段（可选）
+    // S68P: patchQuality 归位到 qualityRouting.patchQuality（质量信号的权威域）
     qualityRouting: qualityRoutingDecision ? {
       enabled: qualityRoutingDecision.enabled,
       source: qualityRoutingDecision.source,
@@ -1291,6 +1295,20 @@ function buildRequestLedger(
       decision: qualityRoutingDecision.decision,
       reason: qualityRoutingDecision.reason,
       decisionMs: qualityRoutingDecision.decisionMs,
+      // S68P: patch-first 质量信号归位到 qualityRouting
+      patchQuality: localManagerExtract ? {
+        before: localManagerExtract.patchFirstBefore as boolean,
+        after: localManagerExtract.effectivePatchFirstEligible as boolean,
+        warningAdvisory: localManagerExtract.patchFirstWarningAdvisory as boolean | undefined,
+        hardDowngrade: localManagerExtract.patchFirstHardDowngrade as boolean | undefined,
+        degradeReason: (() => {
+          const degraded = localManagerExtract.patchFirstHardDowngrade;
+          const warned = localManagerExtract.patchFirstWarningAdvisory;
+          if (degraded) return `hard downgrade: ${qualityRoutingDecision.decision}`;
+          if (warned) return `advisory warning: ${qualityRoutingDecision.decision}`;
+          return undefined;
+        })(),
+      } : undefined,
     } : undefined,
     decisionType: decisionType || "unknown",
     routingLayer: routingLayer || "L0",

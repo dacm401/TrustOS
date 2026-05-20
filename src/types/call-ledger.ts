@@ -205,6 +205,19 @@ export interface RequestLedger {
     decision: "allow_patch_first" | "prefer_full_rewrite" | "force_full_rewrite" | "block_or_full_rewrite";
     reason: string;
     decisionMs: number;
+    /** Sprint 68P: patch-first 质量信号包（质量信号归位到此域） */
+    patchQuality?: {
+      /** 质量路由决策前，patch-first 初始 eligibility */
+      before: boolean;
+      /** 质量路由决策后，patch-first 最终 eligibility（显式 after 状态） */
+      after: boolean;
+      /** advisory warning 标记（soft preference，不强制降级） */
+      warningAdvisory?: boolean;
+      /** hard downgrade 标记（force/block 强制降级） */
+      hardDowngrade?: boolean;
+      /** 降级原因（可读字符串） */
+      degradeReason?: string;
+    };
   };
   /** Sprint 60P: Manager LLM 是否被绕过（Policy Layer 直接决策） */
   managerLlmBypassed: boolean;

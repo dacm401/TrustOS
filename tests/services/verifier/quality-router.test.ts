@@ -10,6 +10,13 @@
  *   QR-006  disabled      → allow_patch_first（强制允许）
  *   QR-007  extractLastVerificationFromHistory 正确提取
  *   QR-008  extractLastVerificationFromHistory 无 artifact meta 返回 null
+ *
+ * Sprint 68P: Patch-first Final State Ledger — 回归测试
+ *
+ *   C7   advisory warning → after=true, warningAdvisory=true
+ *   C8   hard downgrade  → after=false, hardDowngrade=true
+ *   C9   security        → after=false, hardDowngrade=true
+ *   C10  initial ineligible → before=false, after=false
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -18,6 +25,7 @@ import {
   extractLastVerificationFromHistory,
   QUALITY_ROUTING_ENABLED,
 } from "../../../src/services/verifier/quality-router.js";
+import { localManagerToLedgerExtract } from "../../../src/services/manager/local-manager-runtime.js";
 import type { VerificationLedgerEntry } from "../../../src/services/verifier/verifier-types.js";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -248,5 +256,139 @@ describe("extractLastVerificationFromHistory", () => {
     ];
     const result = extractLastVerificationFromHistory(history);
     expect(result).toBeNull();
+  });
+});
+
+// ── Sprint 68P: Patch-first Final State Ledger Regression ───────────────────
+
+/** 构造完整 LocalManagerDecision（用于 ledger extract 单元测试） */
+function makeLocalManagerDecision(overrides: Partial<{
+  patchFirstBefore: boolean;
+  patchFirstEligible: boolean;
+  effectivePatchFirstEligible: boolean;
+  patchFirstDegradedByWarning: boolean;
+  patchFirstWarningAdvisory: boolean;
+  patchFirstDowngradedByQuality: boolean;
+  patchFirstHardDowngrade: boolean;
+}> = {}) {
+  return {
+    traceId: "s68p-test-trace",
+    managerMode: "local_control_plane" as const,
+    managerLlmRequired: false,
+    policyRoute: "direct_artifact_revision" as const,
+    nextAction: "direct_artifact_revision" as const,
+    contextPackageRequired: true,
+    patchFirstEligible: true,
+    effectivePatchFirstEligible: true,
+    patchFirstBefore: true,
+    patchFirstDegradedByWarning: false,
+    patchFirstWarningAdvisory: false,
+    patchFirstDowngradedByQuality: false,
+    patchFirstHardDowngrade: false,
+    security: {
+      allowManagerRemote: false,
+      allowWorkerRemote: false,
+      allowArtifactToManager: false,
+      allowArtifactToWorker: false,
+      allowRawHistoryToWorker: false,
+      allowRawMemoryToWorker: false,
+    },
+    decisionMs: 1,
+    reason: "test",
+    ...overrides,
+  };
+}
+
+describe("Sprint 68P — Patch-first Final State Ledger (localManagerToLedgerExtract)", () => {
+  it("C7: advisory warning → effectivePatchFirstEligible=true, warningAdvisory=true, hardDowngrade=false", () => {
+    const lm = makeLocalManagerDecision({
+      patchFirstBefore: true,
+      patchFirstEligible: true,             // V0 advisory 不阻断
+      effectivePatchFirstEligible: true,
+      patchFirstDegradedByWarning: true,
+      patchFirstWarningAdvisory: true,
+      patchFirstDowngradedByQuality: false,
+      patchFirstHardDowngrade: false,
+    });
+    const extract = localManagerToLedgerExtract(lm) as Record<string, unknown>;
+
+    expect(extract.patchFirstBefore).toBe(true);
+    expect(extract.effectivePatchFirstEligible).toBe(true);       // S68P: 显式 after = true
+    expect(extract.patchFirstWarningAdvisory).toBe(true);          // S68P: advisory 标记
+    expect(extract.patchFirstHardDowngrade).toBe(false);           // S68P: 不是 hard downgrade
+    expect(extract.patchFirstDegradedByWarning).toBe(true);       // 向后兼容字段
+  });
+
+  it("C8: hard downgrade (Bad quality) → effectivePatchFirstEligible=false, hardDowngrade=true, warningAdvisory=false", () => {
+    const lm = makeLocalManagerDecision({
+      patchFirstBefore: true,
+      patchFirstEligible: false,            // 被 force_full_rewrite 降级
+      effectivePatchFirstEligible: false,
+      patchFirstDegradedByWarning: false,
+      patchFirstWarningAdvisory: false,
+      patchFirstDowngradedByQuality: true,
+      patchFirstHardDowngrade: true,
+    });
+    const extract = localManagerToLedgerExtract(lm) as Record<string, unknown>;
+
+    expect(extract.patchFirstBefore).toBe(true);
+    expect(extract.effectivePatchFirstEligible).toBe(false);      // S68P: 显式 after = false
+    expect(extract.patchFirstWarningAdvisory).toBe(false);
+    expect(extract.patchFirstHardDowngrade).toBe(true);           // S68P: hard downgrade
+    expect(extract.patchFirstDegradedByWarning).toBe(false);      // 向后兼容
+  });
+
+  it("C9: hard downgrade (Security) → effectivePatchFirstEligible=false, hardDowngrade=true", () => {
+    const lm = makeLocalManagerDecision({
+      patchFirstBefore: true,
+      patchFirstEligible: false,            // 被 block_or_full_rewrite 拦下
+      effectivePatchFirstEligible: false,
+      patchFirstDegradedByWarning: false,
+      patchFirstWarningAdvisory: false,
+      patchFirstDowngradedByQuality: true,
+      patchFirstHardDowngrade: true,
+    });
+    const extract = localManagerToLedgerExtract(lm) as Record<string, unknown>;
+
+    expect(extract.patchFirstBefore).toBe(true);
+    expect(extract.effectivePatchFirstEligible).toBe(false);
+    expect(extract.patchFirstHardDowngrade).toBe(true);
+    expect(extract.patchFirstWarningAdvisory).toBe(false);
+  });
+
+  it("C10: initial ineligible → patchFirstBefore=false, effectivePatchFirstEligible=false", () => {
+    const lm = makeLocalManagerDecision({
+      patchFirstBefore: false,              // 初始 ineligible（无 artifact）
+      patchFirstEligible: false,
+      effectivePatchFirstEligible: false,
+      patchFirstDegradedByWarning: false,
+      patchFirstWarningAdvisory: false,
+      patchFirstDowngradedByQuality: false,
+      patchFirstHardDowngrade: false,
+    });
+    const extract = localManagerToLedgerExtract(lm) as Record<string, unknown>;
+
+    expect(extract.patchFirstBefore).toBe(false);
+    expect(extract.effectivePatchFirstEligible).toBe(false);
+    expect(extract.patchFirstWarningAdvisory).toBe(false);
+    expect(extract.patchFirstHardDowngrade).toBe(false);
+  });
+
+  it("C11: patchFirstBefore=true + no degradation → after=true, no flags set", () => {
+    const lm = makeLocalManagerDecision({
+      patchFirstBefore: true,
+      patchFirstEligible: true,
+      effectivePatchFirstEligible: true,
+      patchFirstDegradedByWarning: false,
+      patchFirstWarningAdvisory: false,
+      patchFirstDowngradedByQuality: false,
+      patchFirstHardDowngrade: false,
+    });
+    const extract = localManagerToLedgerExtract(lm) as Record<string, unknown>;
+
+    expect(extract.patchFirstBefore).toBe(true);
+    expect(extract.effectivePatchFirstEligible).toBe(true);
+    expect(extract.patchFirstWarningAdvisory).toBe(false);
+    expect(extract.patchFirstHardDowngrade).toBe(false);
   });
 });

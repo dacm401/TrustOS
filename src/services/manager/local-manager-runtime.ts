@@ -47,14 +47,20 @@ export interface LocalManagerDecision {
   nextAction: LocalManagerNextAction;
   /** 是否需要 ContextPackage */
   contextPackageRequired: boolean;
-  /** 是否适合 patch-first（仅 revision 时） */
+  /** 是否适合 patch-first（仅 revision 时）——向后兼容字段 */
   patchFirstEligible: boolean;
+  /** Sprint 68P: 显式 patch-first 最终 eligibility（等同于 patchFirstAfter） */
+  effectivePatchFirstEligible: boolean;
   /** Sprint 67P: 质量路由决策前，patch-first 初始 eligibility（降级前快照） */
   patchFirstBefore: boolean;
   /** Sprint 67P: prefer_full_rewrite advisory 标记（soft preference，不强制降级） */
   patchFirstDegradedByWarning?: boolean;
+  /** Sprint 68P: 别名 patchFirstDegradedByWarning，方便语义区分 */
+  patchFirstWarningAdvisory?: boolean;
   /** Sprint 66P: force/block 强制降级标记 */
   patchFirstDowngradedByQuality?: boolean;
+  /** Sprint 68P: 别名 patchFirstDowngradedByQuality，方便语义区分 */
+  patchFirstHardDowngrade?: boolean;
   /** 安全决策（本地输出，不交给模型） */
   security: LocalManagerSecurity;
   /** 决策耗时 ms */
@@ -152,6 +158,9 @@ export function runLocalManager(
     }
   }
 
+  // S68P: effectivePatchFirstEligible = patchFirstEligible（显式最终状态，等同于 patchFirstAfter）
+  const effectivePatchFirstEligible = patchFirstEligible;
+
   return {
     traceId,
     managerMode: "local_control_plane",
@@ -166,9 +175,12 @@ export function runLocalManager(
       nextAction === "direct_artifact_revision" ||
       nextAction === "manager_llm_fallback",
     patchFirstEligible,
+    effectivePatchFirstEligible,
     patchFirstBefore,
     patchFirstDegradedByWarning,
+    patchFirstWarningAdvisory: patchFirstDegradedByWarning,
     patchFirstDowngradedByQuality,
+    patchFirstHardDowngrade: patchFirstDowngradedByQuality,
     security,
     decisionMs,
     reason: policyDecision.reason,
@@ -209,9 +221,12 @@ export function localManagerToLedgerExtract(
     managerLlmBypassed: !lm.managerLlmRequired,
     nextAction: lm.nextAction,
     patchFirstEligible: lm.patchFirstEligible,
+    effectivePatchFirstEligible: lm.effectivePatchFirstEligible,
     patchFirstBefore: lm.patchFirstBefore,
     patchFirstDegradedByWarning: lm.patchFirstDegradedByWarning ?? false,
+    patchFirstWarningAdvisory: lm.patchFirstWarningAdvisory ?? false,
     patchFirstDowngradedByQuality: lm.patchFirstDowngradedByQuality ?? false,
+    patchFirstHardDowngrade: lm.patchFirstHardDowngrade ?? false,
     decisionMs: lm.decisionMs,
   };
 }
