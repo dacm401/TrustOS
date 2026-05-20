@@ -1,5 +1,6 @@
 /**
  * Sprint 75P: Cycle Runtime V0 — Cycle Execution Engine
+ * Sprint 76P: SSE Events — CycleEvent emission via onCycleEvent callback
  *
  * 把 S74P 的 Contract-aware Verifier 接入 Worker 执行周期。
  *
@@ -9,13 +10,14 @@
  * - maxCycles 从 budgetPolicy 读取，防止无限重试
  * - block / human_review 是终态，不重试
  *
- * Non-goals（S75P）：
- * - 不发 SSE cycle 事件（留 S76P）
- * - 不接人工审核队列（留 S77P）
- * - 不改 qualityRouting.decision（proof pyramid 保护）
+ * S76P 增量：
+ * - 新增可选 onCycleEvent 回调，向外发射 CycleEvent
+ * - 向后兼容（S75P 调用不传此参数时行为不变）
  */
 
 import { v4 as uuid } from "uuid";
+
+import type { CycleEventEmitter } from "./cycle-events.js";
 
 import type {
   TaskContractV0,
@@ -103,6 +105,8 @@ export interface CycleInput {
   originalGoal: string;
   /** 原始 constraints */
   originalConstraints: string[];
+  /** S76P: SSE 事件回调（可选；不传则 S75P 兼容） */
+  onCycleEvent?: CycleEventEmitter;
 }
 
 // ── Revision Prompt Builder ─────────────────────────────────────────────────
@@ -144,6 +148,27 @@ function buildRevisionPrompt(
   return lines.join("\n");
 }
 
+// ── S76P: CycleEvent 发射辅助 ──────────────────────────────────────────────
+
+/** 安全发射 CycleEvent，不阻塞主流程 */
+function emitEvent(
+  emitter: CycleEventEmitter | undefined,
+  event: Parameters<CycleEventEmitter>[0]
+): void {
+  if (!emitter) return;
+  try {
+    const result = emitter(event);
+    // 支持 async emitter
+    if (result instanceof Promise) {
+      result.catch((err: unknown) =>
+        console.warn("[cycle-event] async emit failed:", err instanceof Error ? err.message : err)
+      );
+    }
+  } catch (err: unknown) {
+    console.warn("[cycle-event] emit threw:", err instanceof Error ? err.message : err);
+  }
+}
+
 // ── Cycle Core ─────────────────────────────────────────────────────────────
 
 /**
@@ -177,7 +202,16 @@ export async function runCycle(input: CycleInput): Promise<{
     executeWorker,
     originalGoal,
     originalConstraints,
+    onCycleEvent,
   } = input;
+
+  // S76P: 发射 cycle.started
+  emitEvent(onCycleEvent, {
+    type: "cycle.started",
+    taskId,
+    cycleIndex: 1,
+    timestamp: startMs,
+  });
 
   const maxCycles = taskContract.budgetPolicy.maxCycles;
   const criteria = taskContract.verificationCriteria ?? [];
@@ -192,6 +226,13 @@ export async function runCycle(input: CycleInput): Promise<{
 
   // ── Cycle 1: initial verification ─────────────────────────────────────────
   {
+    emitEvent(onCycleEvent, {
+      type: "cycle.verifying",
+      taskId,
+      cycleIndex: 1,
+      timestamp: Date.now(),
+    });
+
     const cvr = criteria.length > 0
       ? verifyAgainstCriteria(
           {
@@ -245,9 +286,29 @@ export async function runCycle(input: CycleInput): Promise<{
       workerCalled: false,
     });
 
+    // S76P: verifier_done
+    emitEvent(onCycleEvent, {
+      type: "cycle.verifier_done",
+      taskId,
+      cycleIndex: 1,
+      timestamp: Date.now(),
+      recommendedAction: activeCvr.recommendedAction,
+      score: activeCvr.score,
+      passed: activeCvr.passed,
+    });
+
     // ──终态检查 ─────────────────────────────────────────────────────────────
     if (activeCvr.recommendedAction === "accept") {
       finalStatus = "accepted";
+      emitEvent(onCycleEvent, {
+        type: "cycle.terminal",
+        taskId,
+        cycleIndex: 1,
+        timestamp: Date.now(),
+        finalStatus,
+        score: activeCvr.score,
+        passed: activeCvr.passed,
+      });
       return {
         finalContent: currentContent,
         finalArtifactType: currentArtifactType,
@@ -267,6 +328,15 @@ export async function runCycle(input: CycleInput): Promise<{
 
     if (activeCvr.recommendedAction === "block") {
       finalStatus = "blocked";
+      emitEvent(onCycleEvent, {
+        type: "cycle.terminal",
+        taskId,
+        cycleIndex: 1,
+        timestamp: Date.now(),
+        finalStatus,
+        score: activeCvr.score,
+        passed: activeCvr.passed,
+      });
       return {
         finalContent: currentContent,
         finalArtifactType: currentArtifactType,
@@ -286,6 +356,15 @@ export async function runCycle(input: CycleInput): Promise<{
 
     if (activeCvr.recommendedAction === "human_review") {
       finalStatus = "human_review";
+      emitEvent(onCycleEvent, {
+        type: "cycle.terminal",
+        taskId,
+        cycleIndex: 1,
+        timestamp: Date.now(),
+        finalStatus,
+        score: activeCvr.score,
+        passed: activeCvr.passed,
+      });
       return {
         finalContent: currentContent,
         finalArtifactType: currentArtifactType,
@@ -316,6 +395,9 @@ export async function runCycle(input: CycleInput): Promise<{
     if (prevAction === "revise") anyRevise = true;
 
     if (prevAction === "revise") {
+      // S76P: worker_started
+      emitEvent(onCycleEvent, { type: "cycle.worker_started", taskId, cycleIndex, timestamp: Date.now(), workerCalled: true });
+
       // revise: 注入错误信息 + 当前内容供 Worker 理解上下文
       const revisionPrompt = buildRevisionPrompt(originalGoal, originalConstraints, finalVerification!);
       const workerResult = await executeWorker({
@@ -331,7 +413,13 @@ export async function runCycle(input: CycleInput): Promise<{
       currentArtifactType = workerResult.artifactType ?? currentArtifactType;
       currentPatchApplied = workerResult.patchApplied ?? currentPatchApplied;
       workerCalled = true;
+
+      // S76P: worker_done
+      emitEvent(onCycleEvent, { type: "cycle.worker_done", taskId, cycleIndex, timestamp: Date.now(), workerCalled: true });
     } else if (prevAction === "rewrite") {
+      // S76P: worker_started
+      emitEvent(onCycleEvent, { type: "cycle.worker_started", taskId, cycleIndex, timestamp: Date.now(), workerCalled: true });
+
       // rewrite: 全新 Worker call
       const workerResult = await executeWorker({
         taskId,
@@ -345,12 +433,17 @@ export async function runCycle(input: CycleInput): Promise<{
       currentArtifactType = workerResult.artifactType ?? undefined;
       currentPatchApplied = workerResult.patchApplied ?? false;
       workerCalled = true;
+
+      // S76P: worker_done
+      emitEvent(onCycleEvent, { type: "cycle.worker_done", taskId, cycleIndex, timestamp: Date.now(), workerCalled: true });
     } else {
       // 理论上不会到这里（block/human_review 在 cycle 1 就退出了）
       break;
     }
 
-    // ── 验证本轮结果 ──────────────────────────────────────────────────────────
+    // ── S76P: 验证本轮结果 ──────────────────────────────────────────────────
+    emitEvent(onCycleEvent, { type: "cycle.verifying", taskId, cycleIndex, timestamp: Date.now() });
+
     const cvr = criteria.length > 0
       ? verifyAgainstCriteria(
           {
@@ -403,9 +496,29 @@ export async function runCycle(input: CycleInput): Promise<{
       workerCalled,
     });
 
+    // S76P: verifier_done
+    emitEvent(onCycleEvent, {
+      type: "cycle.verifier_done",
+      taskId,
+      cycleIndex,
+      timestamp: Date.now(),
+      recommendedAction: activeCvr.recommendedAction,
+      score: activeCvr.score,
+      passed: activeCvr.passed,
+    });
+
     // ── 终态检查 ─────────────────────────────────────────────────────────────
     if (activeCvr.recommendedAction === "accept") {
       finalStatus = anyRevise ? "revised" : "rewritten";
+      emitEvent(onCycleEvent, {
+        type: "cycle.terminal",
+        taskId,
+        cycleIndex,
+        timestamp: Date.now(),
+        finalStatus,
+        score: activeCvr.score,
+        passed: activeCvr.passed,
+      });
       return {
         finalContent: currentContent,
         finalArtifactType: currentArtifactType,
@@ -425,6 +538,15 @@ export async function runCycle(input: CycleInput): Promise<{
 
     if (activeCvr.recommendedAction === "block") {
       finalStatus = "blocked";
+      emitEvent(onCycleEvent, {
+        type: "cycle.terminal",
+        taskId,
+        cycleIndex,
+        timestamp: Date.now(),
+        finalStatus,
+        score: activeCvr.score,
+        passed: activeCvr.passed,
+      });
       return {
         finalContent: currentContent,
         finalArtifactType: currentArtifactType,
@@ -444,6 +566,15 @@ export async function runCycle(input: CycleInput): Promise<{
 
     if (activeCvr.recommendedAction === "human_review") {
       finalStatus = "human_review";
+      emitEvent(onCycleEvent, {
+        type: "cycle.terminal",
+        taskId,
+        cycleIndex,
+        timestamp: Date.now(),
+        finalStatus,
+        score: activeCvr.score,
+        passed: activeCvr.passed,
+      });
       return {
         finalContent: currentContent,
         finalArtifactType: currentArtifactType,
@@ -466,6 +597,13 @@ export async function runCycle(input: CycleInput): Promise<{
 
   // ── max_cycles_exceeded ────────────────────────────────────────────────────
   finalStatus = "max_cycles_exceeded";
+  emitEvent(onCycleEvent, {
+    type: "cycle.terminal",
+    taskId,
+    cycleIndex: maxCycles,
+    timestamp: Date.now(),
+    finalStatus,
+  });
   return {
     finalContent: currentContent,
     finalArtifactType: currentArtifactType,

@@ -1,9 +1,14 @@
 # S75P Closure Report — Cycle Runtime V0
 
 **Sprint**: S75P
-**PM 签字日期**: 2026-05-20
-**Commit**: `daf3790`
-**基线**: `origin/master`（远端同步待 GFW 恢复后补推）
+**PM 签字日期**: 2026-05-20（待 origin sync 后正式签字）
+**Commit**: `69064f2`
+**PM 状态**: CLOSURE CANDIDATE ⚠️
+
+> **PM 裁定**：
+> - B2 Regression waiver: **APPROVED ✅**（6 个预存失败 waived，不阻塞 S75P）
+> - B1 origin sync: **PENDING ⚠️**（GFW 阻断，补推后签 CLOSED）
+> 详见 `S75P-regression-clarification.md`。
 
 ---
 
@@ -86,13 +91,34 @@ Barrel export：`runCycle` + `buildCycleAuditExtract`
 
 ---
 
+## PM Regression Waiver
+
+PM approved a regression waiver for six pre-existing / non-S75P failures on 2026-05-20.
+
+| # | Test | Root Cause | S75P-Related? | Waiver |
+|---|------|-----------|:---:|---|
+| 1 | model-gateway G-06 | mock intercept behavior, known since S18 | ❌ | ✅ APPROVED |
+| 2 | S69P SSR R1a | DB mock behavior, known from S69P | ❌ | ✅ APPROVED |
+| 3 | S69P SSR R1b | DB mock behavior, known from S69P | ❌ | ✅ APPROVED |
+| 4 | S69P SSR R2 | DB mock / real DB timing, known from S69P | ❌ | ✅ APPROVED |
+| 5 | S70P Real DB D3 | Docker Postgres seed timing, known from S70P | ❌ | ✅ APPROVED |
+| 6 | benchmark perf | hardware-dependent threshold / CI env issue | ❌ | ✅ APPROVED |
+
+**Rationale**:
+- S75P changes are isolated to the new cycle runtime module.
+- S75P feature suite: 16/16 PASS.
+- No evidence indicates S75P introduced these failures.
+- Waiver applies only to S75P closure evaluation; these remain technical debt.
+
+---
+
 ## Regression Guard
 
 | Suite | Result |
 |-------|--------|
 | S75P 单测（vitest.s75p.config.ts） | **16/16 PASS** ✅ |
 | 全量单测（vitest.config.ts） | ✅ S75P 相关测试全绿 |
-| 预存失败（model-gateway G-06 / S70P D3 / S69P R1a-R1b-R2） | ❌ 与 S75P 无关，历史遗留 |
+| 预存失败 | ❌ 6 个（waiver 已批准，不阻塞 S75P） |
 
 ---
 
@@ -101,7 +127,7 @@ Barrel export：`runCycle` + `buildCycleAuditExtract`
 1. **revisionContext 口径**（S76P 待确认）：revise 路径的 `revisionContext` 当前传 `currentContent`，即当前待修订内容。V0 不对 revision history 做追踪。
 2. **SSE cycle 事件**（留 S76P）：Cycle Runtime 目前只在返回时一次性写入 Ledger；不发送中间 SSE cycle 事件。
 3. **人工审核队列**（留 S77P）：`human_review` 路径目前只记录状态，不接入实际审核队列。
-4. **远端同步**：origin push 因 GFW 阻断，待网络恢复后补推。
+4. **⚠️ origin sync（待补）**：origin push 因 GFW 阻断，待网络恢复后补推 `69064f2` 方可正式 CLOSED。
 
 ---
 

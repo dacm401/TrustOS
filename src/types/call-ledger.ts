@@ -252,6 +252,28 @@ export interface RequestLedger {
       patchFirstEligible?: boolean;
     };
   };
+  /** Sprint 74P: Contract-aware Verifier 结果（contract-level） */
+  contractVerification?: {
+    passed: boolean;
+    score: number;
+    criteriaEvaluated: number;
+    criteriaPassed: number;
+    criteriaFailed: number;
+    blockingIssues: number;
+    recommendedAction: string;
+    hasHumanReviewRequired: boolean;
+    hasSecurityFailure: boolean;
+  };
+  /** Sprint 75P: Cycle Runtime 审计摘要 */
+  cycleAudit?: {
+    taskId: string;
+    totalCycles: number;
+    maxCycles: number;
+    finalStatus: string;
+    finalRecommendedAction: string;
+    cycleAuditMs: number;
+    blocked: boolean;
+  };
   /** Sprint 60P: Manager LLM 是否被绕过（Policy Layer 直接决策） */
   managerLlmBypassed: boolean;
   /** Sprint 60P: 绕过原因 */

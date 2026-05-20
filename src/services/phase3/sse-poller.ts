@@ -21,7 +21,10 @@ import { getPool } from "../../db/connection";
 
 export interface SSEEvent {
   type: "status" | "result" | "error" | "done" | "chunk" | "fast_reply"
-       | "manager_synthesized"; // Phase 3.0
+       | "manager_synthesized" // Phase 3.0
+       | "cycle_event"; // Sprint 76P: Cycle Runtime SSE Events
+  /** Sprint 76P: cycle event payload */
+  cycleEvent?: Record<string, unknown>;
   /** Sprint 73: 统一使用 stream 字段，content 已弃用 */
   content?: string;
   stream?: string;
@@ -275,6 +278,12 @@ export async function* pollArchiveAndYield(
               ? execution.result
               : "";
             const workerConfidence = (execution.confidence as number) ?? 0.7;
+
+            // S76P: Emit cycle events stored during runCycle execution
+            const cycleEvents = Array.isArray(execution.cycleEvents) ? execution.cycleEvents as Record<string, unknown>[] : [];
+            for (const event of cycleEvents) {
+              yield { type: "cycle_event", cycleEvent: event, routing_layer: "L2" as RoutingLayer };
+            }
 
             // Sprint 75: Detect empty results to prevent "silent success"
             if (!workerResult.trim()) {

@@ -620,6 +620,10 @@ chatRouter.post("/chat", async (c) => {
             verification: verificationPayload,
             // Sprint 66P: Quality-aware Routing — 直接从 requestSummary 读取（与 budget 同层）
             qualityRouting: (llmNativeResult.requestSummary as any)?.qualityRouting ?? null,
+            // Sprint 74P: Contract-aware Verifier 结果
+            contractVerification: (llmNativeResult.requestSummary as any)?.contractVerification ?? null,
+            // Sprint 75P: Cycle Runtime 审计
+            cycleAudit: (llmNativeResult.requestSummary as any)?.cycleAudit ?? null,
           };
           await s.write(`data: ${JSON.stringify(doneObj)}\n\n`);
 

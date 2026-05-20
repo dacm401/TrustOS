@@ -150,6 +150,29 @@ export const TaskArchiveRepo = {
   },
 
   /**
+   * S76P: 追加 cycle events（SSE 中间事件，用于 runCycle 进度暴露）。
+   * 将事件追加到 slow_execution.cycleEvents[]（JSONB array）。
+   * 幂等：基于 event type + cycleIndex + timestamp 去重。
+   */
+  async appendCycleEvent(
+    archiveId: string,
+    event: Record<string, unknown>
+  ): Promise<void> {
+    // JSONB array concat — 如果 cycleEvents 不存在则创建，否则追加
+    await query(
+      `UPDATE task_archives
+       SET slow_execution = COALESCE(slow_execution, '{}'::jsonb)
+         || jsonb_build_object(
+             'cycleEvents',
+             COALESCE(slow_execution->'cycleEvents', '[]'::jsonb)
+               || to_jsonb($1::jsonb)
+           )
+       WHERE id = $2`,
+      [JSON.stringify(event), archiveId]
+    );
+  },
+
+  /**
    * 追加 fast_observations（Manager 执行过程中记录）。
    */
   async appendFastObservation(

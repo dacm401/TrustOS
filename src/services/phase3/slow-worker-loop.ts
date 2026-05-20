@@ -22,6 +22,11 @@ import type { PatchPlan, PatchResult, PatchOperation, PatchLedgerEntry } from ".
 import { verifyArtifact, verificationToLedgerEntry } from "../verifier/artifact-verifier.js";
 import type { VerificationLedgerEntry } from "../verifier/verifier-types.js";
 import { applyPatchPlan } from "../patch/patch-applier.js";
+// Sprint 75P: Cycle Runtime V0
+import { runCycle, buildCycleAuditExtract } from "../cycle/cycle-runtime.js";
+import type { CycleEventEmitter } from "../cycle/cycle-events.js";
+import { buildTaskContract, buildTaskContractAuditExtract } from "../task-contract/task-contract-builder.js";
+import type { TaskContractV0, BudgetPolicy, ContractVerificationResult } from "../task-contract/task-contract-types.js";
 
 // 自适应轮询间隔
 function getPollInterval(elapsedMs: number): number {
@@ -171,130 +176,395 @@ async function executeDelegateCommand(
 
     // 调用 Slow 模型
     const slowModel = config.slowModel;
-    let content: string;
     let inputTokens = 0;
     let outputTokens = 0;
 
-    try {
-      const resp = await callModelFull(slowModel, messages);
-      content = resp.content;
-      inputTokens = resp.input_tokens ?? 0;
-      outputTokens = resp.output_tokens ?? 0;
-    } catch (modelErr: any) {
-      // 写入失败状态
-      await TaskCommandRepo.updateStatus(id, "failed", {
-        finished_at: new Date(),
-        error_message: modelErr.message,
-      });
-      await TaskArchiveRepo.setSlowExecution(archive_id, {
-        result: "",
-        errors: [modelErr.message],
-        completed_at: new Date().toISOString(),
-      });
-      throw modelErr;
+    // ── Helper: single Worker call（供 cycle runtime 重用）─────────────────────
+    async function executeWorkerCall(params: {
+      goal: string;
+      revisionContext?: string;
+      patchApplied?: boolean;
+      revisionOfArtifactId?: string;
+      activeArtifactId?: string;
+    }): Promise<{ content: string; artifactType?: string; patchApplied?: boolean }> {
+      const { goal, revisionContext } = params;
+      const sections = payload_json.required_output?.sections ?? [];
+      const outputFormat = payload_json.required_output?.format ?? "structured_analysis";
+
+      const sections2: string[] = [
+        "【Task Brief — 你需要完成的任务】",
+        goal,
+      ];
+      if (isRevisionTask && originalArtifactContent) {
+        sections2.push("【This is an artifact revision task.】");
+        if (revisionContext) {
+          sections2.push("[Original Artifact Content]", "---", revisionContext, "---");
+          sections2.push(
+            "【Instructions】",
+            "- Modify the original artifact above according to the User revision instruction.",
+            "- Return the FULL revised artifact. Do NOT omit unchanged sections.",
+            "- If the instruction is ambiguous, preserve existing functionality.",
+          );
+        }
+      }
+      if (constraints.length > 0) {
+        sections2.push("【Constraints】", ...constraints.map((c) => "- " + c));
+      }
+      if (sections.length > 0) {
+        sections2.push("【Required Sections】", sections.join(", "));
+      }
+      sections2.push(
+        "【Output Format】" + outputFormat,
+        "【重要】只使用 Task Brief 提供的信息，不要读取任何外部历史对话。",
+        "如果信息不足，在 summary 中注明 ask_for_more_context。"
+      );
+
+      const msg2: ChatMessage[] = [
+        { role: "system", content: sections2.join("\n") },
+        { role: "user", content: payload_json.task_brief ?? "" },
+      ];
+
+      const resp = await callModelFull(slowModel, msg2);
+      inputTokens += resp.input_tokens ?? 0;
+      outputTokens += resp.output_tokens ?? 0;
+      return { content: resp.content ?? "" };
     }
 
     // ── Sprint 62P: Patch-first Revision V0 ─────────────────────────────────
-    // 尝试解析 Worker 输出为 PatchPlan JSON。如果成功且 patch 可应用，
-    // 用 patched content 替代 Worker 原始输出。如果失败 → fallback full rewrite。
-    // fallback-safe: 任何异常都不影响最终输出，只记录 ledger。
+    // Patch logic 保留在 cycle 外，patch 后 content 作为 cycle 输入
+    // （cycle 验证的是 patch 后的最终内容）
     let patchEntry: PatchLedgerEntry | undefined;
-    if (isRevisionTask && originalArtifactContent) {
+
+    // ── Cycle Runtime V0 ─────────────────────────────────────────────────────
+    // 从 archive 读取 qualityRouting/localManager 信号（上游已写入 slow_execution）
+    const archive = await TaskArchiveRepo.getById(archive_id);
+    let taskContract: TaskContractV0 | null = null;
+    try {
+      const sr = archive?.slow_execution as Record<string, unknown> | null;
+      const qualityRouting = (sr?.qualityRouting as any) ?? null;
+      const localManager = (sr?.localManager as any) ?? null;
+
+      // 从 acceptanceCriteria 字段（若有）
+      const acceptanceCriteria = (payload_json.required_output?.must_include ?? []) as string[];
+
+      taskContract = buildTaskContract({
+        traceId: traceId ?? archive_id,
+        userInstruction: archive?.user_input ?? "",
+        localManager: localManager as any ?? null,
+        qualityRouting: qualityRouting as any ?? null,
+        targetArtifactId: archive_id,
+        patchFirstAttempted: isRevisionTask,
+        acceptanceCriteria,
+        constraints: payload_json.constraints ?? [],
+      });
+    } catch (contractErr: any) {
+      console.warn("[cycle] Failed to build TaskContract:", contractErr.message);
+    }
+
+    let content: string;
+    let contractVerificationEntry: ContractVerificationResult | null = null;
+    let cycleAuditEntry: import("../cycle/cycle-runtime.js").CycleAudit | null = null;
+
+    if (taskContract && (taskContract.verificationCriteria?.length ?? 0) > 0) {
+      // ── Cycle Runtime 路径 ──────────────────────────────────────────────────
       try {
-        // 尝试解析为 PatchPlan JSON
-        const trimmed = content.trim();
-        // 尝试找到 JSON 块（可能被 markdown ```json ``` 包裹）
-        const jsonMatch = trimmed.match(/```(?:json)?\s*({[\s\S]*?})\s*```/);
-        const jsonStr = jsonMatch ? jsonMatch[1] : (trimmed.startsWith("{") ? trimmed : null);
+        // S76P: Cycle events SSE — 写入 task_archive_events via appendCycleEvent
+        const cycleResult = await runCycle({
+          taskId: archive_id,
+          activeArtifactId: undefined,
+          revisionOfArtifactId: isRevisionTask ? archive_id : undefined,
+          taskContract,
+          initialContent: "", // will be filled by first executeWorkerCall
+          security: {
+            artifactToManager: false,
+            rawHistoryToWorker: false,
+            rawMemoryToWorker: false,
+          },
+          // S76P: 将 cycle 中间事件追加到 slow_execution.cycleEvents[]
+          onCycleEvent: (async (event: Parameters<CycleEventEmitter>[0]) => {
+            try {
+              // CycleEvent 只含 metadata (type/cycleIndex/score/recommendedAction/finalStatus)，
+              // 无 artifact/history/memory，序列化安全
+              const record: Record<string, unknown> = {
+                type: event.type,
+                taskId: event.taskId,
+                cycleIndex: event.cycleIndex,
+                timestamp: event.timestamp,
+                recommendedAction: event.recommendedAction,
+                score: event.score,
+                passed: event.passed,
+                workerCalled: event.workerCalled,
+                finalStatus: event.finalStatus,
+                error: event.error,
+              };
+              await TaskArchiveRepo.appendCycleEvent(archive_id, record);
+            } catch (err: unknown) {
+              console.warn("[slow-worker] appendCycleEvent failed:", err instanceof Error ? err.message : String(err));
+            }
+          }) as unknown as CycleEventEmitter,
+          executeWorker: async (p) => {
+            let result: { content: string; artifactType?: string; patchApplied?: boolean } = { content: "" };
+            let lastError: string | undefined;
 
-        if (jsonStr) {
-          const parsed = JSON.parse(jsonStr) as Partial<PatchPlan>;
-          if (parsed && parsed.targetArtifactId && Array.isArray(parsed.operations)) {
-            const patchPlan: PatchPlan = {
-              patchId: parsed.patchId || `patch_${task_id?.slice(0, 8)}`,
-              traceId: traceId || "unknown",
-              targetArtifactId: parsed.targetArtifactId,
-              revisionInstruction: payload_json.task_brief ?? "",
-              operations: parsed.operations as PatchOperation[],
-              confidence: parsed.confidence ?? 0.5,
-              fallbackToFullRewrite: parsed.fallbackToFullRewrite ?? false,
-            };
+            // Patch-first: 尝试 patch，失败则 fallback
+            if (isRevisionTask && originalArtifactContent) {
+              try {
+                // 首次 Worker call → 尝试 patch
+                result = await executeWorkerCall({
+                  goal: p.goal,
+                  revisionContext: p.revisionContext,
+                  patchApplied: p.patchApplied,
+                  revisionOfArtifactId: p.revisionOfArtifactId,
+                  activeArtifactId: p.activeArtifactId,
+                });
 
-            console.log(`[patch-first] Parsed PatchPlan: ${patchPlan.operations.length} ops, confidence=${patchPlan.confidence}, fallback=${patchPlan.fallbackToFullRewrite}`);
+                // 解析 PatchPlan
+                const trimmed = result.content.trim();
+                const jsonMatch = trimmed.match(/```(?:json)?\s*({[\s\S]*?})\s*```/);
+                const jsonStr = jsonMatch ? jsonMatch[1] : (trimmed.startsWith("{") ? trimmed : null);
 
-            if (!patchPlan.fallbackToFullRewrite) {
-              const patchResult: PatchResult = applyPatchPlan(originalArtifactContent, patchPlan);
+                if (jsonStr) {
+                  const parsed = JSON.parse(jsonStr) as Partial<PatchPlan>;
+                  if (parsed && parsed.targetArtifactId && Array.isArray(parsed.operations)) {
+                    const patchPlan: PatchPlan = {
+                      patchId: parsed.patchId || `patch_${archive_id?.slice(0, 8)}`,
+                      traceId: traceId || "unknown",
+                      targetArtifactId: parsed.targetArtifactId,
+                      revisionInstruction: payload_json.task_brief ?? "",
+                      operations: parsed.operations as PatchOperation[],
+                      confidence: parsed.confidence ?? 0.5,
+                      fallbackToFullRewrite: parsed.fallbackToFullRewrite ?? false,
+                    };
 
-              if (patchResult.ok && patchResult.content) {
-                console.log(`[patch-first] ✅ Patch applied: ${patchResult.appliedOperations}/${patchResult.totalOperations} ops, ${patchResult.sourceBytes} → ${patchResult.outputBytes} bytes`);
-                content = patchResult.content;
-                patchEntry = {
-                  attempted: true,
-                  applied: true,
-                  fallbackToFullRewrite: false,
-                  operationCount: patchResult.appliedOperations,
-                  patchMode: undefined,
-                  sourceBytes: patchResult.sourceBytes,
-                  outputBytes: patchResult.outputBytes,
-                };
-              } else {
-                console.warn(`[patch-first] ❌ Patch apply failed: ${patchResult.errors?.join("; ") ?? "unknown"}`);
+                    console.log(`[patch-first] Cycle Worker: PatchPlan ${patchPlan.operations.length} ops, confidence=${patchPlan.confidence}`);
+
+                    if (!patchPlan.fallbackToFullRewrite) {
+                      const patchResult: PatchResult = applyPatchPlan(originalArtifactContent, patchPlan);
+                      if (patchResult.ok && patchResult.content) {
+                        result = {
+                          content: patchResult.content,
+                          patchApplied: true,
+                        };
+                        patchEntry = {
+                          attempted: true,
+                          applied: true,
+                          fallbackToFullRewrite: false,
+                          operationCount: patchResult.appliedOperations,
+                          patchMode: undefined,
+                          sourceBytes: patchResult.sourceBytes,
+                          outputBytes: patchResult.outputBytes,
+                        };
+                      } else {
+                        patchEntry = {
+                          attempted: true,
+                          applied: false,
+                          fallbackToFullRewrite: true,
+                          fallbackReason: patchResult.errors?.[0] ?? "patch_apply_failed",
+                          operationCount: patchResult.appliedOperations,
+                          sourceBytes: originalArtifactContent.length,
+                          outputBytes: result.content.length,
+                        };
+                      }
+                    } else {
+                      patchEntry = {
+                        attempted: false,
+                        applied: false,
+                        fallbackToFullRewrite: true,
+                        fallbackReason: "worker_indicated_fallback",
+                        sourceBytes: originalArtifactContent.length,
+                        outputBytes: result.content.length,
+                      };
+                    }
+                  } else {
+                    patchEntry = {
+                      attempted: true,
+                      applied: false,
+                      fallbackToFullRewrite: true,
+                      fallbackReason: "invalid_patch_plan_structure",
+                      sourceBytes: originalArtifactContent.length,
+                      outputBytes: result.content.length,
+                    };
+                  }
+                } else {
+                  patchEntry = {
+                    attempted: true,
+                    applied: false,
+                    fallbackToFullRewrite: true,
+                    fallbackReason: "not_json_output",
+                    sourceBytes: originalArtifactContent.length,
+                    outputBytes: result.content.length,
+                  };
+                }
+              } catch (e: any) {
+                lastError = e?.message ?? "unknown";
+                console.warn("[patch-first] Cycle Worker patch error:", lastError);
                 patchEntry = {
                   attempted: true,
                   applied: false,
                   fallbackToFullRewrite: true,
-                  fallbackReason: patchResult.errors?.[0] ?? "patch_apply_failed",
-                  operationCount: patchResult.appliedOperations,
+                  fallbackReason: `error: ${lastError}`,
+                  sourceBytes: originalArtifactContent?.length ?? 0,
+                  outputBytes: 0,
+                };
+                result = { content: "" };
+              }
+            } else {
+              // 非 patch 任务：直接 Worker call
+              result = await executeWorkerCall({ goal: p.goal });
+            }
+
+            if (!result.content) {
+              // Worker call 失败
+              const msg = `[Worker call failed] ${lastError ?? "unknown error"}`;
+              result = { content: msg };
+            }
+            return result;
+          },
+          originalGoal: goal,
+          originalConstraints: payload_json.constraints ?? [],
+        });
+
+        content = cycleResult.finalContent;
+        contractVerificationEntry = cycleResult.finalVerification;
+        cycleAuditEntry = cycleResult.cycleAudit;
+
+        console.log(JSON.stringify({
+          msg: "[CYCLE_RUNTIME] Cycle complete",
+          archiveId: archive_id,
+          totalCycles: cycleResult.cycleAudit.totalCycles,
+          finalStatus: cycleResult.cycleAudit.finalStatus,
+          recommendedAction: cycleResult.finalVerification?.recommendedAction,
+          passed: cycleResult.finalVerification?.passed,
+          score: cycleResult.finalVerification?.score,
+          criteriaEvaluated: cycleResult.finalVerification?.criteriaEvaluated,
+        }));
+      } catch (cycleErr: any) {
+        console.error("[CYCLE_RUNTIME] Cycle error:", cycleErr.message);
+        // Cycle 失败时 fallback 到直接 Worker call
+        try {
+          const resp = await callModelFull(slowModel, messages);
+          content = resp.content;
+          inputTokens = resp.input_tokens ?? 0;
+          outputTokens = resp.output_tokens ?? 0;
+        } catch (modelErr: any) {
+          await TaskCommandRepo.updateStatus(id, "failed", {
+            finished_at: new Date(),
+            error_message: modelErr.message,
+          });
+          await TaskArchiveRepo.setSlowExecution(archive_id, {
+            result: "",
+            errors: [modelErr.message],
+            completed_at: new Date().toISOString(),
+          });
+          throw modelErr;
+        }
+      }
+    } else {
+      // ── Legacy 路径（无 criteria / TaskContract 构建失败）───────────────────
+      try {
+        const resp = await callModelFull(slowModel, messages);
+        content = resp.content;
+        inputTokens = resp.input_tokens ?? 0;
+        outputTokens = resp.output_tokens ?? 0;
+      } catch (modelErr: any) {
+        await TaskCommandRepo.updateStatus(id, "failed", {
+          finished_at: new Date(),
+          error_message: modelErr.message,
+        });
+        await TaskArchiveRepo.setSlowExecution(archive_id, {
+          result: "",
+          errors: [modelErr.message],
+          completed_at: new Date().toISOString(),
+        });
+        throw modelErr;
+      }
+
+      // Patch logic (legacy)
+      if (isRevisionTask && originalArtifactContent) {
+        try {
+          const trimmed = content.trim();
+          const jsonMatch = trimmed.match(/```(?:json)?\s*({[\s\S]*?})\s*```/);
+          const jsonStr = jsonMatch ? jsonMatch[1] : (trimmed.startsWith("{") ? trimmed : null);
+          if (jsonStr) {
+            const parsed = JSON.parse(jsonStr) as Partial<PatchPlan>;
+            if (parsed && parsed.targetArtifactId && Array.isArray(parsed.operations)) {
+              const patchPlan: PatchPlan = {
+                patchId: parsed.patchId || `patch_${task_id?.slice(0, 8)}`,
+                traceId: traceId || "unknown",
+                targetArtifactId: parsed.targetArtifactId,
+                revisionInstruction: payload_json.task_brief ?? "",
+                operations: parsed.operations as PatchOperation[],
+                confidence: parsed.confidence ?? 0.5,
+                fallbackToFullRewrite: parsed.fallbackToFullRewrite ?? false,
+              };
+              if (!patchPlan.fallbackToFullRewrite) {
+                const patchResult: PatchResult = applyPatchPlan(originalArtifactContent, patchPlan);
+                if (patchResult.ok && patchResult.content) {
+                  content = patchResult.content;
+                  patchEntry = {
+                    attempted: true,
+                    applied: true,
+                    fallbackToFullRewrite: false,
+                    operationCount: patchResult.appliedOperations,
+                    patchMode: undefined,
+                    sourceBytes: patchResult.sourceBytes,
+                    outputBytes: patchResult.outputBytes,
+                  };
+                } else {
+                  patchEntry = {
+                    attempted: true,
+                    applied: false,
+                    fallbackToFullRewrite: true,
+                    fallbackReason: patchResult.errors?.[0] ?? "patch_apply_failed",
+                    operationCount: patchResult.appliedOperations,
+                    sourceBytes: originalArtifactContent.length,
+                    outputBytes: content.length,
+                  };
+                }
+              } else {
+                patchEntry = {
+                  attempted: false,
+                  applied: false,
+                  fallbackToFullRewrite: true,
+                  fallbackReason: "worker_indicated_fallback",
                   sourceBytes: originalArtifactContent.length,
-                  outputBytes: content.length, // fallback to full rewrite content
+                  outputBytes: content.length,
                 };
               }
             } else {
-              console.log(`[patch-first] Worker indicated fallbackToFullRewrite=true, using full output`);
               patchEntry = {
-                attempted: false,
+                attempted: true,
                 applied: false,
                 fallbackToFullRewrite: true,
-                fallbackReason: "worker_indicated_fallback",
+                fallbackReason: "invalid_patch_plan_structure",
                 sourceBytes: originalArtifactContent.length,
                 outputBytes: content.length,
               };
             }
           } else {
-            console.log(`[patch-first] JSON parsed but not valid PatchPlan (missing targetArtifactId or operations), using full output as fallback`);
             patchEntry = {
               attempted: true,
               applied: false,
               fallbackToFullRewrite: true,
-              fallbackReason: "invalid_patch_plan_structure",
+              fallbackReason: "not_json_output",
               sourceBytes: originalArtifactContent.length,
               outputBytes: content.length,
             };
           }
-        } else {
-          console.log(`[patch-first] Not JSON output, using full output as fallback`);
+        } catch (e: any) {
+          console.log(`[patch-first] Parse error: ${e.message}, using full output as fallback`);
           patchEntry = {
             attempted: true,
             applied: false,
             fallbackToFullRewrite: true,
-            fallbackReason: "not_json_output",
-            sourceBytes: originalArtifactContent.length,
+            fallbackReason: `parse_error: ${e.message}`,
+            sourceBytes: originalArtifactContent?.length ?? 0,
             outputBytes: content.length,
           };
         }
-      } catch (e: any) {
-        console.log(`[patch-first] Parse error: ${e.message}, using full output as fallback`);
-        patchEntry = {
-          attempted: true,
-          applied: false,
-          fallbackToFullRewrite: true,
-          fallbackReason: `parse_error: ${e.message}`,
-          sourceBytes: originalArtifactContent?.length ?? 0,
-          outputBytes: content.length,
-        };
+      } else {
+        console.log(`[patch-first] Not a revision task or no original artifact content; patch not attempted`);
       }
-    } else {
-      console.log(`[patch-first] Not a revision task or no original artifact content; patch not attempted`);
     }
 
     const totalMs = Date.now() - startTime;
@@ -324,40 +594,42 @@ async function executeDelegateCommand(
       started_at: new Date(startTime),
     });
 
-    // 写 task_archives.slow_execution（供 pollArchiveAndYield 轮询感知）
-    // Sprint 65P: Verifier V0 — 在写入 archive 之前做本地质量检查
+    // ── Verifier V0 legacy 兜底（无 criteria 时）────────────────────────────────
     let verificationEntry: VerificationLedgerEntry | null = null;
-    try {
-      const contentType = (workerResult.structured_result as any)?.contentType
-        ?? (patchEntry?.applied ? "code" : undefined);
-      const verifyResult = verifyArtifact({
-        traceId: traceId ?? archive_id,
-        artifactType: contentType,
-        content,
-        patchApplied: patchEntry?.applied ?? false,
-        security: {
-          // Worker 不发 artifact 给 Manager，history 走 context boundary
-          artifactToManager: false,
-          rawHistoryToWorker: false,
-          rawMemoryToWorker: false,
-        },
-      });
-      verificationEntry = verificationToLedgerEntry(verifyResult);
-      console.log(JSON.stringify({
-        msg: "[VERIFIER_V0] Artifact verification result",
-        traceId: traceId ?? null,
-        archiveId: archive_id,
-        passed: verifyResult.passed,
-        score: verifyResult.score,
-        issueCount: verifyResult.issues.length,
-        errorCount: verificationEntry.errorCount,
-        warningCount: verificationEntry.warningCount,
-        decisionMs: verifyResult.decisionMs,
-      }));
-    } catch (verifyErr: any) {
-      console.warn("[VERIFIER_V0] Verifier threw unexpectedly:", verifyErr.message);
+    if (!contractVerificationEntry) {
+      try {
+        const contentType = (workerResult.structured_result as any)?.contentType
+          ?? (patchEntry?.applied ? "code" : undefined);
+        const verifyResult = verifyArtifact({
+          traceId: traceId ?? archive_id,
+          artifactType: contentType,
+          content,
+          patchApplied: patchEntry?.applied ?? false,
+          security: {
+            artifactToManager: false,
+            rawHistoryToWorker: false,
+            rawMemoryToWorker: false,
+          },
+        });
+        verificationEntry = verificationToLedgerEntry(verifyResult);
+        console.log(JSON.stringify({
+          msg: "[VERIFIER_V0] Artifact verification result",
+          traceId: traceId ?? null,
+          archiveId: archive_id,
+          passed: verifyResult.passed,
+          score: verifyResult.score,
+          issueCount: verifyResult.issues.length,
+          errorCount: verificationEntry.errorCount,
+          warningCount: verificationEntry.warningCount,
+          decisionMs: verifyResult.decisionMs,
+        }));
+      } catch (verifyErr: any) {
+        console.warn("[VERIFIER_V0] Verifier threw unexpectedly:", verifyErr.message);
+      }
     }
 
+    // ── 写 archive slow_execution ──────────────────────────────────────────────
+    const auditExtract = taskContract ? buildCycleAuditExtract(cycleAuditEntry!) : null;
     await TaskArchiveRepo.setSlowExecution(archive_id, {
       result: content,
       confidence: 0.85,
@@ -367,8 +639,12 @@ async function executeDelegateCommand(
       cost_usd: costUsd,
       duration_ms: totalMs,
       completed_at: new Date().toISOString(),
-      // Sprint 65P: Verifier V0 结果
+      // Sprint 65P: Verifier V0 结果（legacy）
       verification: verificationEntry ?? undefined,
+      // Sprint 74P: Contract Verification 结果
+      contractVerification: contractVerificationEntry ?? undefined,
+      // Sprint 75P: Cycle Audit
+      cycleAudit: auditExtract ?? undefined,
     });
 
     // 更新 task_commands 状态为 completed
