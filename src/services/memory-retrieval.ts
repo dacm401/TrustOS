@@ -34,6 +34,7 @@ import type {
 } from "../types/index.js";
 import { getEmbedding } from "./embedding.js";
 import { MemoryEntryRepo, EvidenceRepo } from "../db/repositories.js";
+import { checkDbAvailability } from "../db/connection.js";
 
 // ── Scoring helpers ──────────────────────────────────────────────────────────
 
@@ -284,6 +285,14 @@ export interface HybridRetrievalOptions {
 export async function retrieveMemoriesHybrid(
   options: HybridRetrievalOptions
 ): Promise<MemoryRetrievalResult[]> {
+  // ── S69P: graceful degradation — DB unavailable → empty result, no hang ──
+  const dbAvailable = await checkDbAvailability();
+  if (!dbAvailable) {
+    console.warn("[retrieveMemoriesHybrid] DB unavailable — returning empty (test mode)");
+    return [];
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   const { userId, context, categoryPolicy, maxTotalEntries, category } = options;
 
   // 1. Try to get query embedding

@@ -26,7 +26,8 @@ import { startExecuteWorker, stopExecuteWorker } from "./services/phase3/execute
 // Optimization: Prometheus Metrics endpoint
 import { metricsRouter } from "./api/metrics.js";
 
-const app = new Hono();
+// S69P: export app for test access (Hono app.fetch enables in-process HTTP testing)
+export const app = new Hono();
 
 app.use("/*", cors());
 // P2-2: Rate limiting — runs before identity so even unauthenticated callers are throttled
