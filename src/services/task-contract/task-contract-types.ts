@@ -130,6 +130,100 @@ export interface VerificationCriterion {
   deterministic: boolean;
 }
 
+// ── Criterion Evaluation Result（S74P 新增）────────────────────────────────
+
+/**
+ * 单个 criterion 的验证结果。
+ *
+ * - deterministic=true → passed: boolean（确定）
+ * - deterministic=false → passed: null（不确定，需要人工/LLM）
+ * - reasonCode 说明判断依据
+ */
+export type CriterionReasonCode =
+  | "passed"
+  | "missing_text"
+  | "missing_structure"
+  | "metadata_mismatch"
+  | "security_issue"
+  | "below_threshold"
+  | "requires_human_review"
+  | "llm_judged_uncertain"
+  | "not_applicable"
+  | "skipped";
+
+export interface CriterionVerificationResult {
+  /** 对应 criterion 的 ID */
+  criterionId: string;
+  /** criterion 类型 */
+  type: CriterionType;
+  /** 是否通过（null = 需要人工/LLM 判断） */
+  passed: boolean | null;
+  /** 是否必须通过（false = advisory） */
+  required: boolean;
+  /** 确定性置信度（1.0=deterministic, 0.5=non-deterministic） */
+  confidence: number;
+  /** criterion 严重性 */
+  severity: "low" | "medium" | "high" | "security";
+  /** 是否 deterministic */
+  deterministic: boolean;
+  /** 结果原因 */
+  reasonCode: CriterionReasonCode;
+}
+
+/**
+ * recommendedAction — Verifier 对 artifact 的最终行动建议。
+ *
+ * - accept: 满足所有必须条件，可以交付
+ * - revise: 有 advisory 问题，建议修
+ * - rewrite: 质量问题严重，建议重写
+ * - block: 安全问题，阻断交付
+ * - human_review: 有必须人工验收的 criterion，需要人工介入
+ */
+export type RecommendedAction =
+  | "accept"
+  | "revise"
+  | "rewrite"
+  | "block"
+  | "human_review";
+
+/**
+ * 合约感知验证结果。
+ *
+ * 在原始 VerificationResult 基础上，增加 criterion-level 输出。
+ */
+export interface ContractVerificationResult {
+  /** 关联 trace ID */
+  traceId: string;
+  /** 原始 Verifier V0 结果（向后兼容） */
+  base: {
+    passed: boolean;
+    score: number;
+    issues: Array<{ code: string; severity: string; message: string }>;
+  };
+  /** 是否通过（required criteria 全部 passed=true 才 true） */
+  passed: boolean;
+  /** 合约加权分（0.0–1.0） */
+  score: number;
+  /** 评估的 criteria 总数 */
+  criteriaEvaluated: number;
+  /** 通过的 criteria 数 */
+  criteriaPassed: number;
+  /** 失败的 criteria 数 */
+  criteriaFailed: number;
+  /** 阻断性问题数（security required 失败） */
+  blockingIssues: number;
+  /** 每条 criterion 的评估结果 */
+  results: CriterionVerificationResult[];
+  /** Verifier 建议的行动 */
+  recommendedAction: RecommendedAction;
+  /** 是否有必须人工验收的 criterion */
+  hasHumanReviewRequired: boolean;
+  /** 是否有 security required criterion 失败 */
+  hasSecurityFailure: boolean;
+  /** 评估耗时（毫秒） */
+  decisionMs: number;
+}
+
 // ── Verification Criteria Audit（Ledger 用）────────────────────────────────
 
 /**

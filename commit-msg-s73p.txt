@@ -1,0 +1,25 @@
+feat(s73p): Structured Verification Criteria V0
+
+Sprint 73P: VerificationCriterion[] schema + criteria builder + ledger audit
+
+D1: VerificationCriterion schema
+- CriterionType: human_review / text_presence / structure_presence / metadata_match / security_check / quality_threshold / llm_judged
+- CriterionTarget: artifact / patch / answer / metadata / ledger
+- CriterionSource: acceptanceCriteria / riskPolicy / securityPolicy / systemDefault
+- VerificationCriteriaAudit: count/requiredCount/deterministicCount/hasSecurityCheck/maxSeverity/sources
+
+D2: buildVerificationCriteria() builder
+- System defaults: non-empty content check, type-known check
+- Security risk → three security_check criteria (VF-006/007/008 equivalents)
+- High risk → quality_threshold criterion
+- Output-driven: structure_presence for artifact/patch
+- AC mapping: technical keywords → deterministic; qualitative → llm_judged; manual review → human_review
+- Criteria priority ordering: specific before generic (human_review before metadata_match)
+
+D3: TaskContractV0.verificationCriteria + criteriaSource = structured_criteria
+D4: Ledger audit extract — verificationCriteriaAudit (no label/description text)
+D5: No-routing-divergence guards (criteria builder doesn't change qr/lm state)
+D6: Context boundary sentinel tests (RAW_ARTIFACT/HISTORY/MEMORY secrets stay out of audit)
+D7: 126/126 PASS (99 old + 27 new)
+
+Baseline: 63a1b31 (S72P CLOSED)
