@@ -219,6 +219,39 @@ export interface RequestLedger {
       degradeReason?: string;
     };
   };
+  /** Sprint 72P: TaskContract audit extract（不含 payload） */
+  taskContract?: {
+    id: string;
+    taskId: string;
+    intent: string;
+    expectedOutputKind: string;
+    riskLevel: string;
+    verificationPolicy: {
+      required: boolean;
+      mode: string;
+      criteriaSource: string;
+      blockOnSecurity: boolean;
+      minScore?: number;
+    };
+    budgetPolicy: {
+      maxWorkerCalls: number;
+      maxVerifierCalls: number;
+      maxCycles: number;
+    };
+    allowedContextAudit: {
+      canReadHistory: boolean;
+      canReadArtifactSource: boolean;
+      artifactIdsListed: boolean;
+      artifactIdCount: number;
+      hasTargetArtifactId: boolean;
+      memoryScope: string;
+    };
+    provenance: {
+      builtFrom: string;
+      qualityDecision?: string;
+      patchFirstEligible?: boolean;
+    };
+  };
   /** Sprint 60P: Manager LLM 是否被绕过（Policy Layer 直接决策） */
   managerLlmBypassed: boolean;
   /** Sprint 60P: 绕过原因 */
