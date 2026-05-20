@@ -17,6 +17,11 @@ import type {
   TaskIntent,
   ExpectedOutputKind,
   RiskLevel,
+  VerificationCriterion,
+  CriterionType,
+  CriterionTarget,
+  CriterionSource,
+  VerificationCriteriaAudit,
 } from "./task-contract-types.js";
 
 import type { LocalManagerDecision } from "../manager/local-manager-runtime.js";
@@ -183,6 +188,251 @@ function deriveUserVisibleGoal(userInstruction: string, intent: TaskIntent): str
   return userInstruction.slice(0, 197) + "...";
 }
 
+// ── Criteria Builder ──────────────────────────────────────────────────────────
+
+/** ID generator for criteria */
+let criteriaCounter = 0;
+function nextCriterionId(): string {
+  return `crt-${++criteriaCounter}-${Date.now()}`;
+}
+
+/**
+ * S73P: buildVerificationCriteria — 从 TaskContract 构建 structured criteria。
+ *
+ * 规则：
+ * - security risk → 添加 required security_check
+ * - high risk → 添加 required quality_threshold
+ * - artifact/patch output → 添加 structure_presence
+ * - acceptanceCriteria 自然语言 → 映射为 llm_judged 或 human_review（deterministic=false）
+ * - acceptanceCriteria 含技术关键词 → 尝试映射为 text_presence / structure_presence
+ *
+ * S73P 重点：criteria 存在且可审计。
+ * 不改变现有 Verifier 评分行为（S74P 才让 Verifier 消费 criteria）。
+ */
+export function buildVerificationCriteria(
+  taskContract: TaskContractV0,
+  acceptanceCriteriaInput?: string[]
+): VerificationCriterion[] {
+  const criteria: VerificationCriterion[] = [];
+  const { riskLevel, intent, expectedOutputKind } = taskContract;
+
+  // ── System Default: VF-001 non-empty ─────────────────────────────────────
+  criteria.push({
+    id: nextCriterionId(),
+    label: "Content must be non-empty",
+    description: "Artifact content cannot be empty or whitespace-only.",
+    type: "text_presence",
+    target: "artifact",
+    severity: "high",
+    required: true,
+    expected: "",
+    source: "systemDefault",
+    deterministic: true,
+  });
+
+  // ── System Default: artifact type known ───────────────────────────────────
+  criteria.push({
+    id: nextCriterionId(),
+    label: "Artifact type must be known",
+    description: "artifactType must not be 'unknown'.",
+    type: "metadata_match",
+    target: "metadata",
+    severity: "low",
+    required: false,
+    source: "systemDefault",
+    deterministic: true,
+  });
+
+  // ── Risk-driven: security_check ──────────────────────────────────────────
+  if (riskLevel === "security") {
+    criteria.push({
+      id: nextCriterionId(),
+      label: "Security check: artifact not sent to Manager LLM",
+      description: "artifactToManager must be false (VF-006 equivalent).",
+      type: "security_check",
+      target: "artifact",
+      severity: "security",
+      required: true,
+      source: "securityPolicy",
+      deterministic: true,
+    });
+    criteria.push({
+      id: nextCriterionId(),
+      label: "Security check: raw history not sent to Worker",
+      description: "rawHistoryToWorker must be false (VF-007 equivalent).",
+      type: "security_check",
+      target: "artifact",
+      severity: "security",
+      required: true,
+      source: "securityPolicy",
+      deterministic: true,
+    });
+    criteria.push({
+      id: nextCriterionId(),
+      label: "Security check: raw memory not sent to Worker",
+      description: "rawMemoryToWorker must be false (VF-008 equivalent).",
+      type: "security_check",
+      target: "artifact",
+      severity: "security",
+      required: true,
+      source: "securityPolicy",
+      deterministic: true,
+    });
+  }
+
+  // ── Risk-driven: quality_threshold ──────────────────────────────────────
+  if (riskLevel === "high" || riskLevel === "security") {
+    criteria.push({
+      id: nextCriterionId(),
+      label: "Quality score threshold",
+      description: `Verifier score must be >= ${taskContract.verificationPolicy.minScore ?? 0.5}.`,
+      type: "quality_threshold",
+      target: "artifact",
+      severity: riskLevel === "security" ? "security" : "high",
+      required: true,
+      threshold: taskContract.verificationPolicy.minScore ?? 0.5,
+      source: "riskPolicy",
+      deterministic: true,
+    });
+  }
+
+  // ── Output-driven: structure_presence ────────────────────────────────────
+  if (expectedOutputKind === "artifact" || expectedOutputKind === "patch") {
+    criteria.push({
+      id: nextCriterionId(),
+      label: "Output structure check",
+      description:
+        expectedOutputKind === "patch"
+          ? "Patch must be applicable: patchApplied=true implies non-empty content."
+          : "Artifact must have valid structure for the declared artifactType.",
+      type: "structure_presence",
+      target: expectedOutputKind === "patch" ? "patch" : "artifact",
+      severity: "medium",
+      required: expectedOutputKind === "patch",
+      source: "systemDefault",
+      deterministic: true,
+    });
+  }
+
+  // ── Output-driven: revision lineage for patch ───────────────────────────
+  if (intent === "revise_artifact" && taskContract.target.revisionOfArtifactId) {
+    criteria.push({
+      id: nextCriterionId(),
+      label: "Revision lineage must be valid",
+      description: "revisionOfArtifactId must match expected source artifact.",
+      type: "metadata_match",
+      target: "metadata",
+      severity: "medium",
+      required: false,
+      source: "systemDefault",
+      deterministic: true,
+    });
+  }
+
+  // ── Acceptance criteria mapping ───────────────────────────────────────────
+  const criteriaInputs = acceptanceCriteriaInput ?? taskContract.acceptanceCriteria ?? [];
+
+  for (const raw of criteriaInputs) {
+    const lower = raw.toLowerCase();
+    let type: CriterionType = "llm_judged";
+    let deterministic = false;
+    let required = false;
+
+    // Try to map technical keywords (order matters: specific before generic)
+    if (
+      lower.includes("包含") || lower.includes("必须包含") ||
+      lower.includes("must contain") || lower.includes("include")
+    ) {
+      type = "text_presence";
+      deterministic = true;
+      required = true;
+    } else if (
+      lower.includes("导出") || lower.includes("export") ||
+      lower.includes("函数") || lower.includes("function") ||
+      lower.includes("组件") || lower.includes("component")
+    ) {
+      type = "structure_presence";
+      deterministic = true;
+    } else if (
+      lower.includes("人工") || lower.includes("human") ||
+      lower.includes("手动") || lower.includes("manual") ||
+      lower.includes("请检查")
+    ) {
+      // human_review: check BEFORE generic "检查" to avoid "请人工检查" being captured by metadata_match
+      type = "human_review";
+      deterministic = false;
+      required = true;
+    } else if (
+      lower.includes("检查") || lower.includes("verify") ||
+      lower.includes("validate")
+    ) {
+      type = "metadata_match";
+      deterministic = true;
+    } else if (
+      lower.includes("高级") || lower.includes("优雅") ||
+      lower.includes("专业") || lower.includes("better") ||
+      lower.includes("improved") || lower.includes("更")
+    ) {
+      // Qualitative — cannot deterministic verify
+      type = "llm_judged";
+      deterministic = false;
+      required = false; // advisory
+    } else {
+      // General — default to LLM judgment
+      type = "llm_judged";
+      deterministic = false;
+      required = false;
+    }
+
+    criteria.push({
+      id: nextCriterionId(),
+      label: `AC: ${raw.slice(0, 60)}${raw.length > 60 ? "…" : ""}`,
+      description: raw,
+      type,
+      target: expectedOutputKind === "patch" ? "patch" : "artifact",
+      severity: required ? "high" : "low",
+      required,
+      source: "acceptanceCriteria",
+      deterministic,
+    });
+  }
+
+  return criteria;
+}
+
+// ── Criteria Audit Builder ────────────────────────────────────────────────────
+
+/**
+ * 从 criteria 列表构建 ledger audit summary。
+ * 不含 label/description/expected 等文本内容。
+ */
+export function buildVerificationCriteriaAudit(
+  criteria: VerificationCriterion[]
+): VerificationCriteriaAudit {
+  const sources = new Set<CriterionSource>();
+  let maxSeverity: VerificationCriteriaAudit["maxSeverity"] = "low";
+
+  const SEVERITY_RANK: Record<string, number> = {
+    low: 0, medium: 1, high: 2, security: 3,
+  };
+
+  for (const c of criteria) {
+    sources.add(c.source);
+    if (SEVERITY_RANK[c.severity] > SEVERITY_RANK[maxSeverity]) {
+      maxSeverity = c.severity;
+    }
+  }
+
+  return {
+    count: criteria.length,
+    requiredCount: criteria.filter((c) => c.required).length,
+    deterministicCount: criteria.filter((c) => c.deterministic).length,
+    hasSecurityCheck: criteria.some((c) => c.type === "security_check"),
+    maxSeverity,
+    sources: Array.from(sources),
+  };
+}
+
 // ── Main Builder ─────────────────────────────────────────────────────────────
 
 /**
@@ -196,6 +446,9 @@ function deriveUserVisibleGoal(userInstruction: string, intent: TaskIntent): str
  * 只从现有决策中提取结构化表达。
  */
 export function buildTaskContract(input: TaskContractBuilderInput): TaskContractV0 {
+  // Reset counter per build to keep IDs deterministic within test scope
+  criteriaCounter = 0;
+
   const {
     traceId,
     userInstruction,
@@ -248,6 +501,35 @@ export function buildTaskContract(input: TaskContractBuilderInput): TaskContract
   // 11. Provenance
   const provenance = deriveProvenance(lm, qr);
 
+  // 12. Verification Criteria（S73P 新增）
+  // criteriaSource = structured_criteria 时填充，S73P V0 即填
+  const verificationCriteria = buildVerificationCriteria(
+    {
+      id: "", // 临时，buildVerificationCriteria 不需要 id
+      taskId: traceId,
+      intent,
+      expectedOutputKind,
+      target,
+      userVisibleGoal,
+      acceptanceCriteria,
+      constraints,
+      allowedContext,
+      riskLevel,
+      budgetPolicy,
+      verificationPolicy,
+      provenance,
+      // verificationCriteria 自身循环引用，先用空数组占位，criteria builder 不依赖自身
+      verificationCriteria: [],
+    },
+    acceptanceCriteria
+  );
+
+  // 13. Update verificationPolicy.criteriaSource = structured_criteria
+  const finalVerificationPolicy = {
+    ...verificationPolicy,
+    criteriaSource: "structured_criteria" as const,
+  };
+
   return {
     id: uuid(),
     taskId: traceId, // S72P 用 traceId 作为 taskId（S76P 引入独立 taskId 后可替换）
@@ -260,7 +542,8 @@ export function buildTaskContract(input: TaskContractBuilderInput): TaskContract
     allowedContext,
     riskLevel,
     budgetPolicy,
-    verificationPolicy,
+    verificationPolicy: finalVerificationPolicy,
+    verificationCriteria,
     provenance,
   };
 }
@@ -284,6 +567,11 @@ export function buildTaskContractAuditExtract(
 ): TaskContractAuditExtract {
   const { allowedContext } = contract;
 
+  // Build criteria audit summary
+  const verificationCriteriaAudit = buildVerificationCriteriaAudit(
+    contract.verificationCriteria ?? []
+  );
+
   return {
     id: contract.id,
     taskId: contract.taskId,
@@ -297,6 +585,7 @@ export function buildTaskContractAuditExtract(
       blockOnSecurity: contract.verificationPolicy.blockOnSecurity,
       minScore: contract.verificationPolicy.minScore,
     },
+    verificationCriteriaAudit,
     budgetPolicy: { ...contract.budgetPolicy },
     allowedContextAudit: {
       canReadHistory: allowedContext.canReadHistory,

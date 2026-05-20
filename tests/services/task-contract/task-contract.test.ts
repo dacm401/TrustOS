@@ -79,15 +79,16 @@ describe("TaskContractV0 schema", () => {
       verificationPolicy: {
         required: false,
         mode: "none",
-        criteriaSource: "human_acceptance_criteria",
+        criteriaSource: "structured_criteria", // S73P
         blockOnSecurity: false,
       },
+      verificationCriteria: [],
       provenance: { builtFrom: "fallback" },
     };
 
     expect(contract.id).toBeTruthy();
     expect(contract.intent).toBe("create_artifact");
-    expect(contract.verificationPolicy.criteriaSource).toBe("human_acceptance_criteria");
+    expect(contract.verificationPolicy.criteriaSource).toBe("structured_criteria"); // S73P
     expect(contract.budgetPolicy.maxCycles).toBe(1);
   });
 
@@ -103,9 +104,10 @@ describe("TaskContractV0 schema", () => {
         budgetPolicy: { maxWorkerCalls: 1, maxVerifierCalls: 0, maxCycles: 1 },
         verificationPolicy: {
           required: false, mode,
-          criteriaSource: "human_acceptance_criteria",
+          criteriaSource: "structured_criteria", // S73P
           blockOnSecurity: false,
         },
+        verificationCriteria: [],
         provenance: { builtFrom: "fallback" },
       };
       expect(contract.verificationPolicy.mode).toBe(mode);
@@ -127,9 +129,10 @@ describe("TaskContractV0 schema", () => {
       budgetPolicy: { maxWorkerCalls: 2, maxVerifierCalls: 1, maxCycles: 2 },
       verificationPolicy: {
         required: true, mode: "heuristic",
-        criteriaSource: "human_acceptance_criteria",
+        criteriaSource: "structured_criteria", // S73P
         blockOnSecurity: false,
       },
+      verificationCriteria: [],
       provenance: { builtFrom: "localManager" },
     };
     expect(contract.allowedContext.artifactIds).toEqual(["art-1"]);
@@ -528,7 +531,7 @@ describe("D6: Verifier compatibility", () => {
     expect(contract.riskLevel).toBe("high");
     expect(contract.verificationPolicy.required).toBe(true);
     expect(contract.verificationPolicy.mode).toBe("llm");
-    expect(contract.verificationPolicy.criteriaSource).toBe("human_acceptance_criteria");
+    expect(contract.verificationPolicy.criteriaSource).toBe("structured_criteria"); // S73P: criteria 结构化
   });
 
   it("D6-003: security risk 时 blockOnSecurity=true", () => {

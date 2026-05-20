@@ -43,9 +43,109 @@ export type RiskLevel = "low" | "medium" | "high" | "security";
 
 export type MemoryScope = "none" | "brief" | "retrieved";
 
-// ── Verification Policy ─────────────────────────────────────────────────────
+// ── Verification Criterion（S73P 新增）──────────────────────────────────────
 
-export type VerificationMode = "none" | "heuristic" | "llm";
+/**
+ * criteria type 标明该 criterion 的验证方式。
+ *
+ * - human_review: 需要人工验收，Verifier 不参与
+ * - text_presence: 内容中包含/不包含指定文本片段
+ * - structure_presence: 结构化检查（JSON schema、export 语句、函数签名等）
+ * - metadata_match: 元数据匹配（artifactId、revision、type 等）
+ * - security_check: 安全检查（VF-006/007/008 等价物）
+ * - quality_threshold: 质量分阈值（score >= threshold）
+ * - llm_judged: 需要 LLM 判断，不 deterministic
+ */
+export type CriterionType =
+  | "human_review"
+  | "text_presence"
+  | "structure_presence"
+  | "metadata_match"
+  | "security_check"
+  | "quality_threshold"
+  | "llm_judged";
+
+/**
+ * criterion 目标对象。
+ * - artifact: 验证 artifact content
+ * - patch: 验证 patch 适用性
+ * - answer: 验证回答质量
+ * - metadata: 验证元数据字段
+ * - ledger: 验证 ledger 字段（用于 audit）
+ */
+export type CriterionTarget =
+  | "artifact"
+  | "patch"
+  | "answer"
+  | "metadata"
+  | "ledger";
+
+/**
+ * criterion 来源。
+ * - acceptanceCriteria: 人类 acceptanceCriteria 映射而来
+ * - riskPolicy: riskLevel 策略自动添加
+ * - securityPolicy: security risk 自动添加
+ * - systemDefault: 系统默认（如 VF-001 非空检查）
+ */
+export type CriterionSource =
+  | "acceptanceCriteria"
+  | "riskPolicy"
+  | "securityPolicy"
+  | "systemDefault";
+
+export interface VerificationCriterion {
+  /** 唯一 ID */
+  id: string;
+  /** 可读标签（human-readable，sensitive 时 ledger 不放） */
+  label: string;
+  /**
+   * 详细描述（human-readable）。
+   * 不写入 ledger audit extract。
+   */
+  description?: string;
+  /** 验证类型 */
+  type: CriterionType;
+  /** 验证目标 */
+  target: CriterionTarget;
+  /** 严重程度（影响 score，但不驱动 QualityRouter） */
+  severity: "low" | "medium" | "high" | "security";
+  /** 是否必须通过（false = advisory） */
+  required: boolean;
+  /**
+   * 期望值（type=text_presence / metadata_match 时用）。
+   * 不含敏感内容，不写入 ledger audit。
+   */
+  expected?: string | number | boolean | string[];
+  /**
+   * 质量分阈值（type=quality_threshold 时用）。
+   * 不改现有 Verifier score 计算（S73P 只派生）。
+   */
+  threshold?: number;
+  /** 来源 */
+  source: CriterionSource;
+  /**
+   * 是否 deterministic。
+   * false = 需要 LLM 或人工判断。
+   */
+  deterministic: boolean;
+}
+
+// ── Verification Criteria Audit（Ledger 用）────────────────────────────────
+
+/**
+ * criteria audit summary — 写入 Ledger / SSE done。
+ * 不含 label / description / expected 等敏感文本。
+ */
+export interface VerificationCriteriaAudit {
+  count: number;
+  requiredCount: number;
+  deterministicCount: number;
+  hasSecurityCheck: boolean;
+  maxSeverity: "low" | "medium" | "high" | "security";
+  sources: CriterionSource[];
+}
+
+// ── Criteria Source ───────────────────────────────────────────────────────────
 
 /**
  * criteriaSource 标明 acceptanceCriteria 的性质。
@@ -144,6 +244,8 @@ export interface TaskContractAuditExtract {
     blockOnSecurity: boolean;
     minScore?: number;
   };
+  /** criteria audit summary — 不含 label/description/expected */
+  verificationCriteriaAudit: VerificationCriteriaAudit;
   budgetPolicy: {
     maxWorkerCalls: number;
     maxVerifierCalls: number;
@@ -233,6 +335,15 @@ export interface TaskContractV0 {
 
   /** 验证策略 */
   verificationPolicy: VerificationPolicy;
+
+  /**
+   * 结构化验证标准列表（S73P 新增）。
+   * criteriaSource = "structured_criteria" 时填充。
+   * criteriaSource = "human_acceptance_criteria" 时为空（S73P 尚未映射）。
+   *
+   * 完整 criteria 不写入 Ledger audit extract（仅写入 summary）。
+   */
+  verificationCriteria: VerificationCriterion[];
 
   // ── Provenance ────────────────────────────────────────────────────────────
 
