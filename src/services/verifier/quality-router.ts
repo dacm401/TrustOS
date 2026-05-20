@@ -1,13 +1,14 @@
 /**
  * Sprint 66P: Quality-aware Routing V0
+ * Sprint 67P: patchFirstBefore 快照 + advisory 语义固化
  *
  * 读取上一次 Verifier 结果，决定下一轮是否允许 patch-first。
  *
  * 核心规则：
  *   score >= 0.8            → allow_patch_first
- *   0.7 <= score < 0.8      → prefer_full_rewrite（不强制，但建议全量）
+ *   0.7 <= score < 0.8      → prefer_full_rewrite（advisory，soft preference）
  *   score < 0.7             → force_full_rewrite
- *   security error（errorCount > 0 且 code VF-006/007/008）
+ *   security error（severity=error 且 code VF-006/007/008）
  *                           → block_or_full_rewrite
  *   无先验数据               → allow_patch_first（保守：不惩罚首次）
  *
@@ -15,7 +16,23 @@
  * - 不调用 LLM
  * - 不改 DB schema
  * - 不改 patch 逻辑本身，只影响 patchFirstEligible hint
- * - V0 不阻断输出，force_full_rewrite 只影响 policy hint
+ * - V0 不阻断输出，force/block 决策影响 patch-first eligibility
+ *
+ *
+ * ─── 数据源边界声明（Sprint 67P 文档化）──────────────────────────────
+ *
+ * Module-level Map（_verificationStore）
+ * ──────────────────────────────────────
+ * 此 Map 是 **运行时 cache**，仅在当前进程生命周期内有效。
+ * 用途：SSE done 后写入，下一轮请求读取（生产流程无持久化 history.verification）。
+ *
+ * 重要约束：
+ * - **replay / SSR / 跨进程 场景必须使用 history meta.verification 作为 durable source**
+ * - 进程重启或 SSR 调用链中，Map 被清空，fallback 到 history 扫描
+ * - 查看 extractLastVerificationFromHistory() 的优先级顺序
+ *
+ * Durable source: history[role="assistant"][meta.origin="worker"][meta.verification]
+ * Runtime cache:  _verificationStore (Map<string, VerificationLedgerEntry>)
  */
 
 import type {

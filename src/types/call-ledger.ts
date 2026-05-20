@@ -168,7 +168,11 @@ export interface RequestLedger {
     managerLlmBypassed: boolean;
     nextAction: string;
     patchFirstEligible?: boolean;
-    /** Sprint 66P: quality routing 降级标志（由 patch-first 降级为 full rewrite 时为 true） */
+    /** Sprint 67P: 质量路由决策前，patch-first 初始 eligibility（降级前快照） */
+    patchFirstBefore?: boolean;
+    /** Sprint 67P: prefer_full_rewrite advisory 标记（soft preference，不强制降级） */
+    patchFirstDegradedByWarning?: boolean;
+    /** Sprint 66P: force/block 强制降级标志 */
     patchFirstDowngradedByQuality?: boolean;
     decisionMs: number;
   };

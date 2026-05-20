@@ -49,7 +49,11 @@ export interface LocalManagerDecision {
   contextPackageRequired: boolean;
   /** 是否适合 patch-first（仅 revision 时） */
   patchFirstEligible: boolean;
-  /** Sprint 66P: quality routing 降级原因（当 patchFirstEligible 被质量门降级时） */
+  /** Sprint 67P: 质量路由决策前，patch-first 初始 eligibility（降级前快照） */
+  patchFirstBefore: boolean;
+  /** Sprint 67P: prefer_full_rewrite advisory 标记（soft preference，不强制降级） */
+  patchFirstDegradedByWarning?: boolean;
+  /** Sprint 66P: force/block 强制降级标记 */
   patchFirstDowngradedByQuality?: boolean;
   /** 安全决策（本地输出，不交给模型） */
   security: LocalManagerSecurity;
@@ -119,23 +123,33 @@ export function runLocalManager(
   };
 
   // 4. patchFirstEligible：仅 revision 且 policy 已 bypass
-  let patchFirstEligible =
+  const patchFirstBefore =
     nextAction === "direct_artifact_revision" && !managerLlmRequired;
 
-  // Sprint 66P: Quality-aware Routing 降级
-  // 如果上一次 artifact 质量不够，禁止 patch-first
+  // 5. Quality-aware Routing 降级逻辑（Sprint 67P）
+  let patchFirstEligible = patchFirstBefore;
   let patchFirstDowngradedByQuality = false;
-  if (
-    patchFirstEligible &&
-    qualityRouting?.enabled &&
-    (qualityRouting.decision === "force_full_rewrite" ||
-      qualityRouting.decision === "block_or_full_rewrite")
-  ) {
-    patchFirstEligible = false;
-    patchFirstDowngradedByQuality = true;
-    console.log(
-      `[local-manager] patchFirstEligible downgraded by quality routing: decision=${qualityRouting.decision}, reason=${qualityRouting.reason}`
-    );
+  let patchFirstDegradedByWarning = false;
+
+  if (patchFirstBefore && qualityRouting?.enabled) {
+    if (
+      qualityRouting.decision === "force_full_rewrite" ||
+      qualityRouting.decision === "block_or_full_rewrite"
+    ) {
+      // Hard downgrade: 强制降级 patch-first
+      patchFirstEligible = false;
+      patchFirstDowngradedByQuality = true;
+      console.log(
+        `[local-manager] patchFirstEligible hard-downgraded by quality routing: decision=${qualityRouting.decision}, reason=${qualityRouting.reason}`
+      );
+    } else if (qualityRouting.decision === "prefer_full_rewrite") {
+      // Advisory: soft preference，不强制降级，但标记 advisory 状态
+      patchFirstDegradedByWarning = true;
+      patchFirstEligible = patchFirstBefore; // 保持 true（V0 advisory）
+      console.log(
+        `[local-manager] patch-first advisory signal: decision=prefer_full_rewrite, degradedByWarning=true`
+      );
+    }
   }
 
   return {
@@ -152,6 +166,8 @@ export function runLocalManager(
       nextAction === "direct_artifact_revision" ||
       nextAction === "manager_llm_fallback",
     patchFirstEligible,
+    patchFirstBefore,
+    patchFirstDegradedByWarning,
     patchFirstDowngradedByQuality,
     security,
     decisionMs,
@@ -193,6 +209,8 @@ export function localManagerToLedgerExtract(
     managerLlmBypassed: !lm.managerLlmRequired,
     nextAction: lm.nextAction,
     patchFirstEligible: lm.patchFirstEligible,
+    patchFirstBefore: lm.patchFirstBefore,
+    patchFirstDegradedByWarning: lm.patchFirstDegradedByWarning ?? false,
     patchFirstDowngradedByQuality: lm.patchFirstDowngradedByQuality ?? false,
     decisionMs: lm.decisionMs,
   };

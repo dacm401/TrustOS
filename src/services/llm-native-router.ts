@@ -1257,6 +1257,8 @@ function buildRequestLedger(
       managerLlmBypassed: localManagerExtract.managerLlmBypassed as boolean,
       nextAction: localManagerExtract.nextAction as string,
       patchFirstEligible: localManagerExtract.patchFirstEligible as boolean | undefined,
+      patchFirstBefore: localManagerExtract.patchFirstBefore as boolean | undefined,
+      patchFirstDegradedByWarning: localManagerExtract.patchFirstDegradedByWarning as boolean | undefined,
       patchFirstDowngradedByQuality: localManagerExtract.patchFirstDowngradedByQuality as boolean | undefined,
       decisionMs: localManagerExtract.decisionMs as number,
     } : undefined,
