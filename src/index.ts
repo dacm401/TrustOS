@@ -18,6 +18,8 @@ import { authRouter } from "./api/auth.js";
 import { default as promptTemplatesRouter } from "./api/prompt-templates.js";
 // Sprint 63: Sessions Summary API
 import { sessionsRouter } from "./api/sessions.js";
+// S78P: Human Review Resolution API
+import { hrRouter } from "./api/human-review.js";
 // Sprint 64: Permission-Gated Worker Architecture
 import { createPermissionsRouter, createWorkspacesRouter } from "./api/permissions.js";
 // Phase 3.0: 启动后台 Worker 轮询循环
@@ -48,6 +50,7 @@ app.route("/v1/evidence", evidenceRouter);
 app.route("/v1", archiveRouter);
 app.route("/v1/prompt-templates", promptTemplatesRouter);
 app.route("/v1/sessions", sessionsRouter);
+app.route("/v1/human-review", hrRouter);  // S78P
 app.route("/v1/permissions", createPermissionsRouter());
 app.route("/v1/workspaces", createWorkspacesRouter());
 app.route("/metrics", metricsRouter);

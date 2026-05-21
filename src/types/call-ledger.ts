@@ -274,6 +274,17 @@ export interface RequestLedger {
     cycleAuditMs: number;
     blocked: boolean;
   };
+  /** Sprint 78P: Human Review Resolution */
+  humanReviewResolution?: {
+    requestId: string;
+    previousStatus: "pending";
+    newStatus: "approved" | "rejected" | "needs_revision" | "cancelled";
+    action: string;
+    resolvedBy?: string;
+    resolvedAt: string;
+    reasonCode: string;
+    severity: string;
+  };
   /** Sprint 60P: Manager LLM 是否被绕过（Policy Layer 直接决策） */
   managerLlmBypassed: boolean;
   /** Sprint 60P: 绕过原因 */

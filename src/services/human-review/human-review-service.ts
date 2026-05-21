@@ -11,8 +11,10 @@ import type { ContractVerificationResult } from "../task-contract/task-contract-
 import type { TaskContractV0 } from "../task-contract/task-contract-types.js";
 import type {
   HumanReviewReasonCode,
+  HumanReviewResolutionEvent,
   HumanReviewSeverity,
   HumanReviewRequest,
+  HumanReviewResolution,
 } from "./human-review-types.js";
 import { HumanReviewRequestRepo } from "../../db/human-review-repo.js";
 import type { CycleAudit } from "../cycle/cycle-runtime.js";
@@ -122,4 +124,70 @@ export async function createHumanReviewRequestFromCycle(
 ): Promise<HumanReviewRequest> {
   const params = buildHumanReviewRequestFromCycle(cycleResult, taskContract);
   return HumanReviewRequestRepo.create(params);
+}
+
+// ── S78P: Resolution ───────────────────────────────────────────────────────────
+
+const ACTION_TO_STATUS: Record<HumanReviewResolution["action"], HumanReviewRequest["status"]> = {
+  accept: "approved",
+  revise: "needs_revision",
+  rewrite: "needs_revision",
+  block: "rejected",
+};
+
+/**
+ * S78P: 处置一个 pending human review 请求。
+ * V0：只做状态写入，不自动 resume Cycle（S79P 处理）。
+ *
+ * 语义：
+ * - action=accept  → approved
+ * - action=revise  → needs_revision
+ * - action=rewrite → needs_revision
+ * - action=block   → rejected
+ *
+ * throws: Error if request not found or not in pending state
+ */
+export async function resolveHumanReviewRequest(
+  id: string,
+  resolution: HumanReviewResolution
+): Promise<HumanReviewRequest> {
+  const existing = await HumanReviewRequestRepo.getById(id);
+  if (!existing) {
+    throw new Error(`HumanReviewRequest ${id} not found`);
+  }
+  if (existing.status !== "pending") {
+    throw new Error(`HumanReviewRequest ${id} is not pending (current: ${existing.status})`);
+  }
+
+  const newStatus = ACTION_TO_STATUS[resolution.action];
+  if (!newStatus) {
+    throw new Error(`Invalid resolution action: ${resolution.action}`);
+  }
+
+  // repo.resolve() 支持 setStatus 参数，覆盖 action→status 映射
+  return HumanReviewRequestRepo.resolve(id, resolution, newStatus);
+}
+
+/**
+ * S78P: 构建 HumanReviewResolutionEvent。
+ * 用于 SSE stream 和 Ledger audit extract。
+ * 不泄漏 raw artifact/history/memory/criterion 文本。
+ */
+export function buildHumanReviewResolutionEvent(
+  resolved: HumanReviewRequest,
+  previousStatus: "pending"
+): HumanReviewResolutionEvent {
+  return {
+    type: "human_review.resolved",
+    requestId: resolved.id,
+    taskId: resolved.audit.taskId,
+    cycleIndex: resolved.cycleIndex,
+    previousStatus,
+    newStatus: resolved.status,
+    action: resolved.resolution?.action ?? "accept",
+    resolvedBy: resolved.resolution?.resolvedBy,
+    resolvedAt: resolved.resolvedAt ?? new Date().toISOString(),
+    reasonCode: resolved.reasonCode,
+    severity: resolved.severity,
+  };
 }

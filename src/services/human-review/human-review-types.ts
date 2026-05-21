@@ -97,7 +97,11 @@ export interface HumanReviewRequestRepo {
   create(req: Omit<HumanReviewRequest, "id" | "status" | "createdAt">): Promise<HumanReviewRequest>;
   getById(id: string): Promise<HumanReviewRequest | null>;
   list(opts?: { status?: HumanReviewStatus; limit?: number }): Promise<HumanReviewRequest[]>;
-  resolve(id: string, resolution: HumanReviewResolution): Promise<HumanReviewRequest>;
+  resolve(
+    id: string,
+    resolution: HumanReviewResolution,
+    setStatus?: HumanReviewRequest["status"]
+  ): Promise<HumanReviewRequest>;
   updateStatus(id: string, status: HumanReviewStatus): Promise<void>;
 }
 
@@ -121,4 +125,40 @@ export function toAuditSummary(req: HumanReviewRequest): HumanReviewAuditSummary
     cycleIndex: req.cycleIndex,
     createdAt: req.createdAt,
   };
+}
+
+// ── S78P: Resolution Event ────────────────────────────────────────────────────
+
+/**
+ * Human Review 处置事件。
+ * 用于 SSE stream 和 Ledger audit extract。
+ * resolution.note 是人工填写字段，事件中保留；
+ * audit 相关字段（reasonCode/severity）不泄漏 raw content。
+ */
+export interface HumanReviewResolutionEvent {
+  type: "human_review.resolved";
+  requestId: string;
+  taskId: string;
+  cycleIndex: number;
+  /** resolve 前必须是 pending */
+  previousStatus: "pending";
+  newStatus: HumanReviewStatus;  // "approved" | "rejected" | "needs_revision" | "cancelled"
+  action: HumanReviewResolution["action"];
+  resolvedBy?: string;
+  resolvedAt: string;
+  reasonCode: HumanReviewReasonCode;
+  severity: HumanReviewSeverity;
+}
+
+/**
+ * SSE done event 中携带的 resolution 摘要。
+ * 不含 raw content。
+ */
+export interface HumanReviewResolutionSSEPayload {
+  requestId: string;
+  newStatus: HumanReviewStatus;
+  action: HumanReviewResolution["action"];
+  resolvedAt: string;
+  reasonCode: HumanReviewReasonCode;
+  severity: HumanReviewSeverity;
 }

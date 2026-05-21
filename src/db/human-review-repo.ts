@@ -116,14 +116,19 @@ export const HumanReviewRequestRepo: IHumanReviewRequestRepo = {
     return result.rows.map(rowToRequest);
   },
 
-  async resolve(id: string, resolution: HumanReviewResolution): Promise<HumanReviewRequest> {
+  async resolve(
+    id: string,
+    resolution: HumanReviewResolution,
+    setStatus?: HumanReviewRequest["status"]
+  ): Promise<HumanReviewRequest> {
     const resolvedAt = new Date().toISOString();
+    const resolvedStatus = setStatus ?? "approved";
     const row = await query(
       `UPDATE human_review_requests
-         SET status = 'approved', resolved_at = $1, resolution = $2
-         WHERE id = $3
+         SET status = $1, resolved_at = $2, resolution = $3
+         WHERE id = $4
          RETURNING *`,
-      [resolvedAt, JSON.stringify(resolution), id]
+      [resolvedStatus, resolvedAt, JSON.stringify(resolution), id]
     );
     if (!row.rows.length) throw new Error(`HumanReviewRequest ${id} not found`);
     return rowToRequest(row.rows[0]);

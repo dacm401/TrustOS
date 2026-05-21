@@ -624,6 +624,8 @@ chatRouter.post("/chat", async (c) => {
             contractVerification: (llmNativeResult.requestSummary as any)?.contractVerification ?? null,
             // Sprint 75P: Cycle Runtime 审计
             cycleAudit: (llmNativeResult.requestSummary as any)?.cycleAudit ?? null,
+            // Sprint 78P: Human Review Resolution（resolve API 处置后会出现在这里；V0 init 后为空）
+            humanReviewResolution: (llmNativeResult.requestSummary as any)?.humanReviewResolution ?? null,
           };
           await s.write(`data: ${JSON.stringify(doneObj)}\n\n`);
 
