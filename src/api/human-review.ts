@@ -10,9 +10,8 @@ import { Hono } from "hono";
 import {
   resolveHumanReviewRequest,
   createHumanReviewRequestFromCycle,
-} from "../services/human-review/human-review-service.js";
-import {
   buildHumanReviewResolutionEvent,
+  buildHumanReviewResumeDecision,
 } from "../services/human-review/human-review-service.js";
 import { HumanReviewRequestRepo } from "../db/human-review-repo.js";
 import type {
@@ -94,6 +93,25 @@ hrRouter.get("/", async (c) => {
 
   const requests = await HumanReviewRequestRepo.list({ status, limit });
   return c.json({ requests }, 200);
+});
+
+// ── GET /v1/human-review/:id/resume-decision ──────────────────────────────
+
+hrRouter.get("/:id/resume-decision", async (c) => {
+  const id = c.req.param("id");
+  const req = await HumanReviewRequestRepo.getById(id);
+  if (!req) {
+    return c.json({ error: `HumanReviewRequest ${id} not found` }, 404);
+  }
+  if (req.status === "pending") {
+    return c.json(
+      { error: `HumanReviewRequest ${id} is still pending, cannot generate resume decision` },
+      409
+    );
+  }
+
+  const decision = buildHumanReviewResumeDecision(req);
+  return c.json({ request: req, decision }, 200);
 });
 
 export { hrRouter };

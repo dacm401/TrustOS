@@ -15,6 +15,9 @@ import type {
   HumanReviewSeverity,
   HumanReviewRequest,
   HumanReviewResolution,
+  HumanReviewResumeDecision,
+  NextAction,
+  ExecutionMode,
 } from "./human-review-types.js";
 import { HumanReviewRequestRepo } from "../../db/human-review-repo.js";
 import type { CycleAudit } from "../cycle/cycle-runtime.js";
@@ -189,5 +192,89 @@ export function buildHumanReviewResolutionEvent(
     resolvedAt: resolved.resolvedAt ?? new Date().toISOString(),
     reasonCode: resolved.reasonCode,
     severity: resolved.severity,
+  };
+}
+
+// ── S79P: Resume Decision ────────────────────────────────────────────────────
+
+/**
+ * S79P: action+status → nextAction 映射。
+ * V0 只做 decision，不自动执行 Cycle resume（后续 Sprint 处理）。
+ */
+const RESUME_ACTION_MAP: Record<string, { nextAction: NextAction; mode: ExecutionMode }> = {
+  "approved|accept": { nextAction: "accept_final", mode: "queued" },
+  "needs_revision|revise": { nextAction: "resume_with_revision", mode: "queued" },
+  "needs_revision|rewrite": { nextAction: "resume_with_rewrite", mode: "queued" },
+  "rejected|block": { nextAction: "block_final", mode: "blocked" },
+};
+
+/**
+ * S79P: 将已处置的 HumanReviewRequest 转换为 Resume Decision。
+ *
+ * 语义：
+ * - approved + accept → accept_final (交付)
+ * - needs_revision + revise → resume_with_revision (继续 Cycle)
+ * - needs_revision + rewrite → resume_with_rewrite (继续 Cycle)
+ * - rejected + block → block_final (阻断)
+ * - cancelled → cancel_task (取消)
+ * - 未匹配 → no_action
+ *
+ * Security override:
+ * - severity=security 或 hasSecurityIssue=true → executionMode=manual
+ * - requiresOperatorConfirmation=true
+ *
+ * 不调用 runCycle()，不触发 Worker / Verifier。
+ */
+export function buildHumanReviewResumeDecision(
+  request: HumanReviewRequest
+): HumanReviewResumeDecision {
+  if (request.status === "pending") {
+    throw new Error(`Cannot build resume decision for pending request ${request.id}`);
+  }
+
+  const action = request.resolution?.action ?? null;
+  const key = `${request.status}|${action ?? ""}`;
+  const mapped = RESUME_ACTION_MAP[key] ?? null;
+
+  let nextAction: NextAction;
+  let executionMode: ExecutionMode;
+
+  if (mapped) {
+    nextAction = mapped.nextAction;
+    executionMode = mapped.mode;
+  } else if (request.status === "cancelled") {
+    nextAction = "cancel_task";
+    executionMode = "blocked";
+  } else {
+    nextAction = "no_action";
+    executionMode = "blocked";
+  }
+
+  // Security override: 不改变 nextAction，只改变 executionMode
+  const isSecuritySensitive =
+    request.severity === "security" || request.audit.hasSecurityIssue;
+
+  if (isSecuritySensitive) {
+    executionMode = "manual";
+  }
+
+  return {
+    id: `resume-${request.id}`,
+    reviewRequestId: request.id,
+    taskId: request.audit.taskId,
+    createdAt: new Date().toISOString(),
+    source: {
+      reviewStatus: request.status,
+      resolutionAction: action,
+    },
+    nextAction,
+    executionMode,
+    audit: {
+      cycleIndex: request.cycleIndex,
+      reasonCode: request.reasonCode,
+      severity: request.severity,
+      hasSecurityIssue: request.audit.hasSecurityIssue,
+      requiresOperatorConfirmation: isSecuritySensitive,
+    },
   };
 }

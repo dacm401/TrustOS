@@ -162,3 +162,55 @@ export interface HumanReviewResolutionSSEPayload {
   reasonCode: HumanReviewReasonCode;
   severity: HumanReviewSeverity;
 }
+
+// ── S79P: Resume Decision ──────────────────────────────────────────────────
+
+/**
+ * S79P:处置后的下一步行动。
+ * V0 只做 decision，不自动执行 Cycle resume。
+ */
+export type NextAction =
+  | "accept_final"          // approved → 交付终态
+  | "resume_with_revision"  // needs_revision + revise → 继续 Cycle
+  | "resume_with_rewrite"   // needs_revision + rewrite → 继续 Cycle
+  | "block_final"           // rejected → 阻断终态
+  | "cancel_task"           // cancelled → 取消终态
+  | "no_action";            // 未知/未匹配状态
+
+export type ExecutionMode = "manual" | "queued" | "blocked";
+
+/**
+ * S79P: Human Review Resume Decision。
+ * 将已处置的 HumanReviewRequest 转换为可审计的下一步决策。
+ * audit 域不含 raw artifact / history / memory / criterion 文本。
+ */
+export interface HumanReviewResumeDecision {
+  /** 唯一 ID */
+  id: string;
+  /** 关联的 HumanReviewRequest ID */
+  reviewRequestId: string;
+  /** 关联任务 ID */
+  taskId: string;
+  /** 决策生成时间（ISO 8601） */
+  createdAt: string;
+
+  /** 决策来源 */
+  source: {
+    reviewStatus: HumanReviewStatus;
+    resolutionAction: HumanReviewResolution["action"] | null;
+  };
+
+  /** 下一步行动 */
+  nextAction: NextAction;
+  /** 执行模式 */
+  executionMode: ExecutionMode;
+
+  /** 安全审计域（不含 raw content） */
+  audit: {
+    cycleIndex: number;
+    reasonCode: HumanReviewReasonCode;
+    severity: HumanReviewSeverity;
+    hasSecurityIssue: boolean;
+    requiresOperatorConfirmation: boolean;
+  };
+}
