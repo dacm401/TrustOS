@@ -23,6 +23,8 @@ import { verifyArtifact, verificationToLedgerEntry } from "../verifier/artifact-
 import type { VerificationLedgerEntry } from "../verifier/verifier-types.js";
 import { applyPatchPlan } from "../patch/patch-applier.js";
 // Sprint 75P: Cycle Runtime V0
+// Sprint 77P: Human Review Queue V0
+import { createHumanReviewRequestFromCycle } from "../human-review/human-review-service.js";
 import { runCycle, buildCycleAuditExtract } from "../cycle/cycle-runtime.js";
 import type { CycleEventEmitter } from "../cycle/cycle-events.js";
 import { buildTaskContract, buildTaskContractAuditExtract } from "../task-contract/task-contract-builder.js";
@@ -438,6 +440,22 @@ async function executeDelegateCommand(
           score: cycleResult.finalVerification?.score,
           criteriaEvaluated: cycleResult.finalVerification?.criteriaEvaluated,
         }));
+
+        // S77P: human_review 终态 → 创建审核队列记录
+        if (cycleResult.finalVerification?.recommendedAction === "human_review") {
+          try {
+            const saved = await createHumanReviewRequestFromCycle(cycleResult, taskContract);
+            console.log(JSON.stringify({
+              msg: "[HUMAN_REVIEW] Request created",
+              requestId: saved.id,
+              taskId: saved.taskId,
+              severity: saved.severity,
+              reasonCode: saved.reasonCode,
+            }));
+          } catch (err: any) {
+            console.warn("[HUMAN_REVIEW] Failed to create request:", err instanceof Error ? err.message : String(err));
+          }
+        }
       } catch (cycleErr: any) {
         console.error("[CYCLE_RUNTIME] Cycle error:", cycleErr.message);
         // Cycle 失败时 fallback 到直接 Worker call
