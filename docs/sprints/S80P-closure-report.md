@@ -1,8 +1,8 @@
 # Sprint 80P — Resume Decision Persistence V0 — Closure Report
 
 **Sprint**: S80P
-**Commit**: `<TBD>`
-**PM Status**: CLOSURE CANDIDATE ⚠️（三端同步完成 ✅，待 PM 签字）
+**Commit**: `403acac`
+**PM Status**: CLOSED ✅（三端同步完成，PM 签字 2026-05-21）
 **Date**: 2026-05-21
 
 ---
@@ -135,9 +135,9 @@ Persisted decision audit 不含：
 
 | 仓库 | Commit | 状态 |
 |------|--------|------|
-| Desktop | `<TBD>` | ✅ |
-| WorkBuddy | `<TBD>` | ✅ |
-| origin/master | `<TBD>` | ⏳ |
+| Desktop | `403acac` | ✅ |
+| WorkBuddy | `403acac` | ✅ |
+| origin/master | `403acac` | ✅ |
 
 ---
 
@@ -148,8 +148,8 @@ Persisted decision audit 不含：
 | 功能交付完整 | ✅ |
 | E2E 测试覆盖 | ✅ E1–E4（真实 DB） |
 | 回归测试通过 | ✅ S75P 16/16 + S76P 9/9 + S77P 19/19 + S78P 17/17 + S79P 16/16 |
-| 三端同步 | ⏳ |
-| PM 验收签字 | ⏳ |
+| 三端同步 | ✅ Desktop `403acac` / WorkBuddy `403acac` / origin/master `403acac` |
+| PM 验收签字 | ✅ |
 
 ---
 
@@ -165,4 +165,14 @@ Persisted decision audit 不含：
 
 ## 11. PM Sign-Off
 
-_(待 PM 签字)_
+```text
+PM SIGN-OFF:
+Sprint 80P — Resume Decision Persistence V0
+Status: CLOSED ✅
+Commit: 403acac
+Date: 2026-05-21
+Validation: 96/96 PASS
+Origin: synced
+```
+
+S80P persists HumanReviewResumeDecision records with stable decision ids, idempotent create-or-get behavior, security-mode preservation, and context-safe audit metadata.
