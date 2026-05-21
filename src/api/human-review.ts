@@ -12,8 +12,10 @@ import {
   createHumanReviewRequestFromCycle,
   buildHumanReviewResolutionEvent,
   buildHumanReviewResumeDecision,
+  createOrGetResumeDecision,
 } from "../services/human-review/human-review-service.js";
 import { HumanReviewRequestRepo } from "../db/human-review-repo.js";
+import { HumanReviewResumeDecisionRepo } from "../db/human-review-decision-repo.js";
 import type {
   HumanReviewResolution,
   HumanReviewResolutionEvent,
@@ -110,8 +112,21 @@ hrRouter.get("/:id/resume-decision", async (c) => {
     );
   }
 
-  const decision = buildHumanReviewResumeDecision(req);
+  // S80P: 使用持久化 decision（幂等 create-or-get）
+  const decision = await createOrGetResumeDecision(req);
   return c.json({ request: req, decision }, 200);
+});
+
+// ── GET /v1/human-review/:id/resume-decision/:decisionId ──────────────────
+// S80P: 直接按 decision ID 查询（不依赖 review request 状态）
+
+hrRouter.get("/:id/resume-decision/:decisionId", async (c) => {
+  const decisionId = c.req.param("decisionId");
+  const decision = await HumanReviewResumeDecisionRepo.getById(decisionId);
+  if (!decision) {
+    return c.json({ error: `ResumeDecision ${decisionId} not found` }, 404);
+  }
+  return c.json({ decision }, 200);
 });
 
 export { hrRouter };

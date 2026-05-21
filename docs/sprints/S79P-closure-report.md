@@ -1,8 +1,8 @@
 # Sprint 79P — Human Review Resume Policy V0 — Closure Report
 
 **Sprint**: S79P
-**Commit**: `<TBD>`
-**PM Status**: CLOSURE CANDIDATE ⚠️（三端同步完成 ✅，待 PM 签字）
+**Commit**: `47bbdf6`
+**PM Status**: CLOSED ✅
 **Date**: 2026-05-21
 
 ---
@@ -105,9 +105,9 @@ GET /v1/human-review/:id/resume-decision → 200 / 404 / 409
 
 | 仓库 | Commit | 状态 |
 |------|--------|------|
-| Desktop | `<TBD>` | ✅ |
-| WorkBuddy | `<TBD>` | ✅ |
-| origin/master | `<TBD>` | ⏳ |
+| Desktop | `47bbdf6` | ✅ |
+| WorkBuddy | `47bbdf6` | ✅ |
+| origin/master | `47bbdf6` | ✅ |
 
 ---
 
@@ -118,8 +118,8 @@ GET /v1/human-review/:id/resume-decision → 200 / 404 / 409
 | 功能交付完整 | ✅ |
 | E2E 测试覆盖 | ✅ E1–E4（真实 DB） |
 | 回归测试通过 | ✅ S75P 16/16 + S76P 9/9 + S77P 19/19 + S78P 17/17 |
-| 三端同步 | ⏳ |
-| PM 验收签字 | ⏳ |
+| 三端同步 | ✅ Desktop `47bbdf6` / WorkBuddy `47bbdf6` / origin/master `47bbdf6` |
+| PM 验收签字 | ✅ |
 
 ---
 
@@ -134,4 +134,15 @@ GET /v1/human-review/:id/resume-decision → 200 / 404 / 409
 
 ## 9. PM Sign-Off
 
-_(待 PM 签字)_
+```
+PM SIGN-OFF:
+Sprint 79P — Human Review Resume Policy V0
+Status: CLOSED ✅
+Commit: 47bbdf6
+Date: 2026-05-21
+Validation: 77/77 PASS
+Origin: synced
+
+S79P successfully introduces an auditable Human Review Resume Policy V0
+without executing runtime resume.
+```

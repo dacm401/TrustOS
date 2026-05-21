@@ -214,3 +214,16 @@ export interface HumanReviewResumeDecision {
     requiresOperatorConfirmation: boolean;
   };
 }
+
+// ── S80P: Resume Decision Repository Interface ─────────────────────────────
+
+export interface HumanReviewResumeDecisionRepo {
+  create(decision: Omit<HumanReviewResumeDecision, "id">): Promise<HumanReviewResumeDecision>;
+  getById(id: string): Promise<HumanReviewResumeDecision | null>;
+  getByReviewRequestId(reviewRequestId: string): Promise<HumanReviewResumeDecision | null>;
+  list(opts?: {
+    nextAction?: NextAction;
+    executionMode?: ExecutionMode;
+    limit?: number;
+  }): Promise<HumanReviewResumeDecision[]>;
+}

@@ -20,6 +20,7 @@ import type {
   ExecutionMode,
 } from "./human-review-types.js";
 import { HumanReviewRequestRepo } from "../../db/human-review-repo.js";
+import { HumanReviewResumeDecisionRepo } from "../../db/human-review-decision-repo.js";
 import type { CycleAudit } from "../cycle/cycle-runtime.js";
 
 export interface CycleRunResult {
@@ -277,4 +278,29 @@ export function buildHumanReviewResumeDecision(
       requiresOperatorConfirmation: isSecuritySensitive,
     },
   };
+}
+
+// ── S80P: Resume Decision Persistence ────────────────────────────────────
+
+/**
+ * S80P: 创建或获取已持久化的 resume decision。
+ *
+ * 流程：
+ * 1. 先尝试从 DB 读取已有 decision（幂等）
+ * 2. 若不存在，调用 buildHumanReviewResumeDecision() 计算 + 持久化
+ *
+ * throws: Error if request is pending
+ */
+export async function createOrGetResumeDecision(
+  request: HumanReviewRequest
+): Promise<HumanReviewResumeDecision> {
+  // 1. 幂等：先查已有
+  const existing = await HumanReviewResumeDecisionRepo.getByReviewRequestId(request.id);
+  if (existing) return existing;
+
+  // 2. 计算 decision
+  const decision = buildHumanReviewResumeDecision(request);
+
+  // 3. 持久化（repo.create 本身也是幂等的）
+  return HumanReviewResumeDecisionRepo.create(decision);
 }
