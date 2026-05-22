@@ -223,19 +223,38 @@ Execution audit does not contain:
 
 | Repo | Commit | Status |
 |---|---|---:|
-| Desktop | `<pending>` | ⏳ |
-| WorkBuddy | `<pending>` | ⏳ |
-| origin/master | `<pending>` | ⏳ |
+| Desktop | `<pending>` | ⏳ 待手动同步 |
+| WorkBuddy | `<pending>` | ⏳ 待手动同步 |
+| origin/master | `8f387c0` | ✅ 已推送 |
 
 ---
 
-## 9. PM Sign-Off
+## 9. E2E 测试状态
 
-_(pending PM sign-off)_
+**⚠️ 当前环境 Docker 不可用，E2E 测试需要在有 Docker 的环境中运行。**
+
+E2E 测试文件已创建：
+- `tests/services/human-review/human-review-execution-e2e.test.ts` (6 tests)
+- `tests/services/human-review/human-review-execution-e2e.test.ts` (6 tests)
+
+运行命令（需要 Docker PostgreSQL）：
+```bash
+# 启动数据库
+docker compose up -d postgres
+
+# 运行 E2E 测试
+npx vitest run --config vitest.s81p.config.ts
+```
 
 ---
 
-## 10. 修改清单
+## 10. PM Sign-Off
+
+_(pending PM sign-off after E2E tests pass in Docker environment)_
+
+---
+
+## 11. 修改清单
 
 ```
 Modified files:
