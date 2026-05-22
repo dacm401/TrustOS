@@ -16,11 +16,15 @@ import type {
   HumanReviewRequest,
   HumanReviewResolution,
   HumanReviewResumeDecision,
+  HumanReviewResumeExecutionResult,
+  ResumeExecutionStatus,
+  ExecutedResumeAction,
   NextAction,
   ExecutionMode,
 } from "./human-review-types.js";
 import { HumanReviewRequestRepo } from "../../db/human-review-repo.js";
 import { HumanReviewResumeDecisionRepo } from "../../db/human-review-decision-repo.js";
+import { HumanReviewResumeExecutionRepo } from "../../db/human-review-execution-repo.js";
 import type { CycleAudit } from "../cycle/cycle-runtime.js";
 
 export interface CycleRunResult {
@@ -303,4 +307,167 @@ export async function createOrGetResumeDecision(
 
   // 3. 持久化（repo.create 本身也是幂等的）
   return HumanReviewResumeDecisionRepo.create(decision);
+}
+
+// ── S81P: Resume Execution ────────────────────────────────────────────────
+
+/**
+ * S81P: 根据 Resume Decision 构建执行结果。
+ *
+ * 执行策略：
+ * 1. manual/security → requires_confirmation（不执行）
+ * 2. resume_with_revision / resume_with_rewrite → unsupported（不执行）
+ * 3. accept_final + queued → executed
+ * 4. block_final + blocked → blocked
+ * 5. cancel_task + blocked → blocked
+ *
+ * audit 域不含：
+ * - raw artifact / history / memory
+ * - criterion text/label/description/expected
+ * - resolution.note（人工输入，不暴露到审计记录）
+ *
+ * 不调用 runCycle()、Worker、Verifier。
+ */
+export function buildHumanReviewResumeExecutionResult(
+  decision: HumanReviewResumeDecision
+): Omit<HumanReviewResumeExecutionResult, "id"> {
+  const now = new Date().toISOString();
+
+  // 优先级1：manual/security 需要确认
+  if (decision.executionMode === "manual") {
+    return {
+      decisionId: decision.id,
+      reviewRequestId: decision.reviewRequestId,
+      taskId: decision.taskId,
+      status: "requires_confirmation",
+      executedAction: "none",
+      createdAt: now,
+      audit: {
+        nextAction: decision.nextAction,
+        executionMode: decision.executionMode,
+        requiresOperatorConfirmation: decision.audit.requiresOperatorConfirmation,
+        reasonCode: decision.audit.reasonCode,
+        severity: decision.audit.severity,
+      },
+    };
+  }
+
+  // 优先级2：unsupported actions
+  if (decision.nextAction === "resume_with_revision" || decision.nextAction === "resume_with_rewrite") {
+    return {
+      decisionId: decision.id,
+      reviewRequestId: decision.reviewRequestId,
+      taskId: decision.taskId,
+      status: "unsupported",
+      executedAction: "none",
+      createdAt: now,
+      audit: {
+        nextAction: decision.nextAction,
+        executionMode: decision.executionMode,
+        requiresOperatorConfirmation: decision.audit.requiresOperatorConfirmation,
+        reasonCode: decision.audit.reasonCode,
+        severity: decision.audit.severity,
+      },
+    };
+  }
+
+  // 优先级3：terminal actions
+  let status: ResumeExecutionStatus;
+  let executedAction: ExecutedResumeAction;
+
+  switch (decision.nextAction) {
+    case "accept_final":
+      status = "executed";
+      executedAction = "accept_final";
+      break;
+    case "block_final":
+      status = "blocked";
+      executedAction = "block_final";
+      break;
+    case "cancel_task":
+      status = "blocked";
+      executedAction = "cancel_task";
+      break;
+    case "no_action":
+    default:
+      status = "unsupported";
+      executedAction = "none";
+      break;
+  }
+
+  return {
+    decisionId: decision.id,
+    reviewRequestId: decision.reviewRequestId,
+    taskId: decision.taskId,
+    status,
+    executedAction,
+    createdAt: now,
+    executedAt: (status === "executed" || status === "blocked") ? now : undefined,
+    audit: {
+      nextAction: decision.nextAction,
+      executionMode: decision.executionMode,
+      requiresOperatorConfirmation: decision.audit.requiresOperatorConfirmation,
+      reasonCode: decision.audit.reasonCode,
+      severity: decision.audit.severity,
+    },
+  };
+}
+
+// ── S81P: Resume Execution Service ────────────────────────────────────────
+
+export interface ExecutionError extends Error {
+  code: "NOT_FOUND" | "REVIEW_MISMATCH" | "REQUIRES_CONFIRMATION" | "UNSUPPORTED";
+}
+
+/**
+ * S81P: 创建或获取已持久化的 resume execution。
+ *
+ * 流程：
+ * 1. 根据 decisionId 获取 persisted decision
+ * 2. 如果不存在 → throw NOT_FOUND
+ * 3. 校验 decision.reviewRequestId === reviewRequestId（审计链完整性）
+ * 4. 先查 executionRepo.getByDecisionId（幂等）
+ * 5. 如果存在 → return existing
+ * 6. build execution result
+ * 7. persist execution result
+ * 8. return result
+ *
+ * 错误语义：
+ * - NOT_FOUND: decision 不存在
+ * - REVIEW_MISMATCH: review id 与 decision 不匹配
+ * - REQUIRES_CONFIRMATION: manual 模式需要确认
+ * - UNSUPPORTED: resume_with_revision / resume_with_rewrite
+ *
+ * 不调用 runCycle()、Worker、Verifier。
+ */
+export async function createOrGetResumeExecution(
+  reviewRequestId: string,
+  decisionId: string
+): Promise<HumanReviewResumeExecutionResult> {
+  // 1. 获取 persisted decision
+  const decision = await HumanReviewResumeDecisionRepo.getById(decisionId);
+  if (!decision) {
+    const err = new Error(`ResumeDecision ${decisionId} not found`) as ExecutionError;
+    err.code = "NOT_FOUND";
+    throw err;
+  }
+
+  // 2. 校验 audit 链完整性
+  if (decision.reviewRequestId !== reviewRequestId) {
+    const err = new Error(
+      `ResumeDecision ${decisionId} does not belong to HumanReviewRequest ${reviewRequestId}`
+    ) as ExecutionError;
+    err.code = "REVIEW_MISMATCH";
+    throw err;
+  }
+
+  // 3. 幂等：先查已有 execution
+  const existing = await HumanReviewResumeExecutionRepo.getByDecisionId(decisionId);
+  if (existing) return existing;
+
+  // 4. build execution result
+  const result = buildHumanReviewResumeExecutionResult(decision);
+
+  // 5. persist（repo.create 本身也是幂等的）
+  return HumanReviewResumeExecutionRepo.create(result);
 }

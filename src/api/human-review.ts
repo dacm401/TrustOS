@@ -13,6 +13,7 @@ import {
   buildHumanReviewResolutionEvent,
   buildHumanReviewResumeDecision,
   createOrGetResumeDecision,
+  createOrGetResumeExecution,
 } from "../services/human-review/human-review-service.js";
 import { HumanReviewRequestRepo } from "../db/human-review-repo.js";
 import { HumanReviewResumeDecisionRepo } from "../db/human-review-decision-repo.js";
@@ -127,6 +128,40 @@ hrRouter.get("/:id/resume-decision/:decisionId", async (c) => {
     return c.json({ error: `ResumeDecision ${decisionId} not found` }, 404);
   }
   return c.json({ decision }, 200);
+});
+
+// ── POST /v1/human-review/:id/resume-decision/:decisionId/execute ─────────
+// S81P: 执行 persisted resume decision
+
+hrRouter.post("/:id/resume-decision/:decisionId/execute", async (c) => {
+  const reviewRequestId = c.req.param("id");
+  const decisionId = c.req.param("decisionId");
+
+  try {
+    const execution = await createOrGetResumeExecution(reviewRequestId, decisionId);
+    const decision = await HumanReviewResumeDecisionRepo.getById(decisionId);
+    const request = await HumanReviewRequestRepo.getById(reviewRequestId);
+
+    return c.json({
+      request,
+      decision,
+      execution,
+    }, 200);
+  } catch (err: any) {
+    if (err.code === "NOT_FOUND") {
+      return c.json({ error: err.message }, 404);
+    }
+    if (err.code === "REVIEW_MISMATCH") {
+      return c.json({ error: err.message }, 409);
+    }
+    if (err.code === "REQUIRES_CONFIRMATION") {
+      return c.json({ error: err.message }, 409);
+    }
+    if (err.code === "UNSUPPORTED") {
+      return c.json({ error: err.message }, 422);
+    }
+    return c.json({ error: err.message }, 500);
+  }
 });
 
 export { hrRouter };

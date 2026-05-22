@@ -227,3 +227,73 @@ export interface HumanReviewResumeDecisionRepo {
     limit?: number;
   }): Promise<HumanReviewResumeDecision[]>;
 }
+
+// ── S81P: Resume Execution Result ────────────────────────────────────────
+
+/**
+ * S81P: Resume Execution Status。
+ * 表示执行结果的状态。
+ */
+export type ResumeExecutionStatus =
+  | "executed"                 // 已成功执行
+  | "blocked"                 // 被阻断（block_final / cancel_task）
+  | "requires_confirmation"    // 需要人工确认（manual 模式）
+  | "unsupported";            // 不支持的 action（resume_with_revision / resume_with_rewrite）
+
+/**
+ * S81P: 已执行的 Resume Action。
+ * S81P V0 只支持 terminal actions。
+ */
+export type ExecutedResumeAction =
+  | "accept_final"   // 接受并交付
+  | "block_final"    // 阻断
+  | "cancel_task"    // 取消任务
+  | "none";          // 未执行任何 action
+
+/**
+ * S81P: Human Review Resume Execution Result。
+ * 执行结果记录，绑定 decisionId 以保持审计链。
+ * audit 域不含 raw artifact / history / memory / criterion 文本 / resolution.note。
+ */
+export interface HumanReviewResumeExecutionResult {
+  /** 唯一 ID */
+  id: string;
+  /** 关联的 Resume Decision ID（审计链关键） */
+  decisionId: string;
+  /** 关联的 HumanReviewRequest ID */
+  reviewRequestId: string;
+  /** 关联任务 ID */
+  taskId: string;
+
+  /** 执行状态 */
+  status: ResumeExecutionStatus;
+  /** 已执行的 action */
+  executedAction: ExecutedResumeAction;
+
+  /** 创建时间（ISO 8601） */
+  createdAt: string;
+  /** 执行时间（ISO 8601，仅 executed/blocked） */
+  executedAt?: string;
+
+  /** 安全审计域（不含 raw content） */
+  audit: {
+    nextAction: NextAction;
+    executionMode: ExecutionMode;
+    requiresOperatorConfirmation: boolean;
+    reasonCode: HumanReviewReasonCode;
+    severity: HumanReviewSeverity;
+  };
+}
+
+// ── S81P: Resume Execution Repository Interface ───────────────────────────
+
+export interface HumanReviewResumeExecutionRepo {
+  create(result: Omit<HumanReviewResumeExecutionResult, "id">): Promise<HumanReviewResumeExecutionResult>;
+  getById(id: string): Promise<HumanReviewResumeExecutionResult | null>;
+  getByDecisionId(decisionId: string): Promise<HumanReviewResumeExecutionResult | null>;
+  list(opts?: {
+    status?: ResumeExecutionStatus;
+    executedAction?: ExecutedResumeAction;
+    limit?: number;
+  }): Promise<HumanReviewResumeExecutionResult[]>;
+}

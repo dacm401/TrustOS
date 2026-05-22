@@ -13,7 +13,9 @@ export {
   SessionContextRepo,
   TaskWorkspaceRepo,
 } from "./system.js";
-export { HumanReviewRequestRepo } from "./human-review-repo";
+export { HumanReviewRequestRepo } from "../human-review-repo.js";
+export { HumanReviewResumeDecisionRepo } from "../human-review-decision-repo.js";
+export { HumanReviewResumeExecutionRepo } from "../human-review-execution-repo.js";
 
 // Re-export interfaces for convenience
 export type { DelegationArchiveEntry } from "./delegation.js";
