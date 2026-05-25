@@ -1,9 +1,9 @@
 # Sprint 81P — Resume Execution V0 — Closure Report
 
 **Sprint**: S81P
-**Commit**: `<pending>`
+**Commit**: `7074d7e` (fix) ← `8f387c0` (impl) ← `b12a934` (docs)
 **PM Status**: CLOSURE CANDIDATE ⚠️
-**Date**: 2026-05-22
+**Date**: 2026-05-25
 
 ---
 
@@ -67,8 +67,9 @@ S81P does not call `runCycle()`, Worker, or Verifier.
 ### D5: Execution Service Integration ✅
 
 新增 `createOrGetResumeExecution(reviewRequestId, decisionId)`：
-- 先查 DB 幂等
+- 先查 DB 幂等（已有记录时：executed/blocked → return；requires_confirmation/unsupported → re-throw）
 - 不存在则调用 `buildHumanReviewResumeExecutionResult()` 计算 + 持久化
+- **requires_confirmation / unsupported 也持久化**（执行尝试本身是审计事实），持久化后再 throw
 - 错误码：NOT_FOUND / REVIEW_MISMATCH / REQUIRES_CONFIRMATION / UNSUPPORTED
 
 ### D6: API Endpoint ✅
@@ -88,16 +89,16 @@ POST /v1/human-review/:id/resume-decision/:decisionId/execute
 
 HTTP 行为：
 
-| Case | HTTP |
-|------|-----:|
-| accept_final + queued | 200 |
-| block_final + blocked | 200 |
-| cancel_task + blocked | 200 |
-| executionMode=manual | 409 |
-| resume_with_revision | 422 |
-| resume_with_rewrite | 422 |
-| decision not found | 404 |
-| review id mismatch | 409 |
+| Case | HTTP | 说明 |
+|------|-----:|------|
+| accept_final + queued | 200 | executed，返回 execution 记录 |
+| block_final + blocked | 200 | blocked，返回 execution 记录 |
+| cancel_task + blocked | 200 | blocked，返回 execution 记录 |
+| executionMode=manual | 409 | requires_confirmation（先持久化 execution 记录，再 throw） |
+| resume_with_revision | 422 | unsupported（先持久化 execution 记录，再 throw） |
+| resume_with_rewrite | 422 | unsupported（先持久化 execution 记录，再 throw） |
+| decision not found | 404 | NOT_FOUND，无持久化 |
+| review id mismatch | 409 | REVIEW_MISMATCH，无持久化 |
 
 ---
 
@@ -223,9 +224,9 @@ Execution audit does not contain:
 
 | Repo | Commit | Status |
 |---|---|---:|
-| Desktop | `<pending>` | ⏳ 待手动同步 |
-| WorkBuddy | `<pending>` | ⏳ 待手动同步 |
-| origin/master | `8f387c0` | ✅ 已推送 |
+| Desktop | `7074d7e` | ✅ |
+| WorkBuddy | `<pending>` | ⏳ 待同步 |
+| origin/master | `8f387c0` | ⏳ 待推送（fix commit 7074d7e 未推） |
 
 ---
 
