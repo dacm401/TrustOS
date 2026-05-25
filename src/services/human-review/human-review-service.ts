@@ -427,16 +427,18 @@ export interface ExecutionError extends Error {
  * 2. 如果不存在 → throw NOT_FOUND
  * 3. 校验 decision.reviewRequestId === reviewRequestId（审计链完整性）
  * 4. 先查 executionRepo.getByDecisionId（幂等）
- * 5. 如果存在 → return existing
+ * 5. 如果存在 → 按 status 判断是否需要 throw（保持幂等语义一致）
  * 6. build execution result
- * 7. persist execution result
- * 8. return result
+ * 7. persist execution result（requires_confirmation / unsupported 也持久化，审计事实）
+ * 8. 按 status 判断：requires_confirmation → throw REQUIRES_CONFIRMATION
+ *                   unsupported → throw UNSUPPORTED
+ *                   否则 → return result
  *
  * 错误语义：
  * - NOT_FOUND: decision 不存在
  * - REVIEW_MISMATCH: review id 与 decision 不匹配
- * - REQUIRES_CONFIRMATION: manual 模式需要确认
- * - UNSUPPORTED: resume_with_revision / resume_with_rewrite
+ * - REQUIRES_CONFIRMATION: manual 模式需要确认（已持久化执行尝试）
+ * - UNSUPPORTED: resume_with_revision / resume_with_rewrite（已持久化执行尝试）
  *
  * 不调用 runCycle()、Worker、Verifier。
  */
@@ -463,11 +465,46 @@ export async function createOrGetResumeExecution(
 
   // 3. 幂等：先查已有 execution
   const existing = await HumanReviewResumeExecutionRepo.getByDecisionId(decisionId);
-  if (existing) return existing;
+  if (existing) {
+    // 幂等路径：已有记录，按 status 保持一致的错误语义
+    if (existing.status === "requires_confirmation") {
+      const err = new Error(
+        `ResumeDecision ${decisionId} requires manual confirmation before execution`
+      ) as ExecutionError;
+      err.code = "REQUIRES_CONFIRMATION";
+      throw err;
+    }
+    if (existing.status === "unsupported") {
+      const err = new Error(
+        `ResumeDecision ${decisionId} nextAction is not supported for automatic execution`
+      ) as ExecutionError;
+      err.code = "UNSUPPORTED";
+      throw err;
+    }
+    return existing;
+  }
 
   // 4. build execution result
   const result = buildHumanReviewResumeExecutionResult(decision);
 
-  // 5. persist（repo.create 本身也是幂等的）
-  return HumanReviewResumeExecutionRepo.create(result);
+  // 5. persist（requires_confirmation / unsupported 也持久化，执行尝试本身是审计事实）
+  const persisted = await HumanReviewResumeExecutionRepo.create(result);
+
+  // 6. 按 status 抛出对应错误（让 API 层返回正确的 HTTP 状态码）
+  if (persisted.status === "requires_confirmation") {
+    const err = new Error(
+      `ResumeDecision ${decisionId} requires manual confirmation before execution`
+    ) as ExecutionError;
+    err.code = "REQUIRES_CONFIRMATION";
+    throw err;
+  }
+  if (persisted.status === "unsupported") {
+    const err = new Error(
+      `ResumeDecision ${decisionId} nextAction is not supported for automatic execution`
+    ) as ExecutionError;
+    err.code = "UNSUPPORTED";
+    throw err;
+  }
+
+  return persisted;
 }

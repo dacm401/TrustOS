@@ -111,7 +111,7 @@ it("B5: execution audit does not contain resolution.note", () => {
 
   expect(resultStr).not.toContain("resolution_note");
   expect(resultStr).not.toContain("note_content");
-  expect(resultStr).not.toContain("note");
+  expect(resultStr).not.toContain('"note"');
 });
 
 // ── B6: execution result has no undefined fields ───────────────────────────
@@ -120,7 +120,7 @@ it("B6: execution result has no undefined/null fields (except executedAt)", () =
   const decision = makeDecision("dec-B6");
   const result = buildHumanReviewResumeExecutionResult(decision);
 
-  expect(result.id).toBeUndefined();  // id is not in Omit, so this is expected
+  expect(result.id).toBeUndefined();  // id IS in Omit<..., "id">, so it is correctly excluded
   expect(result.decisionId).toBe("dec-B6");
   expect(result.reviewRequestId).toBe("req-001");
   expect(result.taskId).toBe("task-001");

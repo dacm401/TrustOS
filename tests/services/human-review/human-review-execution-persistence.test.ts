@@ -143,7 +143,7 @@ it("P3: getByDecisionId returns execution by decision id", async () => {
 
 // ── P4: duplicate create returns existing execution ──────────────────────
 
-it("P4: create returns newly created execution", async () => {
+it("P4: create returns newly created execution on first write", async () => {
   const newRow = {
     id: "exec-new-004",
     decision_id: "dec-004",
