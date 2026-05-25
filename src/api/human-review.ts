@@ -15,10 +15,12 @@ import {
   buildHumanReviewResumeExecutionEvent,
   createOrGetResumeDecision,
   createOrGetResumeExecution,
+  confirmResumeExecution,
 } from "../services/human-review/human-review-service.js";
 import { HumanReviewRequestRepo } from "../db/human-review-repo.js";
 import { HumanReviewResumeDecisionRepo } from "../db/human-review-decision-repo.js";
 import { HumanReviewResumeExecutionRepo } from "../db/human-review-execution-repo.js";
+import { HumanReviewResumeExecutionConfirmationRepo } from "../db/human-review-execution-confirmation-repo.js";
 import type {
   HumanReviewResolution,
   HumanReviewResolutionEvent,
@@ -182,6 +184,44 @@ hrRouter.post("/:id/resume-decision/:decisionId/execute", async (c) => {
       return c.json({ error: err.message }, httpStatus);
     }
 
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// ── POST /v1/human-review/:id/resume-decision/:decisionId/execute/:executionId/confirm ─
+// S83P: Operator confirms a requires_confirmation execution attempt
+
+hrRouter.post("/:id/resume-decision/:decisionId/execute/:executionId/confirm", async (c) => {
+  const executionId = c.req.param("executionId");
+
+  const rawBody = await c.req.raw.text();
+  let body: { confirmedBy?: string };
+  try {
+    body = JSON.parse(rawBody) as { confirmedBy?: string };
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+
+  if (!body.confirmedBy) {
+    return c.json({ error: "confirmedBy is required" }, 400);
+  }
+
+  try {
+    const { confirmation, event } = await confirmResumeExecution(
+      executionId,
+      body.confirmedBy
+    );
+    return c.json({ confirmation, event }, 200);
+  } catch (err: any) {
+    if (err.code === "NOT_FOUND") {
+      return c.json({ error: err.message }, 404);
+    }
+    if (err.code === "INVALID_STATUS") {
+      return c.json({ error: err.message }, 409);
+    }
+    if (err.code === "UNSUPPORTED_ACTION") {
+      return c.json({ error: err.message }, 422);
+    }
     return c.json({ error: err.message }, 500);
   }
 });

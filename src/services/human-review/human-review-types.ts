@@ -352,3 +352,110 @@ export interface HumanReviewResumeExecutionLedgerExtract {
   executionMode: string;
   requiresOperatorConfirmation: boolean;
 }
+
+// ── S83P: Resume Execution Confirmation ─────────────────────────────────
+
+/**
+ * S83P: Resume Execution Confirmation Result。
+ * 记录 operator 对 `requires_confirmation` 执行尝试的确认。
+ * 仅支持终态动作（accept_final / block_final / cancel_task）。
+ * 不含 raw artifact / history / memory / criterion 文本 / resolution.note。
+ */
+export interface HumanReviewResumeExecutionConfirmation {
+  /** 唯一 ID */
+  id: string;
+  /** 关联的 execution ID（被确认的 requires_confirmation 执行） */
+  executionId: string;
+  /** 关联的 Resume Decision ID */
+  decisionId: string;
+  /** 关联的 HumanReviewRequest ID */
+  reviewRequestId: string;
+  /** 关联任务 ID */
+  taskId: string;
+  /** 确认者标识 */
+  confirmedBy: string;
+  /** 确认结果状态 */
+  resultStatus: "executed" | "blocked";
+  /** 确认后执行的 action */
+  executedAction: "accept_final" | "block_final" | "cancel_task";
+  /** 确认时间（ISO 8601） */
+  confirmedAt: string;
+  /** 安全审计域（不含 raw content） */
+  audit: {
+    previousStatus: "requires_confirmation";
+    nextAction: NextAction;
+    reasonCode: HumanReviewReasonCode;
+    severity: HumanReviewSeverity;
+    requiresOperatorConfirmation: true;
+  };
+}
+
+// ── S83P: Confirmation Repository Interface ─────────────────────────────
+
+export interface HumanReviewResumeExecutionConfirmationRepo {
+  create(confirmation: Omit<HumanReviewResumeExecutionConfirmation, "id">): Promise<HumanReviewResumeExecutionConfirmation>;
+  getById(id: string): Promise<HumanReviewResumeExecutionConfirmation | null>;
+  getByExecutionId(executionId: string): Promise<HumanReviewResumeExecutionConfirmation | null>;
+  list(opts?: {
+    resultStatus?: "executed" | "blocked";
+    limit?: number;
+  }): Promise<HumanReviewResumeExecutionConfirmation[]>;
+}
+
+// ── S83P: Confirmation Event ────────────────────────────────────────────
+
+/**
+ * S83P: Confirmation audit event。
+ * 用于 API 响应和 Ledger/SSE done payload。
+ *
+ * 不含 raw artifact/history/memory/criterion 文本。
+ * 不含 resolution.note。
+ *
+ * Event id deterministic 格式：`human_review_confirmation_event_${confirmation.id}`
+ */
+export interface HumanReviewConfirmationEvent {
+  type: "human_review.confirmation";
+  /** Deterministic event id */
+  id: string;
+  /** 关联的 confirmation ID */
+  confirmationId: string;
+  /** 关联的 execution ID */
+  executionId: string;
+  /** 关联的 decision ID */
+  decisionId: string;
+  /** 关联的 HumanReviewRequest ID */
+  reviewRequestId: string;
+  /** 关联任务 ID */
+  taskId: string;
+  /** 确认结果 */
+  resultStatus: "executed" | "blocked";
+  /** 执行的 action */
+  executedAction: "accept_final" | "block_final" | "cancel_task";
+  /** 确认者 */
+  confirmedBy: string;
+  /** 确认时间 */
+  confirmedAt: string;
+  /** 审计元数据 */
+  audit: {
+    previousStatus: "requires_confirmation";
+    nextAction: NextAction;
+    reasonCode: HumanReviewReasonCode;
+    severity: HumanReviewSeverity;
+  };
+}
+
+/**
+ * S83P: Ledger / SSE done payload 中的 confirmation 摘要。
+ */
+export interface HumanReviewConfirmationLedgerExtract {
+  confirmationId: string;
+  executionId: string;
+  decisionId: string;
+  reviewRequestId: string;
+  taskId: string;
+  resultStatus: string;
+  executedAction: string;
+  confirmedBy: string;
+  previousStatus: string;
+  nextAction: string;
+}

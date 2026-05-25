@@ -14,6 +14,9 @@ import type {
   HumanReviewResolutionEvent,
   HumanReviewResumeExecutionEvent,
   HumanReviewResumeExecutionLedgerExtract,
+  HumanReviewConfirmationEvent,
+  HumanReviewConfirmationLedgerExtract,
+  HumanReviewResumeExecutionConfirmation,
   HumanReviewSeverity,
   HumanReviewRequest,
   HumanReviewResolution,
@@ -28,6 +31,7 @@ import { HumanReviewRequestRepo } from "../../db/human-review-repo.js";
 import { HumanReviewResumeDecisionRepo } from "../../db/human-review-decision-repo.js";
 import { HumanReviewResumeExecutionRepo } from "../../db/human-review-execution-repo.js";
 import type { CycleAudit } from "../cycle/cycle-runtime.js";
+import { HumanReviewResumeExecutionConfirmationRepo } from "../../db/human-review-execution-confirmation-repo.js";
 
 export interface CycleRunResult {
   finalContent: string;
@@ -561,5 +565,170 @@ export function humanReviewResumeExecutionToLedgerExtract(
     nextAction: event.audit.nextAction,
     executionMode: event.audit.executionMode,
     requiresOperatorConfirmation: event.audit.requiresOperatorConfirmation,
+  };
+}
+
+// ── S83P: Resume Execution Confirmation ────────────────────────────
+
+/**
+ * S83P: 确认一个 `requires_confirmation` 的执行尝试。
+ *
+ * 流程：
+ * 1. 根据 executionId 获取 persisted execution
+ * 2. 如果不存在 → throw NOT_FOUND
+ * 3. 校验 execution.status === "requires_confirmation"
+ * 4. 根据 decisionId 获取 associated decision
+ * 5. 校验 nextAction 是终态动作（accept_final / block_final / cancel_task）
+ * 6. 幂等：先查 confirmationRepo.getByExecutionId
+ * 7. 构建 confirmation result + persist
+ * 8. 返回 confirmation + event
+ *
+ * 错误语义：
+ * - NOT_FOUND: execution 不存在
+ * - INVALID_STATUS: execution 不是 requires_confirmation
+ * - UNSUPPORTED_ACTION: nextAction 不是终态动作
+ */
+export async function confirmResumeExecution(
+  executionId: string,
+  confirmedBy: string
+): Promise<{ confirmation: HumanReviewResumeExecutionConfirmation; event: HumanReviewConfirmationEvent }> {
+  // 1. 获取 persisted execution
+  const execution = await HumanReviewResumeExecutionRepo.getById(executionId);
+  if (!execution) {
+    const err = new Error(`ResumeExecution ${executionId} not found`) as ExecutionError;
+    err.code = "NOT_FOUND";
+    throw err;
+  }
+
+  // 2. 校验 status
+  if (execution.status !== "requires_confirmation") {
+    const err = new Error(
+      `ResumeExecution ${executionId} is not in requires_confirmation state (current: ${execution.status})`
+    ) as ExecutionError;
+    err.code = "INVALID_STATUS";
+    throw err;
+  }
+
+  // 3. 获取 associated decision（从 execution.audit 获取 nextAction 信息）
+  const decision = await HumanReviewResumeDecisionRepo.getById(execution.decisionId);
+  if (!decision) {
+    const err = new Error(
+      `ResumeDecision ${execution.decisionId} not found for execution ${executionId}`
+    ) as ExecutionError;
+    err.code = "NOT_FOUND";
+    throw err;
+  }
+
+  // 4. 校验 nextAction 是终态动作
+  const terminalActions: NextAction[] = ["accept_final", "block_final", "cancel_task"];
+  if (!terminalActions.includes(decision.nextAction)) {
+    const err = new Error(
+      `ResumeDecision ${execution.decisionId} nextAction "${decision.nextAction}" is not a terminal action supported for confirmation`
+    ) as ExecutionError;
+    err.code = "UNSUPPORTED_ACTION";
+    throw err;
+  }
+
+  // 5. 幂等：先查已有 confirmation
+  const existingConfirmation = await HumanReviewResumeExecutionConfirmationRepo.getByExecutionId(executionId);
+  if (existingConfirmation) {
+    const existingEvent = buildHumanReviewConfirmationEvent(existingConfirmation);
+    return { confirmation: existingConfirmation, event: existingEvent };
+  }
+
+  // 6. 构建 confirmation result
+  const now = new Date().toISOString();
+  let resultStatus: "executed" | "blocked";
+  let executedAction: "accept_final" | "block_final" | "cancel_task";
+
+  switch (decision.nextAction) {
+    case "accept_final":
+      resultStatus = "executed";
+      executedAction = "accept_final";
+      break;
+    case "block_final":
+      resultStatus = "blocked";
+      executedAction = "block_final";
+      break;
+    case "cancel_task":
+      resultStatus = "blocked";
+      executedAction = "cancel_task";
+      break;
+    default:
+      // 不会到达（已在步骤 4 校验）
+      resultStatus = "blocked";
+      executedAction = "cancel_task";
+  }
+
+  const confirmation = await HumanReviewResumeExecutionConfirmationRepo.create({
+    executionId,
+    decisionId: execution.decisionId,
+    reviewRequestId: execution.reviewRequestId,
+    taskId: execution.taskId,
+    confirmedBy,
+    resultStatus,
+    executedAction,
+    confirmedAt: now,
+    audit: {
+      previousStatus: "requires_confirmation",
+      nextAction: decision.nextAction,
+      reasonCode: execution.audit.reasonCode,
+      severity: execution.audit.severity,
+      requiresOperatorConfirmation: true,
+    },
+  });
+
+  const event = buildHumanReviewConfirmationEvent(confirmation);
+  return { confirmation, event };
+}
+
+/**
+ * S83P: 从 HumanReviewResumeExecutionConfirmation 构建 audit event。
+ *
+ * Event id deterministic 格式：`human_review_confirmation_event_${confirmation.id}`
+ * 不含 raw artifact/history/memory/criterion 文本。
+ * 不含 resolution.note。
+ */
+export function buildHumanReviewConfirmationEvent(
+  confirmation: HumanReviewResumeExecutionConfirmation
+): HumanReviewConfirmationEvent {
+  return {
+    type: "human_review.confirmation",
+    id: `human_review_confirmation_event_${confirmation.id}`,
+    confirmationId: confirmation.id,
+    executionId: confirmation.executionId,
+    decisionId: confirmation.decisionId,
+    reviewRequestId: confirmation.reviewRequestId,
+    taskId: confirmation.taskId,
+    resultStatus: confirmation.resultStatus,
+    executedAction: confirmation.executedAction,
+    confirmedBy: confirmation.confirmedBy,
+    confirmedAt: confirmation.confirmedAt,
+    audit: {
+      previousStatus: confirmation.audit.previousStatus,
+      nextAction: confirmation.audit.nextAction,
+      reasonCode: confirmation.audit.reasonCode,
+      severity: confirmation.audit.severity,
+    },
+  };
+}
+
+/**
+ * S83P: 从 HumanReviewConfirmationEvent 提取 Ledger/SSE 摘要。
+ */
+export function humanReviewConfirmationToLedgerExtract(
+  event: HumanReviewConfirmationEvent
+): HumanReviewConfirmationLedgerExtract {
+  return {
+    confirmationId: event.confirmationId,
+    executionId: event.executionId,
+    decisionId: event.decisionId,
+    reviewRequestId: event.reviewRequestId,
+    taskId: event.taskId,
+    resultStatus: event.resultStatus,
+    executedAction: event.executedAction,
+    confirmedBy: event.confirmedBy,
+    previousStatus: event.audit.previousStatus,
+    nextAction: event.audit.nextAction,
   };
 }
