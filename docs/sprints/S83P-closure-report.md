@@ -1,7 +1,7 @@
 # Sprint 83P — Manual Confirmation V0 — Closure Report
 
 **Sprint**: S83P
-**Implementation Commit**: `<commit>`
+**Implementation Commit**: `6b96ca3`
 **PM Status**: CLOSURE CANDIDATE ⚠️（三端同步完成后待 PM 签字）
 **Date**: 2026-05-25
 
@@ -137,9 +137,9 @@ Confirmation event / ledger extract do not contain:
 
 | Repo | Commit | Status |
 |---|---|---:|
-| Desktop | `<commit>` | ⏳ |
-| WorkBuddy | `<commit>` | ⏳ |
-| origin/master | `<commit>` | ⏳ |
+| Desktop | `6b96ca3` | ✅ |
+| WorkBuddy | `6b96ca3` | ✅ |
+| origin/master | `6b96ca3` | ✅ |
 
 ---
 
