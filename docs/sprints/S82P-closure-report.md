@@ -1,8 +1,8 @@
 # Sprint 82P — Resume Execution Audit Events V0 — Closure Report
 
 **Sprint**: S82P
-**Commit**: `<pending>`
-**PM Status**: CLOSURE CANDIDATE ⚠️（三端同步完成后待 PM 签字）
+**Commit**: `5f38750`
+**PM Status**: CLOSURE CANDIDATE ⚠️（三端同步完成，待 PM 签字）
 **Date**: 2026-05-25
 
 ---
@@ -171,9 +171,9 @@ Execution event / ledger extract 不含：
 
 | Repo | Commit | Status |
 |---|---|---:|
-| Desktop | `<pending>` | ⏳ |
-| WorkBuddy | `<pending>` | ⏳ |
-| origin/master | `<pending>` | ⏳ |
+| Desktop | `5f38750` | ✅ |
+| WorkBuddy | `5f38750` | ✅ |
+| origin/master | `5f38750` | ✅ |
 
 ---
 
