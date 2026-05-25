@@ -12,6 +12,8 @@ import type { TaskContractV0 } from "../task-contract/task-contract-types.js";
 import type {
   HumanReviewReasonCode,
   HumanReviewResolutionEvent,
+  HumanReviewResumeExecutionEvent,
+  HumanReviewResumeExecutionLedgerExtract,
   HumanReviewSeverity,
   HumanReviewRequest,
   HumanReviewResolution,
@@ -507,4 +509,57 @@ export async function createOrGetResumeExecution(
   }
 
   return persisted;
+}
+
+// ── S82P: Resume Execution Event ────────────────────────────────────────
+
+/**
+ * S82P: 从 HumanReviewResumeExecutionResult 构建 audit event。
+ *
+ * Event id deterministic 格式：`human_review_resume_execution_event_${execution.id}`
+ * 不含 raw artifact/history/memory/criterion 文本。
+ * 不含 resolution.note（人工输入，不属于 safe audit metadata）。
+ */
+export function buildHumanReviewResumeExecutionEvent(
+  execution: HumanReviewResumeExecutionResult,
+  decision: HumanReviewResumeDecision
+): HumanReviewResumeExecutionEvent {
+  return {
+    type: "human_review.resume_execution",
+    id: `human_review_resume_execution_event_${execution.id}`,
+    executionId: execution.id,
+    decisionId: execution.decisionId,
+    reviewRequestId: execution.reviewRequestId,
+    taskId: execution.taskId,
+    status: execution.status,
+    executedAction: execution.executedAction,
+    createdAt: execution.createdAt,
+    audit: {
+      nextAction: decision.nextAction,
+      executionMode: decision.executionMode,
+      requiresOperatorConfirmation: decision.audit.requiresOperatorConfirmation,
+      reasonCode: decision.audit.reasonCode,
+      severity: decision.audit.severity,
+    },
+  };
+}
+
+/**
+ * S82P: 从 HumanReviewResumeExecutionEvent 提取 Ledger/SSE 摘要。
+ * 比 Event 更精简，用于快速解析 done payload。
+ */
+export function humanReviewResumeExecutionToLedgerExtract(
+  event: HumanReviewResumeExecutionEvent
+): HumanReviewResumeExecutionLedgerExtract {
+  return {
+    executionId: event.executionId,
+    decisionId: event.decisionId,
+    reviewRequestId: event.reviewRequestId,
+    taskId: event.taskId,
+    status: event.status,
+    executedAction: event.executedAction,
+    nextAction: event.audit.nextAction,
+    executionMode: event.audit.executionMode,
+    requiresOperatorConfirmation: event.audit.requiresOperatorConfirmation,
+  };
 }

@@ -12,14 +12,17 @@ import {
   createHumanReviewRequestFromCycle,
   buildHumanReviewResolutionEvent,
   buildHumanReviewResumeDecision,
+  buildHumanReviewResumeExecutionEvent,
   createOrGetResumeDecision,
   createOrGetResumeExecution,
 } from "../services/human-review/human-review-service.js";
 import { HumanReviewRequestRepo } from "../db/human-review-repo.js";
 import { HumanReviewResumeDecisionRepo } from "../db/human-review-decision-repo.js";
+import { HumanReviewResumeExecutionRepo } from "../db/human-review-execution-repo.js";
 import type {
   HumanReviewResolution,
   HumanReviewResolutionEvent,
+  HumanReviewResumeExecutionEvent,
 } from "../services/human-review/human-review-types.js";
 
 const hrRouter = new Hono();
@@ -132,6 +135,7 @@ hrRouter.get("/:id/resume-decision/:decisionId", async (c) => {
 
 // ── POST /v1/human-review/:id/resume-decision/:decisionId/execute ─────────
 // S81P: 执行 persisted resume decision
+// S82P: 响应增加 event 字段（含 error 路径）
 
 hrRouter.post("/:id/resume-decision/:decisionId/execute", async (c) => {
   const reviewRequestId = c.req.param("id");
@@ -141,25 +145,43 @@ hrRouter.post("/:id/resume-decision/:decisionId/execute", async (c) => {
     const execution = await createOrGetResumeExecution(reviewRequestId, decisionId);
     const decision = await HumanReviewResumeDecisionRepo.getById(decisionId);
     const request = await HumanReviewRequestRepo.getById(reviewRequestId);
+    const event: HumanReviewResumeExecutionEvent = buildHumanReviewResumeExecutionEvent(
+      execution,
+      decision!
+    );
 
     return c.json({
       request,
       decision,
       execution,
+      event,
     }, 200);
   } catch (err: any) {
+    // S82P: requires_confirmation / unsupported 已持久化 execution，附带 event
     if (err.code === "NOT_FOUND") {
       return c.json({ error: err.message }, 404);
     }
     if (err.code === "REVIEW_MISMATCH") {
       return c.json({ error: err.message }, 409);
     }
-    if (err.code === "REQUIRES_CONFIRMATION") {
-      return c.json({ error: err.message }, 409);
+
+    // error 路径：从 DB 读取已持久化的 execution 构造 event
+    if (err.code === "REQUIRES_CONFIRMATION" || err.code === "UNSUPPORTED") {
+      const execution = await HumanReviewResumeExecutionRepo.getByDecisionId(decisionId);
+      const decision = await HumanReviewResumeDecisionRepo.getById(decisionId);
+      if (execution && decision) {
+        const event = buildHumanReviewResumeExecutionEvent(execution, decision);
+        const httpStatus = err.code === "REQUIRES_CONFIRMATION" ? 409 : 422;
+        return c.json({
+          error: err.message,
+          execution,
+          event,
+        }, httpStatus);
+      }
+      const httpStatus = err.code === "REQUIRES_CONFIRMATION" ? 409 : 422;
+      return c.json({ error: err.message }, httpStatus);
     }
-    if (err.code === "UNSUPPORTED") {
-      return c.json({ error: err.message }, 422);
-    }
+
     return c.json({ error: err.message }, 500);
   }
 });

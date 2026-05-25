@@ -297,3 +297,58 @@ export interface HumanReviewResumeExecutionRepo {
     limit?: number;
   }): Promise<HumanReviewResumeExecutionResult[]>;
 }
+
+// ── S82P: Resume Execution Event ─────────────────────────────────────────
+
+/**
+ * S82P: Human Review Resume Execution 审计事件。
+ * 用于 API 响应和 Ledger/SSE done payload。
+ *
+ * 不含 raw artifact/history/memory/criterion 文本。
+ * 不含 resolution.note（人工输入，不属于 safe audit metadata）。
+ *
+ * Event id 格式：`human_review_resume_execution_event_${execution.id}`（deterministic）。
+ */
+export interface HumanReviewResumeExecutionEvent {
+  type: "human_review.resume_execution";
+  /** Deterministic event id：`human_review_resume_execution_event_${execution.id}` */
+  id: string;
+  /** 关联的 execution ID */
+  executionId: string;
+  /** 关联的 decision ID（审计链） */
+  decisionId: string;
+  /** 关联的 HumanReviewRequest ID（审计链） */
+  reviewRequestId: string;
+  /** 关联任务 ID */
+  taskId: string;
+  /** 执行状态 */
+  status: ResumeExecutionStatus;
+  /** 已执行的 action */
+  executedAction: ExecutedResumeAction;
+  /** 执行时间（ISO 8601） */
+  createdAt: string;
+  /** 审计元数据（安全子集） */
+  audit: {
+    nextAction: NextAction;
+    executionMode: ExecutionMode;
+    requiresOperatorConfirmation: boolean;
+    reasonCode: HumanReviewReasonCode;
+    severity: HumanReviewSeverity;
+  };
+}
+
+/**
+ * S82P: Ledger / SSE done payload 中的 execution 摘要。
+ * 比 Event 更精简，用于快速解析。
+ */
+export interface HumanReviewResumeExecutionLedgerExtract {
+  executionId: string;
+  decisionId: string;
+  reviewRequestId: string;
+  taskId: string;
+  status: string;
+  executedAction: string;
+  nextAction: string;
+  executionMode: string;
+  requiresOperatorConfirmation: boolean;
+}

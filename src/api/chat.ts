@@ -42,6 +42,8 @@ import { calcActualCostEx } from "../config/pricing.js";
 // Sprint 61P: Context Packaging
 import type { ContextPackageV1 } from "../services/context/context-package.js";
 import { contextPackageToLedgerExtract } from "../services/context/context-package-builder.js";
+// Sprint 82P: Resume Execution Event ledger extract
+import { humanReviewResumeExecutionToLedgerExtract } from "../services/human-review/human-review-service.js";
 const chatRouter = new Hono();
 
 chatRouter.post("/chat", async (c) => {
@@ -626,6 +628,10 @@ chatRouter.post("/chat", async (c) => {
             cycleAudit: (llmNativeResult.requestSummary as any)?.cycleAudit ?? null,
             // Sprint 78P: Human Review Resolution（resolve API 处置后会出现在这里；V0 init 后为空）
             humanReviewResolution: (llmNativeResult.requestSummary as any)?.humanReviewResolution ?? null,
+            // Sprint 82P: Human Review Resume Execution Event（execute API 调用后会出现；V0 init 后为空）
+            humanReviewResumeExecution: (llmNativeResult.requestSummary as any)?.humanReviewResumeExecutionEvent
+              ? humanReviewResumeExecutionToLedgerExtract((llmNativeResult.requestSummary as any).humanReviewResumeExecutionEvent)
+              : null,
           };
           await s.write(`data: ${JSON.stringify(doneObj)}\n\n`);
 
