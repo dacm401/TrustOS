@@ -17,7 +17,6 @@ import {
   createOrGetResumeExecution,
 } from "../../../src/services/human-review/human-review-service.js";
 import { HumanReviewRequestRepo } from "../../../src/db/human-review-repo.js";
-import { HumanReviewResumeDecisionRepo } from "../../../src/db/human-review-decision-repo.js";
 import { HumanReviewResumeExecutionRepo } from "../../../src/db/human-review-execution-repo.js";
 
 function makeHRCriterion(
@@ -81,15 +80,16 @@ describe("S81P E2E: Resume Execution", () => {
       initialContent: content,
       security: { artifactToManager: false, rawHistoryToWorker: false, rawMemoryToWorker: false },
       executeWorker: async () => ({ content }),
+      originalGoal: "Create artifact",
+      originalConstraints: [],
     });
 
     const hrParams = buildHumanReviewRequestFromCycle(cycleResult, contract);
     hrParams.taskId = taskId;
     const hrRequest = await HumanReviewRequestRepo.create(hrParams);
 
-    await resolveHumanReviewRequest(hrRequest.id, { action: "accept" });
-
-    const decision = await createOrGetResumeDecision(hrRequest);
+    const resolved = await resolveHumanReviewRequest(hrRequest.id, { action: "accept" });
+    const decision = await createOrGetResumeDecision(resolved);
     expect(decision.nextAction).toBe("accept_final");
 
     const execution = await createOrGetResumeExecution(hrRequest.id, decision.id);
@@ -116,15 +116,16 @@ describe("S81P E2E: Resume Execution", () => {
       initialContent: content,
       security: { artifactToManager: false, rawHistoryToWorker: false, rawMemoryToWorker: false },
       executeWorker: async () => ({ content }),
+      originalGoal: "Create artifact",
+      originalConstraints: [],
     });
 
     const hrParams = buildHumanReviewRequestFromCycle(cycleResult, contract);
     hrParams.taskId = taskId;
     const hrRequest = await HumanReviewRequestRepo.create(hrParams);
 
-    await resolveHumanReviewRequest(hrRequest.id, { action: "block" });
-
-    const decision = await createOrGetResumeDecision(hrRequest);
+    const resolved = await resolveHumanReviewRequest(hrRequest.id, { action: "block" });
+    const decision = await createOrGetResumeDecision(resolved);
     expect(decision.nextAction).toBe("block_final");
 
     const execution = await createOrGetResumeExecution(hrRequest.id, decision.id);
@@ -133,9 +134,9 @@ describe("S81P E2E: Resume Execution", () => {
     expect(execution.executedAction).toBe("block_final");
   });
 
-  // ── E3: manual/security decision returns requires_confirmation ─────────────
+  // ── E3: manual/security decision persists then throws REQUIRES_CONFIRMATION ─
 
-  it("E3: manual/security decision returns requires_confirmation and does not execute action", async () => {
+  it("E3: manual/security decision persists execution attempt then throws REQUIRES_CONFIRMATION", async () => {
     const taskId = `e2e-s81p-${Date.now()}-e3`;
     const contract = makeTaskContract([makeHRCriterion("security")], "security");
     const content = "security sensitive content";
@@ -147,27 +148,37 @@ describe("S81P E2E: Resume Execution", () => {
       initialContent: content,
       security: { artifactToManager: false, rawHistoryToWorker: false, rawMemoryToWorker: false },
       executeWorker: async () => ({ content }),
+      originalGoal: "Create artifact",
+      originalConstraints: [],
     });
 
     const hrParams = buildHumanReviewRequestFromCycle(cycleResult, contract);
     hrParams.taskId = taskId;
     const hrRequest = await HumanReviewRequestRepo.create(hrParams);
 
-    await resolveHumanReviewRequest(hrRequest.id, { action: "accept" });
-
-    const decision = await createOrGetResumeDecision(hrRequest);
+    const resolved = await resolveHumanReviewRequest(hrRequest.id, { action: "accept" });
+    const decision = await createOrGetResumeDecision(resolved);
     expect(decision.executionMode).toBe("manual");
 
-    const execution = await createOrGetResumeExecution(hrRequest.id, decision.id);
+    // service persists execution attempt then throws — must catch the error
+    try {
+      await createOrGetResumeExecution(hrRequest.id, decision.id);
+      expect.fail("Should have thrown REQUIRES_CONFIRMATION");
+    } catch (err: any) {
+      expect(err.code).toBe("REQUIRES_CONFIRMATION");
+    }
 
-    expect(execution.status).toBe("requires_confirmation");
-    expect(execution.executedAction).toBe("none");
-    expect(execution.executedAt).toBeUndefined();
+    // execution attempt was persisted despite the throw (audit fact)
+    const persisted = await HumanReviewResumeExecutionRepo.getByDecisionId(decision.id);
+    expect(persisted).not.toBeNull();
+    expect(persisted!.status).toBe("requires_confirmation");
+    expect(persisted!.executedAction).toBe("none");
+    expect(persisted!.executedAt).toBeUndefined();
   });
 
-  // ── E4: resume_with_revision returns unsupported ────────────────────────
+  // ── E4: resume_with_revision persists then throws UNSUPPORTED ──────────
 
-  it("E4: resume_with_revision decision returns unsupported", async () => {
+  it("E4: resume_with_revision decision persists execution attempt then throws UNSUPPORTED", async () => {
     const taskId = `e2e-s81p-${Date.now()}-e4`;
     const contract = makeTaskContract([makeHRCriterion("medium")], "medium");
     const content = "revision needed content";
@@ -179,21 +190,31 @@ describe("S81P E2E: Resume Execution", () => {
       initialContent: content,
       security: { artifactToManager: false, rawHistoryToWorker: false, rawMemoryToWorker: false },
       executeWorker: async () => ({ content }),
+      originalGoal: "Create artifact",
+      originalConstraints: [],
     });
 
     const hrParams = buildHumanReviewRequestFromCycle(cycleResult, contract);
     hrParams.taskId = taskId;
     const hrRequest = await HumanReviewRequestRepo.create(hrParams);
 
-    await resolveHumanReviewRequest(hrRequest.id, { action: "revise" });
-
-    const decision = await createOrGetResumeDecision(hrRequest);
+    const resolved = await resolveHumanReviewRequest(hrRequest.id, { action: "revise" });
+    const decision = await createOrGetResumeDecision(resolved);
     expect(decision.nextAction).toBe("resume_with_revision");
 
-    const execution = await createOrGetResumeExecution(hrRequest.id, decision.id);
+    // service persists execution attempt then throws — must catch the error
+    try {
+      await createOrGetResumeExecution(hrRequest.id, decision.id);
+      expect.fail("Should have thrown UNSUPPORTED");
+    } catch (err: any) {
+      expect(err.code).toBe("UNSUPPORTED");
+    }
 
-    expect(execution.status).toBe("unsupported");
-    expect(execution.executedAction).toBe("none");
+    // execution attempt was persisted despite the throw (audit fact)
+    const persisted = await HumanReviewResumeExecutionRepo.getByDecisionId(decision.id);
+    expect(persisted).not.toBeNull();
+    expect(persisted!.status).toBe("unsupported");
+    expect(persisted!.executedAction).toBe("none");
   });
 
   // ── E5: duplicate execute returns same execution id ─────────────────────
@@ -210,15 +231,16 @@ describe("S81P E2E: Resume Execution", () => {
       initialContent: content,
       security: { artifactToManager: false, rawHistoryToWorker: false, rawMemoryToWorker: false },
       executeWorker: async () => ({ content }),
+      originalGoal: "Create artifact",
+      originalConstraints: [],
     });
 
     const hrParams = buildHumanReviewRequestFromCycle(cycleResult, contract);
     hrParams.taskId = taskId;
     const hrRequest = await HumanReviewRequestRepo.create(hrParams);
 
-    await resolveHumanReviewRequest(hrRequest.id, { action: "accept" });
-
-    const decision = await createOrGetResumeDecision(hrRequest);
+    const resolved = await resolveHumanReviewRequest(hrRequest.id, { action: "accept" });
+    const decision = await createOrGetResumeDecision(resolved);
 
     const execution1 = await createOrGetResumeExecution(hrRequest.id, decision.id);
     const execution2 = await createOrGetResumeExecution(hrRequest.id, decision.id);
@@ -241,15 +263,16 @@ describe("S81P E2E: Resume Execution", () => {
       initialContent: content,
       security: { artifactToManager: false, rawHistoryToWorker: false, rawMemoryToWorker: false },
       executeWorker: async () => ({ content }),
+      originalGoal: "Create artifact",
+      originalConstraints: [],
     });
 
     const hrParams = buildHumanReviewRequestFromCycle(cycleResult, contract);
     hrParams.taskId = taskId;
     const hrRequest = await HumanReviewRequestRepo.create(hrParams);
 
-    await resolveHumanReviewRequest(hrRequest.id, { action: "accept" });
-
-    const decision = await createOrGetResumeDecision(hrRequest);
+    const resolved = await resolveHumanReviewRequest(hrRequest.id, { action: "accept" });
+    const decision = await createOrGetResumeDecision(resolved);
 
     // Use a different reviewRequestId that doesn't match
     try {

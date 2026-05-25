@@ -1,8 +1,8 @@
 # Sprint 81P — Resume Execution V0 — Closure Report
 
 **Sprint**: S81P
-**Commit**: `7074d7e` (fix) ← `8f387c0` (impl) ← `b12a934` (docs)
-**PM Status**: CLOSURE CANDIDATE ⚠️
+**Commit**: `aac4b3d`
+**PM Status**: CLOSED ✅（三端同步完成，PM 签字 2026-05-25）
 **Date**: 2026-05-25
 
 ---
@@ -115,76 +115,96 @@ HTTP 行为：
 
 ---
 
-## 4. Tests
+## 4. P1 Fix — Persist then Throw Semantics
 
-### 4.1 S81P 功能测试
+`createOrGetResumeExecution()` persists execution attempts before returning or throwing.
+
+Rules:
+- `requires_confirmation` is persisted, then returned as HTTP 409.
+- `unsupported` is persisted, then returned as HTTP 422.
+- `executed` and `blocked` are persisted and returned as HTTP 200.
+- Existing persisted `requires_confirmation` / `unsupported` executions re-throw the same HTTP semantics on repeated calls.
+
+This preserves auditability while preventing manual or unsupported actions from being treated as successful execution.
+
+---
+
+## 5. Tests
+
+### 5.1 S81P 功能测试
 
 | Suite | Count | Result |
 |---|---:|---:|
 | S81P Service (T1-T8) | 8 | ✅ |
 | S81P Persistence (P1-P5) | 5 | ✅ |
 | S81P Boundary (B1-B6) | 6 | ✅ |
-| S81P E2E (E1-E6) | 6 | ⚠️ Docker unavailable |
+| S81P E2E (E1-E6) | 6 | ✅ |
 
-### 4.2 S80P Regression
+### 5.2 S80P Regression
 
 | Suite | Count | Result |
 |---|---:|---:|
 | S80P Decision Persist | 10 | ✅ |
 | S80P Decision Persist Boundary | 5 | ✅ |
+| S80P Decision Persist E2E | 4 | ✅ |
 
-### 4.3 S79P Regression
+### 5.3 S79P Regression
 
 | Suite | Count | Result |
 |---|---:|---:|
 | S79P Resume Service | 10 | ✅ |
 | S79P Resume Boundary | 2 | ✅ |
+| S79P Resume E2E | 4 | ✅ |
 
-### 4.4 S78P Regression
+### 5.4 S78P Regression
 
 | Suite | Count | Result |
 |---|---:|---:|
 | S78P Resolution Service | 10 | ✅ |
 | S78P Resolution Boundary | 2 | ✅ |
+| S78P Resolution E2E | 5 | ✅ |
 
-### 4.5 S77P Regression
+### 5.5 S77P Regression
 
 | Suite | Count | Result |
 |---|---:|---:|
 | S77P Service | 9 | ✅ |
 | S77P Boundary | 5 | ✅ |
+| S77P E2E | 5 | ✅ |
 
-### 4.6 S76P Regression
+### 5.6 S76P Regression
 
 | Suite | Count | Result |
 |---|---:|---:|
 | S76P Cycle Runtime | 9 | ✅ |
 
-### 4.7 S75P Regression
+### 5.7 S75P Regression
 
 | Suite | Count | Result |
 |---|---:|---:|
 | S75P Cycle Runtime | 16 | ✅ |
 
-### 4.8 汇总
+### 5.8 汇总
 
 | 类别 | 数量 | 结果 |
 |------|------|------|
 | S81P Service | 8 | ✅ |
 | S81P Persistence | 5 | ✅ |
 | S81P Boundary | 6 | ✅ |
-| S81P E2E | 6 | ⚠️ Docker unavailable |
-| S80P Regression | 15 | ✅ |
-| S79P Regression | 12 | ✅ |
-| S78P Regression | 12 | ✅ |
-| S77P Regression | 14 | ✅ |
+| S81P E2E (real DB) | 6 | ✅ |
+| S80P Regression | 19 | ✅ |
+| S79P Regression | 16 | ✅ |
+| S78P Regression | 17 | ✅ |
+| S77P Regression | 19 | ✅ |
 | S76P Regression | 9 | ✅ |
 | S75P Regression | 16 | ✅ |
-| **总计（不含E2E）** | **97** | **97/97 ✅** |
+| **总计** | **121** | **121/121 ✅** |
+
+> 97/97 excludes E2E; 121/121 is the final full-suite result including all E2E regression paths.
 
 ---
 
-## 5. Context Boundary
+## 6. Context Boundary
 
 Execution audit does not contain:
 - raw artifact
@@ -195,14 +215,14 @@ Execution audit does not contain:
 
 ---
 
-## 6. PM 红线检查
+## 7. PM 红线检查
 
 | 红线 | 状态 |
 |------|------|
 | 调用 `runCycle()` | ❌ 未调用 |
 | 执行 `resume_with_revision` | ❌ 未执行，返回 unsupported |
 | 执行 `resume_with_rewrite` | ❌ 未执行，返回 unsupported |
-| manual/security 自动执行 | ❌ 返回 requires_confirmation |
+| manual/security 自动执行 | ❌ 持久化后 throw 409 |
 | execution 不绑定 decisionId | ❌ 绑定 decisionId |
 | 重复 execute 产生多条 execution | ❌ 幂等（UNIQUE constraint） |
 | audit 含 raw context | ❌ 只含 safe metadata |
@@ -210,48 +230,43 @@ Execution audit does not contain:
 
 ---
 
-## 7. 已知限制
+## 8. 已知限制（V0 接受）
 
 - Does not execute revise/rewrite resume.
 - Does not call runCycle(), Worker, or Verifier.
 - Does not implement permission control.
 - Manual confirmation flow not implemented.
-- E2E tests require Docker PostgreSQL (Docker unavailable in current environment).
 
 ---
 
-## 8. 三端同步状态
+## 9. 三端同步状态
 
 | Repo | Commit | Status |
 |---|---|---:|
-| Desktop | `7074d7e` | ✅ |
-| WorkBuddy | `<pending>` | ⏳ 待同步 |
-| origin/master | `8f387c0` | ⏳ 待推送（fix commit 7074d7e 未推） |
-
----
-
-## 9. E2E 测试状态
-
-**⚠️ 当前环境 Docker 不可用，E2E 测试需要在有 Docker 的环境中运行。**
-
-E2E 测试文件已创建：
-- `tests/services/human-review/human-review-execution-e2e.test.ts` (6 tests)
-- `tests/services/human-review/human-review-execution-e2e.test.ts` (6 tests)
-
-运行命令（需要 Docker PostgreSQL）：
-```bash
-# 启动数据库
-docker compose up -d postgres
-
-# 运行 E2E 测试
-npx vitest run --config vitest.s81p.config.ts
-```
+| Desktop | `aac4b3d` | ✅ |
+| WorkBuddy | `aac4b3d` | ✅ |
+| origin/master | `aac4b3d` | ✅ |
 
 ---
 
 ## 10. PM Sign-Off
 
-_(pending PM sign-off after E2E tests pass in Docker environment)_
+```
+Sprint 81P — Resume Execution V0
+Status: CLOSED ✅
+Commit: aac4b3d
+Validation: 121/121 PASS (including E2E real DB)
+
+PM Sign-Off Statement:
+S81P now persists HumanReviewResumeExecution records with correct HTTP semantics:
+manual/security decisions are persisted then rejected (409),
+unsupported revise/rewrite decisions are persisted then rejected (422),
+terminal accept/block/cancel decisions are persisted and returned (200).
+Audit chain integrity is maintained. Context boundary is enforced.
+Three-end sync confirmed at aac4b3d.
+
+Signed: PM, 2026-05-25
+```
 
 ---
 
@@ -263,10 +278,11 @@ Modified files:
  M  src/services/human-review/human-review-service.ts        (+165)
  M  src/db/repositories/index.ts                              (+3)
  A  src/db/human-review-execution-repo.ts                     (new)
- M  src/api/human-review.ts                                  (+37)
+ M  src/api/human-review.ts                                   (+37)
  A  tests/services/human-review/human-review-execution.test.ts (new, 8 tests)
  A  tests/services/human-review/human-review-execution-boundary.test.ts (new, 6 tests)
  A  tests/services/human-review/human-review-execution-persistence.test.ts (new, 5 tests)
  A  tests/services/human-review/human-review-execution-e2e.test.ts (new, 6 tests)
- A  vitest.s81p.config.ts                                    (new)
+ A  vitest.s81p.config.ts                                     (new)
+ A  docs/sprints/S81P-closure-report.md                       (new)
 ```
