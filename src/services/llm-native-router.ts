@@ -15,7 +15,7 @@
 
 import { v4 as uuid } from "uuid";
 import { config } from "../config.js";
-import { callModelFull, callOpenAIWithOptions } from "../models/model-gateway.js";
+import { callModelFull, callOpenAIWithOptionsTraced } from "../models/model-gateway.js";
 import { countTokens } from "../models/token-counter.js";
 import { calcActualCost, calcActualCostEx } from "../config/pricing.js";
 import type { ChatMessage } from "../types/index.js";
@@ -1383,15 +1383,17 @@ async function _callFastModel(
 ): Promise<string> {
   const hasAuthOverride = reqApiKey || effectiveBaseUrl;
   if (hasAuthOverride) {
-    const resp = await callOpenAIWithOptions(
+    const resp = await callOpenAIWithOptionsTraced(
       effectiveFastModel,
       messages,
       reqApiKey || config.openaiApiKey || undefined,
-      effectiveBaseUrl
+      effectiveBaseUrl,
+      undefined,
+      "manager"
     );
     return resp.content;
   }
-  const resp = await callModelFull(effectiveFastModel, messages);
+  const resp = await callModelFull(effectiveFastModel, messages, undefined, "manager");
   return resp.content;
 }
 

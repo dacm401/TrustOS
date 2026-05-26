@@ -127,7 +127,7 @@ export class TaskPlanner {
 
     const tools = [PLAN_TOOL_SCHEMA, ...toolRegistry.getFunctionCallingSchemas()];
 
-    const response = await callModelWithTools(model, messages, tools);
+    const response = await callModelWithTools(model, messages, tools, "planner");
 
     let plan = this.parsePlanFromResponse(response, taskId);
 

@@ -129,7 +129,7 @@ ${historyText}
 
     const resp = await callModelFull(config.compressorModel || "Qwen/Qwen2.5-7B-Instruct", [
       { role: "user", content: prompt },
-    ]);
+    ], undefined, "compressor");
 
     const jsonMatch = resp.content.match(/\{[\s\S]*\}/);
     if (jsonMatch) {

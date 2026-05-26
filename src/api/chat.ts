@@ -45,7 +45,7 @@ import { contextPackageToLedgerExtract } from "../services/context/context-packa
 // Sprint 82P: Resume Execution Event ledger extract
 import { humanReviewResumeExecutionToLedgerExtract } from "../services/human-review/human-review-service.js";
 // S84P: Runtime Trace — lightweight performance observability
-import { createTrace, startStage, endStage, traceStage, finalizeTrace, updateTraceRouting, updateTraceCycleSummary, updateTraceWorkerSummary, updateTraceLedgerSummary } from "../services/runtime-trace.js";
+import { createTrace, startStage, endStage, traceStage, finalizeTrace, updateTraceRouting, updateTraceCycleSummary, updateTraceWorkerSummary, updateTraceLedgerSummary, runWithRequestTrace } from "../services/runtime-trace.js";
 import type { RuntimeTrace, RuntimeTraceExtract } from "../types/runtime-trace.js";
 import { buildRuntimeTraceExtract, RUNTIME_TRACE_STAGES } from "../types/runtime-trace.js";
 const chatRouter = new Hono();
@@ -172,9 +172,11 @@ chatRouter.post("/chat", async (c) => {
       // ── SSE 流式分支 ───────────────────────────────────────────────────────────
       // S84P: Initialize runtime trace for SSE path
       runtimeTrace = createTrace(userId + "_" + sessionId + "_" + startTime);
-      let llmNativeResult;
-      let activeArtifact: import("../services/context/active-artifact.js").ActiveArtifactContext | undefined;
-      try {
+      // S86P: Wrap SSE handler in AsyncLocalStorage-based trace context
+      return runWithRequestTrace(runtimeTrace, () => {
+        let llmNativeResult;
+        let activeArtifact: import("../services/context/active-artifact.js").ActiveArtifactContext | undefined;
+        try {
         // Stream V2: 轻量级意图预分类（<10ms）
         const intentStart = Date.now();
         const intent = classifyIntent(body.message ?? "");
@@ -675,6 +677,7 @@ chatRouter.post("/chat", async (c) => {
               });
             }
             runtimeTraceExtract = buildRuntimeTraceExtract(runtimeTrace);
+            // S86P: Trace context is cleaned up by AsyncLocalStorage when runWithRequestTrace exits
           }
 
           const doneObj: Record<string, unknown> = {
@@ -722,7 +725,7 @@ chatRouter.post("/chat", async (c) => {
           // （SSE已失败，客户端已经断开）
         }
       });
-    }
+      }); // runWithRequestTrace
 
     // ── 非 SSE 分支（stream=false / undefined）───────────────────────────────────
     // 走 routeWithManagerDecision，返回 Manager 完整响应（直接回答或澄清）

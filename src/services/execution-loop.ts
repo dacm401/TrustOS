@@ -314,7 +314,7 @@ export class ExecutionLoop {
       { role: "system", content: systemContent },
     ];
 
-    const response = await callModelWithTools(model, toolMessages, tools);
+    const response = await callModelWithTools(model, toolMessages, tools, "execution_loop");
 
     // Add model's response (may contain tool_calls or text) to message history
     messages.push({
@@ -370,7 +370,7 @@ export class ExecutionLoop {
       { role: "system", content: `${systemPrompt}\n\nDo not call any tools for this step. Reason directly and produce your conclusion.` },
     ];
 
-    const response = await callModelFull(model, reasoningMessages);
+    const response = await callModelFull(model, reasoningMessages, undefined, "execution_loop");
     messages.push({ role: "assistant", content: response.content || "" });
   }
 
@@ -399,7 +399,7 @@ export class ExecutionLoop {
       { role: "system", content: `${systemPrompt}\n\nThis is the final synthesis. Produce a clear, complete answer.` },
     ];
 
-    const response = await callModelFull(model, synthesisMessages);
+    const response = await callModelFull(model, synthesisMessages, undefined, "execution_loop");
     messages.push({ role: "assistant", content: response.content || "" });
   }
 

@@ -112,6 +112,61 @@ export interface RuntimeTrace {
 
   /** S85P: Fast path metadata */
   fastPath?: RuntimeTraceFastPath;
+
+  /** S86P: LLM call records (all calls within this request) */
+  llmCalls?: RuntimeTraceLlmCall[];
+}
+
+// ── S86P: LLM Call Observability ────────────────────────────────────────────
+
+/**
+ * Classification of an LLM call's role in the system.
+ * Used for per-kind counting and observability.
+ */
+export type LlmCallKind =
+  | "worker"
+  | "manager"
+  | "manager_synthesis"
+  | "execution_loop"
+  | "planner"
+  | "compressor"
+  | "unknown";
+
+/**
+ * A single LLM call record.
+ * SAFETY: never records prompt, completion content, tool arguments, or user data.
+ * Only metadata: timing, provider, model, success/failure.
+ */
+export interface RuntimeTraceLlmCall {
+  /** Unique call ID within the trace */
+  id: string;
+  /** What kind of system role triggered this call */
+  kind: LlmCallKind;
+  /** Provider name (e.g. "openai", "anthropic") */
+  provider?: string;
+  /** Model name used for this call */
+  model?: string;
+  /** Call start timestamp (Date.now()) */
+  startedAt: number;
+  /** Call end timestamp — undefined if still in-flight */
+  endedAt?: number;
+  /** Call duration in ms — undefined if still in-flight */
+  durationMs?: number;
+  /** Whether the call completed successfully */
+  success: boolean;
+  /** Error code if the call failed (short string, not the full error message) */
+  errorCode?: string;
+}
+
+/**
+ * Summary of all LLM calls in a trace.
+ * Included in RuntimeTraceExtract for SSE done event.
+ */
+export interface RuntimeTraceLlmCallSummary {
+  /** Total number of LLM calls */
+  total: number;
+  /** Counts grouped by kind */
+  byKind: Record<string, number>;
 }
 
 // ── S85P: Fast Path Types ──────────────────────────────────────────────────
@@ -180,6 +235,8 @@ export interface RuntimeTraceExtract {
   ledgerSummary?: RuntimeTrace["ledgerSummary"];
   routing?: RuntimeTrace["routing"];
   fastPath?: RuntimeTrace["fastPath"];
+  /** S86P: LLM call summary (by-kind counts only, no per-call details in extract) */
+  llmCallSummary?: RuntimeTraceLlmCallSummary;
 }
 
 export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtract {
@@ -203,5 +260,17 @@ export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtra
     ledgerSummary: trace.ledgerSummary,
     routing: trace.routing,
     fastPath: trace.fastPath,
+    llmCallSummary: trace.llmCalls && trace.llmCalls.length > 0
+      ? {
+          total: trace.llmCalls.length,
+          byKind: trace.llmCalls.reduce(
+            (acc, c) => {
+              acc[c.kind] = (acc[c.kind] || 0) + 1;
+              return acc;
+            },
+            {} as Record<string, number>
+          ),
+        }
+      : undefined,
   };
 }

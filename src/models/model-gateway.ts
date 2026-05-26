@@ -2,8 +2,11 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import type { ChatMessage } from "../types/index.js";
 import type { ModelProvider, ModelResponse, ToolParam } from "./providers/base-provider.js";
+import type { LlmCallKind } from "../types/runtime-trace.js";
 import { openaiProvider } from "./providers/openai.js";
+import { callOpenAIWithOptions as _callOpenAIWithOptions } from "./providers/openai.js";
 import { anthropicProvider } from "./providers/anthropic.js";
+import { getRequestTrace, recordLlmCall } from "../services/runtime-trace.js";
 import { config } from "../config.js";
 
 const providers: ModelProvider[] = [openaiProvider, anthropicProvider];
@@ -216,26 +219,49 @@ function buildMockModelResponse(messages: ChatMessage[], isManagerRole: boolean,
   };
 }
 
-export async function callModel(model: string, messages: ChatMessage[]): Promise<string> {
-  const response = await callModelFull(model, messages);
+export async function callModel(
+  model: string,
+  messages: ChatMessage[],
+  llmCallKind?: LlmCallKind
+): Promise<string> {
+  const response = await callModelFull(model, messages, undefined, llmCallKind);
   return response.content;
 }
 
 export async function callModelFull(
   model: string,
   messages: ChatMessage[],
-  tools?: ToolParam[]
+  tools?: ToolParam[],
+  llmCallKind?: LlmCallKind
 ): Promise<ModelResponse> {
+  // S86P: Record LLM call if trace context is active
+  const trace = getRequestTrace();
+  const startedAt = Date.now();
+
   // Mock LLM intercept (TRUSTOS_E2E_MOCK_LLM=true)
   if (MOCK_LLM_ENABLED) {
     const isManager = model === config.fastModel;
     console.log(`[mock-llm] callModelFull intercepted: model=${model} isManager=${isManager}`);
-    return buildMockModelResponse(messages, isManager, model);
+    const mockResp = buildMockModelResponse(messages, isManager, model);
+    // Record mock call too (for E2E test observability)
+    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
+    return mockResp;
   }
   const provider = providers.find((p) => p.supports(model));
-  if (!provider) throw new Error(`No provider found for model: ${model}`);
-  try { return await provider.chat(model, messages, tools); }
-  catch (error: any) { console.error(`Model call failed [${model}]:`, error.message); throw error; }
+  if (!provider) {
+    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, "no_provider");
+    throw new Error(`No provider found for model: ${model}`);
+  }
+  try {
+    const response = await provider.chat(model, messages, tools);
+    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
+    return response;
+  } catch (error: any) {
+    const errorCode = error?.status ? `http_${error.status}` : (error?.name === "AbortError" ? "timeout" : "provider_error");
+    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, errorCode);
+    console.error(`Model call failed [${model}]:`, error.message);
+    throw error;
+  }
 }
 
 /**
@@ -245,24 +271,73 @@ export async function callModelFull(
 export async function callModelWithTools(
   model: string,
   messages: ChatMessage[],
-  tools: ToolParam[]
+  tools: ToolParam[],
+  llmCallKind?: LlmCallKind
 ): Promise<ModelResponse> {
+  // S86P: Record LLM call if trace context is active
+  const startedAt = Date.now();
+
   // Mock LLM intercept (TRUSTOS_E2E_MOCK_LLM=true)
   if (MOCK_LLM_ENABLED) {
     const isManager = model === config.fastModel;
     console.log(`[mock-llm] callModelWithTools intercepted: model=${model} isManager=${isManager}`);
-    return buildMockModelResponse(messages, isManager, model);
+    const mockResp = buildMockModelResponse(messages, isManager, model);
+    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
+    return mockResp;
   }
   const provider = providers.find((p) => p.supports(model));
-  if (!provider) throw new Error(`No provider found for model: ${model}`);
-  try { return await provider.chat(model, messages, tools); }
-  catch (error: any) { console.error(`Model call failed with tools [${model}]:`, error.message); throw error; }
+  if (!provider) {
+    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, "no_provider");
+    throw new Error(`No provider found for model: ${model}`);
+  }
+  try {
+    const response = await provider.chat(model, messages, tools);
+    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
+    return response;
+  } catch (error: any) {
+    const errorCode = error?.status ? `http_${error.status}` : (error?.name === "AbortError" ? "timeout" : "provider_error");
+    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, errorCode);
+    console.error(`Model call failed with tools [${model}]:`, error.message);
+    throw error;
+  }
 }
 
 export function getAvailableModels(): string[] {
   const configured = [config.fastModel, config.slowModel, config.compressorModel];
   const hardcoded = ["gpt-4o-mini", "gpt-4o", "claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022"];
   return [...new Set([...configured, ...hardcoded])];
+}
+
+// ── S86P: Traced callOpenAIWithOptions wrapper ───────────────────────────────
+// callOpenAIWithOptions bypasses callModelFull (and thus the standard S86P counter).
+// This wrapper adds trace recording so auth override paths are counted.
+
+/**
+ * S86P: Traced version of callOpenAIWithOptions.
+ * Records the LLM call to the current trace context (if any), then delegates to
+ * the underlying callOpenAIWithOptions.
+ * 
+ * Use this in auth-override paths (e.g., custom API key / base URL) to ensure
+ * those calls are counted in RuntimeTrace.llmCalls.
+ */
+export async function callOpenAIWithOptionsTraced(
+  model: string,
+  messages: ChatMessage[],
+  apiKey: string,
+  baseURL?: string,
+  tools?: ToolParam[],
+  llmCallKind: LlmCallKind = "unknown",
+): Promise<ModelResponse> {
+  const startedAt = Date.now();
+  try {
+    const resp = await _callOpenAIWithOptions(model, messages, apiKey, baseURL, tools);
+    recordLlmCall(llmCallKind, model, startedAt, Date.now(), true);
+    return resp;
+  } catch (err: any) {
+    const errorCode = err?.status ? `http_${err.status}` : (err?.name === "AbortError" ? "timeout" : "provider_error");
+    recordLlmCall(llmCallKind, model, startedAt, Date.now(), false, errorCode);
+    throw err;
+  }
 }
 
 // Re-export callOpenAIWithOptions from the OpenAI provider for use by other modules
@@ -281,8 +356,11 @@ export { callOpenAIWithOptions } from "./providers/openai.js";
 export async function* callModelStream(
   model: string,
   messages: ChatMessage[],
-  reqApiKey?: string
+  reqApiKey?: string,
+  llmCallKind?: LlmCallKind
 ): AsyncGenerator<string> {
+  const startedAt = Date.now();
+
   // Mock LLM intercept (TRUSTOS_E2E_MOCK_LLM=true)
   if (MOCK_LLM_ENABLED) {
     const isManager = model === config.fastModel;
@@ -293,6 +371,7 @@ export async function* callModelStream(
     for (let i = 0; i < mockContent.length; i += chunkSize) {
       yield mockContent.slice(i, i + chunkSize);
     }
+    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
     return;
   }
 
@@ -302,23 +381,29 @@ export async function* callModelStream(
     const systemMsg = messages.find((m) => m.role === "system");
     const nonSystemMsgs = messages.filter((m) => m.role !== "system");
 
-    const stream = anthropicClient.messages.stream({
-      model,
-      max_tokens: 4096,
-      system: systemMsg?.content || "",
-      messages: nonSystemMsgs.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      })),
-    });
+    try {
+      const stream = anthropicClient.messages.stream({
+        model,
+        max_tokens: 4096,
+        system: systemMsg?.content || "",
+        messages: nonSystemMsgs.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        })),
+      });
 
-    for await (const event of stream) {
-      if (
-        event.type === "content_block_delta" &&
-        event.delta.type === "text_delta"
-      ) {
-        yield event.delta.text;
+      for await (const event of stream) {
+        if (
+          event.type === "content_block_delta" &&
+          event.delta.type === "text_delta"
+        ) {
+          yield event.delta.text;
+        }
       }
+      recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
+    } catch (err: any) {
+      recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, "stream_error");
+      throw err;
     }
   } else {
     // OpenAI-compatible streaming path (gpt-*, o1, o3, provider/model, etc.)
@@ -334,20 +419,26 @@ export async function* callModelStream(
     }
     const openaiClient = new OpenAI(clientOptions);
 
-    const stream = await openaiClient.chat.completions.create({
-      model,
-      messages: messages.map((m) => ({
-        role: m.role as "system" | "user" | "assistant",
-        content: m.content,
-      })),
-      temperature: 0.3,
-      max_tokens: 4096,
-      stream: true,
-    });
+    try {
+      const stream = await openaiClient.chat.completions.create({
+        model,
+        messages: messages.map((m) => ({
+          role: m.role as "system" | "user" | "assistant",
+          content: m.content,
+        })),
+        temperature: 0.3,
+        max_tokens: 4096,
+        stream: true,
+      });
 
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta?.content;
-      if (delta) yield delta;
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) yield delta;
+      }
+      recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
+    } catch (err: any) {
+      recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, "stream_error");
+      throw err;
     }
   }
 }

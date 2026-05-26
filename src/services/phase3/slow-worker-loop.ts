@@ -228,7 +228,7 @@ async function executeDelegateCommand(
         { role: "user", content: payload_json.task_brief ?? "" },
       ];
 
-      const resp = await callModelFull(slowModel, msg2);
+      const resp = await callModelFull(slowModel, msg2, undefined, "worker");
       inputTokens += resp.input_tokens ?? 0;
       outputTokens += resp.output_tokens ?? 0;
       return { content: resp.content ?? "" };
@@ -265,7 +265,7 @@ async function executeDelegateCommand(
       console.warn("[cycle] Failed to build TaskContract:", contractErr.message);
     }
 
-    // ── S85P: Simple Task Fast Path (early return) ────────────────────────────
+      // ── S85P: Simple Task Fast Path (early return) ────────────────────────────
     // If the task is simple + low-risk, execute with a single Worker call,
     // skip cycle runtime entirely, and return early.
     const fastPathClassification = classifySimpleTask({
@@ -285,7 +285,7 @@ async function executeDelegateCommand(
       }));
 
       try {
-        const resp = await callModelFull(slowModel, messages);
+        const resp = await callModelFull(slowModel, messages, undefined, "worker");
         const fastContent = resp.content;
         const fastInputTokens = resp.input_tokens ?? 0;
         const fastOutputTokens = resp.output_tokens ?? 0;
@@ -615,7 +615,7 @@ async function executeDelegateCommand(
         console.error("[CYCLE_RUNTIME] Cycle error:", cycleErr.message);
         // Cycle 失败时 fallback 到直接 Worker call
         try {
-          const resp = await callModelFull(slowModel, messages);
+          const resp = await callModelFull(slowModel, messages, undefined, "worker");
           content = resp.content;
           inputTokens = resp.input_tokens ?? 0;
           outputTokens = resp.output_tokens ?? 0;
@@ -635,7 +635,7 @@ async function executeDelegateCommand(
     } else {
       // ── Legacy 路径（无 criteria / TaskContract 构建失败）───────────────────
       try {
-        const resp = await callModelFull(slowModel, messages);
+        const resp = await callModelFull(slowModel, messages, undefined, "worker");
         content = resp.content;
         inputTokens = resp.input_tokens ?? 0;
         outputTokens = resp.output_tokens ?? 0;

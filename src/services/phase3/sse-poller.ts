@@ -98,7 +98,7 @@ async function synthesizeManagerOutput(
       { role: "user", content: `用户原始问题：${userInput}\n\n${userPrompt}` },
     ];
 
-    const resp = await callModelFull(config.fastModel, messages);
+    const resp = await callModelFull(config.fastModel, messages, undefined, "manager_synthesis");
     return resp.content.trim() || workerResult;
   } catch (e: any) {
     console.warn("[synthesizeManagerOutput] Manager synthesis failed:", e.message);
@@ -137,7 +137,7 @@ async function* synthesizeManagerOutputStream(
 
     let buffer = "";
 
-    for await (const chunk of callModelStream(config.fastModel, messages, reqApiKey)) {
+    for await (const chunk of callModelStream(config.fastModel, messages, reqApiKey, "manager_synthesis")) {
       buffer += chunk;
       yield { type: "chunk", stream: chunk, routing_layer: "L2" };
     }

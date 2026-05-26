@@ -70,7 +70,7 @@ async function compressL2(history: ChatMessage[], original_tokens: number, budge
       const summaryResponse = await callModel(config.compressorModel, [
         { role: "system", content: "你是一个对话摘要专家。请将以下对话压缩为简洁摘要，保留关键实体、用户需求、已达成结论。输出2-3句话，不超过150字。" },
         { role: "user", content: conversationText },
-      ]);
+      ], "compressor");
       const summary = `[对话摘要] ${summaryResponse}`;
       const summaryTokens = countTokens(summary);
       messages.push({ role: "system", content: summary, metadata: { tokens: summaryTokens, compressed: true } });
@@ -101,7 +101,7 @@ async function compressL3(history: ChatMessage[], original_tokens: number, budge
     const structuredResponse = await callModel(config.compressorModel, [
       { role: "system", content: `将以下对话提取为JSON格式：\n{"topic":"对话主题","key_facts":["关键事实1","关键事实2"],"user_preferences":["用户偏好1"],"decisions_made":["已做决策1"],"open_questions":["未解决问题1"]}\n只输出JSON。` },
       { role: "user", content: conversationText },
-    ]);
+    ], "compressor");
     const structured = `[结构化上下文] ${structuredResponse}`;
     const structuredTokens = countTokens(structured);
     const lastUserMsg = [...history].reverse().find((m) => m.role === "user");
