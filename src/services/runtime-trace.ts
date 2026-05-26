@@ -18,6 +18,7 @@ import type {
   RuntimeTraceCounters,
   RuntimeTraceLlmCall,
   LlmCallKind,
+  LlmCallBudget,
 } from "../types/runtime-trace.js";
 import { buildRuntimeTraceExtract } from "../types/runtime-trace.js";
 export { buildRuntimeTraceExtract };
@@ -108,6 +109,15 @@ export function recordLlmCall(
   if (!trace.llmCalls) trace.llmCalls = [];
 
   const durationMs = startedAt && endedAt ? endedAt - startedAt : undefined;
+
+  // S87P: Duplicate detection — check if previous call has same (kind, model)
+  let isDuplicate = false;
+  const prevCalls = trace.llmCalls;
+  if (prevCalls.length > 0) {
+    const prev = prevCalls[prevCalls.length - 1];
+    isDuplicate = prev.kind === kind && prev.model === model && prev.success;
+  }
+
   const call: RuntimeTraceLlmCall = {
     id: `${trace.traceId}_llm_${String(store.llmCallSeq++).padStart(3, "0")}`,
     kind,
@@ -117,13 +127,49 @@ export function recordLlmCall(
     durationMs,
     success: success ?? false,
     errorCode,
-    // provider is intentionally omitted here — it's derived from model
-    // by the gateway layer if needed
   };
+  // Only set duplicateWarning when it IS a duplicate (leave undefined otherwise)
+  if (isDuplicate) {
+    call.duplicateWarning = true;
+  }
 
   trace.llmCalls.push(call);
   // counters.modelCalls always reflects actual llmCalls.length (source of truth)
   trace.counters.modelCalls = trace.llmCalls.length;
+
+  // S87P: Budget checks
+  if (trace.budget) {
+    const budget = trace.budget;
+    const total = trace.llmCalls.length;
+    const callSeq = store.llmCallSeq - 1; // seq was already incremented
+
+    if (total > budget.maxTotalCalls) {
+      budget.warnings.push({
+        kind: "over_budget",
+        message: `LLM call ${total}/${budget.maxTotalCalls} exceeds budget`,
+        atCallSeq: callSeq,
+      });
+    } else if (total >= budget.maxTotalCalls * 0.8) {
+      // near_budget: only warn once
+      const alreadyWarnedNear = budget.warnings.some(w => w.kind === "near_budget");
+      if (!alreadyWarnedNear) {
+        budget.warnings.push({
+          kind: "near_budget",
+          message: `LLM calls approaching budget (${total}/${budget.maxTotalCalls})`,
+          atCallSeq: callSeq,
+        });
+      }
+    }
+
+    if (isDuplicate) {
+      budget.warnings.push({
+        kind: "duplicate_consecutive",
+        message: `Consecutive ${kind} calls with same model "${model || "unknown"}" detected`,
+        atCallSeq: callSeq,
+      });
+    }
+  }
+
   return call;
 }
 
@@ -246,4 +292,17 @@ export function updateTraceFastPath(
   fastPath: NonNullable<RuntimeTrace["fastPath"]>
 ): void {
   trace.fastPath = fastPath;
+}
+
+// ── S87P: LLM Call Budget ───────────────────────────────────────────────────
+
+/**
+ * Set a per-request LLM call budget on the trace.
+ * Call once at SSE entry, before any LLM calls are made.
+ */
+export function setTraceBudget(trace: RuntimeTrace, maxTotalCalls: number): void {
+  trace.budget = {
+    maxTotalCalls,
+    warnings: [],
+  };
 }

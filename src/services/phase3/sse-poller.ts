@@ -38,6 +38,123 @@ export interface SSEEvent {
   confidence?: number;
 }
 
+// ── S87P: Synthesis Skip Gating ────────────────────────────────────────────────
+
+/** S87P V0 synthesis skip threshold (characters). Worker results shorter than this may skip synthesis. */
+const SYNTHESIS_SKIP_MAX_LENGTH = 200;
+
+/** Error/exception keywords that indicate synthesis should NOT be skipped. */
+const SYNTHESIS_SKIP_ERROR_KEYWORDS = [
+  "error", "Error", "ERROR",
+  "failed", "Failed", "FAILED",
+  "exception", "Exception",
+  "错误", "失败", "异常",
+  "timeout", "Timeout",
+];
+
+/** Tool-call indicators in worker result that indicate synthesis should NOT be skipped. */
+const SYNTHESIS_SKIP_TOOL_INDICATORS = [
+  "tool_call",
+  "function_call",
+  "<tool",
+  "<function",
+];
+
+/**
+ * S87P: Determine if Manager Synthesis can be safely skipped for a worker result.
+ *
+ * Skip ONLY when the result is trivially short AND all of the following hold:
+ * - Content exists and is short (< 200 chars)
+ * - No error keywords in content
+ * - No tool indicators in content
+ * - No errors array in execution metadata
+ * - No verification failure (V0 or contract)
+ * - No contract violation / security failure / block
+ * - No human_review required or pending
+ * - No revision/rewrite/patch state
+ * - No cycles ran (indicating revision happened)
+ *
+ * Returns true when all conditions are met — safe to present raw worker result directly.
+ *
+ * Note: suspended/waiting states are already handled at the poller level;
+ * the function is only called when task state === "completed".
+ */
+export function shouldSkipSynthesis(workerResult: string, execution?: Record<string, unknown>): boolean {
+  const trimmed = workerResult.trim();
+
+  // Must have content
+  if (trimmed.length === 0) return false;
+
+  // Must be short
+  if (trimmed.length >= SYNTHESIS_SKIP_MAX_LENGTH) return false;
+
+  // Content must not contain error keywords
+  const lower = trimmed.toLowerCase();
+  for (const kw of SYNTHESIS_SKIP_ERROR_KEYWORDS) {
+    if (lower.includes(kw.toLowerCase())) return false;
+  }
+
+  // Content must not contain tool indicators
+  for (const ti of SYNTHESIS_SKIP_TOOL_INDICATORS) {
+    if (lower.includes(ti.toLowerCase())) return false;
+  }
+
+  // If no execution metadata, allow skip for short clean content
+  if (!execution) return true;
+
+  // ── Execution-level error array ──────────────────────────────────────────
+  const errors = execution.errors as string[] | undefined;
+  if (Array.isArray(errors) && errors.length > 0) return false;
+
+  // ── Verification V0 failure ──────────────────────────────────────────────
+  const verification = execution.verification as { passed?: boolean } | undefined;
+  if (verification?.passed === false) return false;
+
+  // ── Contract verification ────────────────────────────────────────────────
+  const cv = execution.contractVerification as {
+    passed?: boolean;
+    hasSecurityFailure?: boolean;
+    blockingIssues?: number;
+    recommendedAction?: string;
+    hasHumanReviewRequired?: boolean;
+  } | undefined;
+  if (cv) {
+    if (cv.passed === false) return false;
+    if (cv.hasSecurityFailure === true) return false;
+    if (typeof cv.blockingIssues === "number" && cv.blockingIssues > 0) return false;
+    // Contract-level human review / block / revise / rewrite
+    if (cv.recommendedAction === "human_review") return false;
+    if (cv.recommendedAction === "block") return false;
+    if (cv.recommendedAction === "revise") return false;
+    if (cv.recommendedAction === "rewrite") return false;
+    if (cv.hasHumanReviewRequired === true) return false;
+  }
+
+  // ── Cycle audit ──────────────────────────────────────────────────────────
+  const cycleAudit = execution.cycleAudit as {
+    finalStatus?: string;
+    finalRecommendedAction?: string;
+    totalCycles?: number;
+    blocked?: boolean;
+  } | undefined;
+  if (cycleAudit) {
+    // Human review from cycle
+    if (cycleAudit.finalStatus === "human_review") return false;
+    if (cycleAudit.finalRecommendedAction === "human_review") return false;
+    // Blocked (contract violation)
+    if (cycleAudit.finalStatus === "blocked") return false;
+    if (cycleAudit.finalRecommendedAction === "block") return false;
+    if (cycleAudit.blocked === true) return false;
+    // Revision / rewrite / patch
+    if (cycleAudit.finalRecommendedAction === "revise") return false;
+    if (cycleAudit.finalRecommendedAction === "rewrite") return false;
+    // Any cycles ran → some form of revision occurred
+    if (typeof cycleAudit.totalCycles === "number" && cycleAudit.totalCycles > 0) return false;
+  }
+
+  return true;
+}
+
 // ── Manager Synthesis Prompt ───────────────────────────────────────────────────
 
 const MANAGER_SYNTHESIS_PROMPT = {
@@ -367,28 +484,38 @@ export async function* pollArchiveAndYield(
         }
 
         // Manager Synthesis — 流式输出，边生成边推送到前端
+        // S87P: Skip synthesis for trivially short worker results
         sentResult = true;
 
-        try {
-        // 发一个"开始整理"的提示
-        yield {
-          type: "result",
-          stream: `${msgs.done}\n\n`,
-          routing_layer: "L2",
-        };
+        if (shouldSkipSynthesis(workerResult, execution)) {
+          // Short, error-free, non-tool result — skip manager_synthesis LLM call
+          yield {
+            type: "result",
+            stream: `${msgs.done}\n\n${workerResult}`,
+            routing_layer: "L2",
+          };
+        } else {
+          try {
+            // 发一个"开始整理"的提示
+            yield {
+              type: "result",
+              stream: `${msgs.done}\n\n`,
+              routing_layer: "L2",
+            };
 
-        // 流式 yield chunks，直接推给前端
-        for await (const chunkEvent of synthesizeManagerOutputStream(taskId, workerResult, workerConfidence, lang, reqApiKey)) {
-          yield chunkEvent;
+            // 流式 yield chunks，直接推给前端
+            for await (const chunkEvent of synthesizeManagerOutputStream(taskId, workerResult, workerConfidence, lang, reqApiKey)) {
+              yield chunkEvent;
+            }
+          } catch (e: any) {
+            console.warn("[pollArchiveAndYield] Manager synthesis failed, using raw result:", e.message);
+            yield {
+              type: "result",
+              stream: `${msgs.done}\n\n${workerResult}`,
+              routing_layer: "L2",
+            };
+          }
         }
-      } catch (e: any) {
-        console.warn("[pollArchiveAndYield] Manager synthesis failed, using raw result:", e.message);
-        yield {
-          type: "result",
-          stream: `${msgs.done}\n\n${workerResult}`,
-          routing_layer: "L2",
-        };
-      }
 
       // SSE1: 成功路径也发送 done 事件（与 failed/timeout 路径一致）
       yield { type: "done", stream: lang === "zh" ? "分析完成" : "Analysis complete", routing_layer: "L2" };

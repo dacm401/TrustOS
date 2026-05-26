@@ -115,6 +115,9 @@ export interface RuntimeTrace {
 
   /** S86P: LLM call records (all calls within this request) */
   llmCalls?: RuntimeTraceLlmCall[];
+
+  /** S87P: Per-request LLM call budget */
+  budget?: LlmCallBudget;
 }
 
 // ── S86P: LLM Call Observability ────────────────────────────────────────────
@@ -156,6 +159,8 @@ export interface RuntimeTraceLlmCall {
   success: boolean;
   /** Error code if the call failed (short string, not the full error message) */
   errorCode?: string;
+  /** S87P: True if this call has same (kind, model) as the immediately preceding call */
+  duplicateWarning?: boolean;
 }
 
 /**
@@ -167,6 +172,33 @@ export interface RuntimeTraceLlmCallSummary {
   total: number;
   /** Counts grouped by kind */
   byKind: Record<string, number>;
+}
+
+// ── S87P: LLM Call Budget Types ──────────────────────────────────────────────
+
+export type LlmCallBudgetWarningKind = "over_budget" | "near_budget" | "duplicate_consecutive";
+
+export interface LlmCallBudgetWarning {
+  kind: LlmCallBudgetWarningKind;
+  message: string;
+  /** The llmCallSeq at which this warning was generated */
+  atCallSeq: number;
+}
+
+export interface LlmCallBudget {
+  /** Maximum allowed LLM calls for this request */
+  maxTotalCalls: number;
+  /** Warnings generated during execution */
+  warnings: LlmCallBudgetWarning[];
+}
+
+export interface RuntimeTraceBudgetStatus {
+  /** Actual total LLM calls made */
+  total: number;
+  /** Budget cap */
+  max: number;
+  /** Whether budget was exceeded */
+  overBudget: boolean;
 }
 
 // ── S85P: Fast Path Types ──────────────────────────────────────────────────
@@ -237,6 +269,10 @@ export interface RuntimeTraceExtract {
   fastPath?: RuntimeTrace["fastPath"];
   /** S86P: LLM call summary (by-kind counts only, no per-call details in extract) */
   llmCallSummary?: RuntimeTraceLlmCallSummary;
+  /** S87P: Budget status (only when budget is set) */
+  budgetStatus?: RuntimeTraceBudgetStatus;
+  /** S87P: Number of calls flagged as duplicate */
+  duplicateCount: number;
 }
 
 export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtract {
@@ -246,6 +282,8 @@ export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtra
       stageTimings[stage.name] = stage.durationMs;
     }
   }
+
+  const llmCalls = trace.llmCalls ?? [];
 
   return {
     traceId: trace.traceId,
@@ -260,10 +298,10 @@ export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtra
     ledgerSummary: trace.ledgerSummary,
     routing: trace.routing,
     fastPath: trace.fastPath,
-    llmCallSummary: trace.llmCalls && trace.llmCalls.length > 0
+    llmCallSummary: llmCalls.length > 0
       ? {
-          total: trace.llmCalls.length,
-          byKind: trace.llmCalls.reduce(
+          total: llmCalls.length,
+          byKind: llmCalls.reduce(
             (acc, c) => {
               acc[c.kind] = (acc[c.kind] || 0) + 1;
               return acc;
@@ -272,5 +310,15 @@ export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtra
           ),
         }
       : undefined,
+    // S87P: Budget status
+    budgetStatus: trace.budget
+      ? {
+          total: llmCalls.length,
+          max: trace.budget.maxTotalCalls,
+          overBudget: llmCalls.length > trace.budget.maxTotalCalls,
+        }
+      : undefined,
+    // S87P: Duplicate count
+    duplicateCount: llmCalls.filter(c => c.duplicateWarning).length,
   };
 }

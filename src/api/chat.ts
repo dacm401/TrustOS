@@ -45,7 +45,7 @@ import { contextPackageToLedgerExtract } from "../services/context/context-packa
 // Sprint 82P: Resume Execution Event ledger extract
 import { humanReviewResumeExecutionToLedgerExtract } from "../services/human-review/human-review-service.js";
 // S84P: Runtime Trace — lightweight performance observability
-import { createTrace, startStage, endStage, traceStage, finalizeTrace, updateTraceRouting, updateTraceCycleSummary, updateTraceWorkerSummary, updateTraceLedgerSummary, runWithRequestTrace } from "../services/runtime-trace.js";
+import { createTrace, startStage, endStage, traceStage, finalizeTrace, updateTraceRouting, updateTraceCycleSummary, updateTraceWorkerSummary, updateTraceLedgerSummary, runWithRequestTrace, setTraceBudget } from "../services/runtime-trace.js";
 import type { RuntimeTrace, RuntimeTraceExtract } from "../types/runtime-trace.js";
 import { buildRuntimeTraceExtract, RUNTIME_TRACE_STAGES } from "../types/runtime-trace.js";
 const chatRouter = new Hono();
@@ -172,6 +172,8 @@ chatRouter.post("/chat", async (c) => {
       // ── SSE 流式分支 ───────────────────────────────────────────────────────────
       // S84P: Initialize runtime trace for SSE path
       runtimeTrace = createTrace(userId + "_" + sessionId + "_" + startTime);
+      // S87P: Set per-request LLM call budget (default: 10)
+      setTraceBudget(runtimeTrace, 10);
       // S86P: Wrap SSE handler in AsyncLocalStorage-based trace context
       return runWithRequestTrace(runtimeTrace, () => {
         let llmNativeResult;
