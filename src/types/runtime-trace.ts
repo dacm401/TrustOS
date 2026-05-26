@@ -118,6 +118,9 @@ export interface RuntimeTrace {
 
   /** S87P: Per-request LLM call budget */
   budget?: LlmCallBudget;
+
+  /** S88P: Current progress / LLM wait state */
+  progress?: RuntimeProgressState;
 }
 
 // ── S86P: LLM Call Observability ────────────────────────────────────────────
@@ -161,6 +164,8 @@ export interface RuntimeTraceLlmCall {
   errorCode?: string;
   /** S87P: True if this call has same (kind, model) as the immediately preceding call */
   duplicateWarning?: boolean;
+  /** S88P: True if this call's duration exceeded the slow threshold */
+  slowCallWarning?: boolean;
 }
 
 /**
@@ -172,6 +177,53 @@ export interface RuntimeTraceLlmCallSummary {
   total: number;
   /** Counts grouped by kind */
   byKind: Record<string, number>;
+}
+
+// ── S88P: Progress & Wait Visibility Types ────────────────────────────────────
+
+/** Threshold for flagging an LLM call as "slow" (milliseconds). */
+export const SLOW_LLM_CALL_THRESHOLD_MS = 5000;
+
+/**
+ * Safe snapshot of the current runtime progress state.
+ * NO prompt, content, tool arguments, or user data.
+ */
+export interface RuntimeProgressState {
+  /** Current execution stage name */
+  stage: string;
+  /** When this stage started (timestamp) */
+  stageStartedAt: number;
+  /** Elapsed ms in the current stage */
+  stageElapsedMs: number;
+  /** What kind of LLM call is currently in-flight (null if idle) */
+  llmWaitKind?: LlmCallKind;
+  /** Model being waited on (null if idle) */
+  llmWaitModel?: string;
+  /** When the current LLM wait started (timestamp) */
+  llmWaitStartedAt?: number;
+  /** Elapsed ms of current LLM wait (0 if idle) */
+  llmWaitElapsedMs?: number;
+  /** Whether any LLM call in this request has been slow */
+  hasSlowCall: boolean;
+  /** Whether currently waiting on an LLM call that has already exceeded the slow threshold */
+  isWaitingOnSlowCall: boolean;
+}
+
+/**
+ * Summary of slow LLM calls in a trace.
+ * Only populated when at least one call exceeds the threshold.
+ */
+export interface RuntimeSlowCallSummary {
+  /** Number of LLM calls that exceeded the slow threshold */
+  count: number;
+  /** Kind of the slowest call */
+  slowestKind: string;
+  /** Model of the slowest call */
+  slowestModel?: string;
+  /** Duration of the slowest call (ms) */
+  slowestDurationMs: number;
+  /** Threshold used for slow detection (ms) */
+  thresholdMs: number;
 }
 
 // ── S87P: LLM Call Budget Types ──────────────────────────────────────────────
@@ -273,6 +325,10 @@ export interface RuntimeTraceExtract {
   budgetStatus?: RuntimeTraceBudgetStatus;
   /** S87P: Number of calls flagged as duplicate */
   duplicateCount: number;
+  /** S88P: Final progress state snapshot */
+  progress?: RuntimeProgressState;
+  /** S88P: Slow LLM calls summary (only when slow calls detected) */
+  slowCallSummary?: RuntimeSlowCallSummary;
 }
 
 export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtract {
@@ -284,6 +340,25 @@ export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtra
   }
 
   const llmCalls = trace.llmCalls ?? [];
+
+  // S88P: Build slow call summary
+  let slowCallSummary: RuntimeSlowCallSummary | undefined;
+  const slowCalls = llmCalls.filter(c => c.slowCallWarning);
+  if (slowCalls.length > 0) {
+    let slowest = slowCalls[0];
+    for (const c of slowCalls) {
+      if ((c.durationMs ?? 0) > (slowest.durationMs ?? 0)) {
+        slowest = c;
+      }
+    }
+    slowCallSummary = {
+      count: slowCalls.length,
+      slowestKind: slowest.kind,
+      slowestModel: slowest.model,
+      slowestDurationMs: slowest.durationMs ?? 0,
+      thresholdMs: SLOW_LLM_CALL_THRESHOLD_MS,
+    };
+  }
 
   return {
     traceId: trace.traceId,
@@ -320,5 +395,9 @@ export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtra
       : undefined,
     // S87P: Duplicate count
     duplicateCount: llmCalls.filter(c => c.duplicateWarning).length,
+    // S88P: Progress state (snapshot at extract time)
+    progress: trace.progress ? { ...trace.progress } : undefined,
+    // S88P: Slow call summary
+    slowCallSummary,
   };
 }

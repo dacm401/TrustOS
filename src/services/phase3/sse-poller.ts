@@ -5,6 +5,8 @@
 import type { RoutingLayer } from "../../types/index";
 import { callModelFull, callModelStream } from "../../models/model-gateway";
 import { config } from "../../config";
+// S88P: Progress visibility
+import { getCurrentProgress, refreshProgressElapsed } from "../runtime-trace.js";
 import { estimateCost } from "../../models/token-counter";
 import type { ChatMessage } from "../../types/index";
 import type { DelegationLogExecutionUpdate } from "../../types/index";
@@ -22,9 +24,12 @@ import { getPool } from "../../db/connection";
 export interface SSEEvent {
   type: "status" | "result" | "error" | "done" | "chunk" | "fast_reply"
        | "manager_synthesized" // Phase 3.0
-       | "cycle_event"; // Sprint 76P: Cycle Runtime SSE Events
+       | "cycle_event" // Sprint 76P: Cycle Runtime SSE Events
+       | "progress"; // S88P: Runtime Progress & Wait Visibility
   /** Sprint 76P: cycle event payload */
   cycleEvent?: Record<string, unknown>;
+  /** S88P: progress event payload — safe metadata only, no prompt/content */
+  progress?: Record<string, unknown>;
   /** Sprint 73: 统一使用 stream 字段，content 已弃用 */
   content?: string;
   stream?: string;
@@ -315,8 +320,12 @@ export async function* pollArchiveAndYield(
   const msgs = MESSAGES[lang] ?? MESSAGES.zh;
   const startTime = Date.now();
   let lastStatusTime = startTime;
+  let lastProgressTime = 0;
   let sentResult = false;
   let failedChecked = false;
+
+  // S88P: Progress event — throttle to every 5s to avoid flooding
+  const PROGRESS_INTERVAL_MS = 5000;
 
   while (true) {
     const task = await TaskArchiveRepo.getById(taskId);
@@ -369,6 +378,48 @@ export async function* pollArchiveAndYield(
           yield { type: "status", stream: msgs.running120s, routing_layer: "L2" };
           lastStatusTime = Date.now();
         }
+      }
+    }
+
+    // S88P: Emit progress event periodically (every 5s) during active execution
+    // Only while worker is executing or synthesizing — not during idle states
+    if (
+      (currentState === "executing" || currentState === "delegated" ||
+       currentState === "waiting_result" || currentState === "synthesizing") &&
+      elapsed - lastProgressTime >= PROGRESS_INTERVAL_MS
+    ) {
+      lastProgressTime = elapsed;
+      // Refresh progress elapsed timestamps from trace
+      refreshProgressElapsed();
+      const progress = getCurrentProgress();
+      if (progress) {
+        const progressPayload: Record<string, unknown> = {
+          stage: progress.stage,
+          stageElapsedMs: progress.stageElapsedMs,
+          totalElapsedMs: elapsed,
+        };
+        // Only include LLM wait info if currently waiting
+        if (progress.llmWaitKind) {
+          progressPayload.llmWait = {
+            kind: progress.llmWaitKind,
+            model: progress.llmWaitModel ?? "unknown",
+            elapsedMs: progress.llmWaitElapsedMs ?? 0,
+          };
+        }
+        if (progress.hasSlowCall) {
+          progressPayload.slowCallDetected = true;
+        }
+        if (progress.isWaitingOnSlowCall) {
+          progressPayload.waitingOnSlowCall = true;
+        }
+        yield {
+          type: "progress",
+          stream: lang === "zh"
+            ? `⏳ ${progress.stage} (${Math.round((progress.stageElapsedMs ?? 0) / 1000)}s)`
+            : `⏳ ${progress.stage} (${Math.round((progress.stageElapsedMs ?? 0) / 1000)}s)`,
+          routing_layer: "L2",
+          progress: progressPayload,
+        };
       }
     }
 

@@ -19,8 +19,9 @@ import type {
   RuntimeTraceLlmCall,
   LlmCallKind,
   LlmCallBudget,
+  RuntimeProgressState,
 } from "../types/runtime-trace.js";
-import { buildRuntimeTraceExtract } from "../types/runtime-trace.js";
+import { buildRuntimeTraceExtract, SLOW_LLM_CALL_THRESHOLD_MS } from "../types/runtime-trace.js";
 export { buildRuntimeTraceExtract };
 
 // ── S86P: Request-scoped trace context ──────────────────────────────────────
@@ -136,6 +137,23 @@ export function recordLlmCall(
   trace.llmCalls.push(call);
   // counters.modelCalls always reflects actual llmCalls.length (source of truth)
   trace.counters.modelCalls = trace.llmCalls.length;
+
+  // S88P: Slow call detection — mark calls exceeding threshold
+  if (durationMs !== undefined && durationMs > SLOW_LLM_CALL_THRESHOLD_MS) {
+    call.slowCallWarning = true;
+    if (trace.progress) {
+      trace.progress.hasSlowCall = true;
+    }
+  }
+
+  // S88P: Update wait state — clear in-flight LLM wait
+  if (trace.progress && trace.progress.llmWaitKind) {
+    trace.progress.llmWaitKind = undefined;
+    trace.progress.llmWaitModel = undefined;
+    trace.progress.llmWaitStartedAt = undefined;
+    trace.progress.llmWaitElapsedMs = undefined;
+    trace.progress.isWaitingOnSlowCall = false;
+  }
 
   // S87P: Budget checks
   if (trace.budget) {
@@ -305,4 +323,140 @@ export function setTraceBudget(trace: RuntimeTrace, maxTotalCalls: number): void
     maxTotalCalls,
     warnings: [],
   };
+}
+
+// ── S88P: Progress & LLM Wait Visibility ──────────────────────────────────────
+
+/**
+ * Update the trace's progress state to a new stage.
+ * Clears any previous LLM wait state since we're starting a new stage.
+ */
+export function updateTraceProgress(
+  trace: RuntimeTrace,
+  stage: string,
+): void {
+  const now = Date.now();
+  if (!trace.progress) {
+    trace.progress = {
+      stage,
+      stageStartedAt: now,
+      stageElapsedMs: 0,
+      hasSlowCall: false,
+      isWaitingOnSlowCall: false,
+    };
+  } else {
+    trace.progress.stage = stage;
+    trace.progress.stageStartedAt = now;
+    trace.progress.stageElapsedMs = 0;
+    // Clear previous LLM wait state on stage transition
+    trace.progress.llmWaitKind = undefined;
+    trace.progress.llmWaitModel = undefined;
+    trace.progress.llmWaitStartedAt = undefined;
+    trace.progress.llmWaitElapsedMs = undefined;
+    trace.progress.isWaitingOnSlowCall = false;
+  }
+}
+
+/**
+ * Mark the beginning of an LLM wait — the system is now waiting on an LLM call.
+ * Safe: only records kind + model, no prompt/content.
+ */
+export function beginLlmWait(
+  trace: RuntimeTrace,
+  kind: LlmCallKind,
+  model?: string,
+): void {
+  const now = Date.now();
+  if (!trace.progress) {
+    trace.progress = {
+      stage: "unknown",
+      stageStartedAt: now,
+      stageElapsedMs: 0,
+      llmWaitKind: kind,
+      llmWaitModel: model,
+      llmWaitStartedAt: now,
+      llmWaitElapsedMs: 0,
+      hasSlowCall: false,
+      isWaitingOnSlowCall: false,
+    };
+  } else {
+    trace.progress.llmWaitKind = kind;
+    trace.progress.llmWaitModel = model;
+    trace.progress.llmWaitStartedAt = now;
+    trace.progress.llmWaitElapsedMs = 0;
+  }
+  // Also refresh stage elapsed
+  trace.progress.stageElapsedMs = now - trace.progress.stageStartedAt;
+}
+
+/**
+ * End the current LLM wait (called when an LLM call completes).
+ */
+export function endLlmWait(trace: RuntimeTrace): void {
+  if (!trace.progress) return;
+  const now = Date.now();
+  if (trace.progress.llmWaitStartedAt) {
+    trace.progress.llmWaitElapsedMs = now - trace.progress.llmWaitStartedAt;
+  }
+  trace.progress.llmWaitKind = undefined;
+  trace.progress.llmWaitModel = undefined;
+  trace.progress.llmWaitStartedAt = undefined;
+  trace.progress.isWaitingOnSlowCall = false;
+  // Refresh stage elapsed
+  trace.progress.stageElapsedMs = now - trace.progress.stageStartedAt;
+}
+
+/**
+ * Get a snapshot of the current progress state for the active trace.
+ * Returns null if no trace is active.
+ * Does NOT copy or snapshot prompts/content — only metadata.
+ */
+export function getCurrentProgress(): RuntimeProgressState | null {
+  const store = _getStore();
+  if (!store?.trace) return null;
+  const trace = store.trace;
+  if (!trace.progress) return null;
+
+  const now = Date.now();
+  const progress: RuntimeProgressState = {
+    stage: trace.progress.stage,
+    stageStartedAt: trace.progress.stageStartedAt,
+    stageElapsedMs: now - trace.progress.stageStartedAt,
+    hasSlowCall: trace.progress.hasSlowCall,
+    isWaitingOnSlowCall: trace.progress.isWaitingOnSlowCall,
+  };
+
+  // If currently waiting on an LLM call, include the elapsed wait time
+  if (trace.progress.llmWaitStartedAt && trace.progress.llmWaitKind) {
+    const waitElapsed = now - trace.progress.llmWaitStartedAt;
+    progress.llmWaitKind = trace.progress.llmWaitKind;
+    progress.llmWaitModel = trace.progress.llmWaitModel;
+    progress.llmWaitStartedAt = trace.progress.llmWaitStartedAt;
+    progress.llmWaitElapsedMs = waitElapsed;
+    progress.isWaitingOnSlowCall = waitElapsed > SLOW_LLM_CALL_THRESHOLD_MS;
+    if (progress.isWaitingOnSlowCall) {
+      progress.hasSlowCall = true;
+    }
+  }
+
+  return progress;
+}
+
+/**
+ * Refresh stage elapsed time for the active trace (call periodically).
+ * Safe for polling loops — just updates timestamps.
+ */
+export function refreshProgressElapsed(): void {
+  const store = _getStore();
+  if (!store?.trace?.progress) return;
+  const now = Date.now();
+  store.trace.progress.stageElapsedMs = now - store.trace.progress.stageStartedAt;
+  if (store.trace.progress.llmWaitStartedAt && store.trace.progress.llmWaitKind) {
+    const elapsed = now - store.trace.progress.llmWaitStartedAt;
+    store.trace.progress.llmWaitElapsedMs = elapsed;
+    store.trace.progress.isWaitingOnSlowCall = elapsed > SLOW_LLM_CALL_THRESHOLD_MS;
+    if (store.trace.progress.isWaitingOnSlowCall) {
+      store.trace.progress.hasSlowCall = true;
+    }
+  }
 }

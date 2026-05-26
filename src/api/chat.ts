@@ -45,7 +45,7 @@ import { contextPackageToLedgerExtract } from "../services/context/context-packa
 // Sprint 82P: Resume Execution Event ledger extract
 import { humanReviewResumeExecutionToLedgerExtract } from "../services/human-review/human-review-service.js";
 // S84P: Runtime Trace — lightweight performance observability
-import { createTrace, startStage, endStage, traceStage, finalizeTrace, updateTraceRouting, updateTraceCycleSummary, updateTraceWorkerSummary, updateTraceLedgerSummary, runWithRequestTrace, setTraceBudget } from "../services/runtime-trace.js";
+import { createTrace, startStage, endStage, traceStage, finalizeTrace, updateTraceRouting, updateTraceCycleSummary, updateTraceWorkerSummary, updateTraceLedgerSummary, runWithRequestTrace, setTraceBudget, updateTraceProgress } from "../services/runtime-trace.js";
 import type { RuntimeTrace, RuntimeTraceExtract } from "../types/runtime-trace.js";
 import { buildRuntimeTraceExtract, RUNTIME_TRACE_STAGES } from "../types/runtime-trace.js";
 const chatRouter = new Hono();
@@ -174,6 +174,8 @@ chatRouter.post("/chat", async (c) => {
       runtimeTrace = createTrace(userId + "_" + sessionId + "_" + startTime);
       // S87P: Set per-request LLM call budget (default: 10)
       setTraceBudget(runtimeTrace, 10);
+      // S88P: Initialize progress tracking
+      updateTraceProgress(runtimeTrace, RUNTIME_TRACE_STAGES.INTENT_CLASSIFY);
       // S86P: Wrap SSE handler in AsyncLocalStorage-based trace context
       return runWithRequestTrace(runtimeTrace, () => {
         let llmNativeResult;
@@ -227,6 +229,7 @@ chatRouter.post("/chat", async (c) => {
 
         // S84P: Cross-session context stage
         const crossSessionT = runtimeTrace ? startStage(runtimeTrace, RUNTIME_TRACE_STAGES.CROSS_SESSION_CONTEXT) : 0;
+        if (runtimeTrace) updateTraceProgress(runtimeTrace, RUNTIME_TRACE_STAGES.CROSS_SESSION_CONTEXT);
         const cross = await buildCrossSessionContext({
           userId,
           sessionId,
@@ -242,6 +245,7 @@ chatRouter.post("/chat", async (c) => {
         // Context Boundary V0: 构建 Manager Safe View
         // S84P: Manager view build stage
         const managerViewT = runtimeTrace ? startStage(runtimeTrace, RUNTIME_TRACE_STAGES.MANAGER_VIEW_BUILD) : 0;
+        if (runtimeTrace) updateTraceProgress(runtimeTrace, RUNTIME_TRACE_STAGES.MANAGER_VIEW_BUILD);
         const rawHistory = body.history ?? [];
         const managerView = buildManagerView(rawHistory);
         activeArtifact = extractActiveArtifactContext(rawHistory);
@@ -257,6 +261,7 @@ chatRouter.post("/chat", async (c) => {
         // S84P: End manager view build stage, start manager routing stage
         if (runtimeTrace && managerViewT) endStage(runtimeTrace, RUNTIME_TRACE_STAGES.MANAGER_VIEW_BUILD, managerViewT);
         const managerRoutingT = runtimeTrace ? startStage(runtimeTrace, RUNTIME_TRACE_STAGES.MANAGER_ROUTING) : 0;
+        if (runtimeTrace) updateTraceProgress(runtimeTrace, RUNTIME_TRACE_STAGES.MANAGER_ROUTING);
 
         llmNativeResult = await Promise.race([
           routeWithManagerDecision({
@@ -284,6 +289,12 @@ chatRouter.post("/chat", async (c) => {
         console.log("[chat] routeWithManagerDecision done, decision_type:", llmNativeResult?.decision_type, "delegation:", !!llmNativeResult?.delegation);
         // S84P: End manager routing stage
         if (runtimeTrace && managerRoutingT) endStage(runtimeTrace, RUNTIME_TRACE_STAGES.MANAGER_ROUTING, managerRoutingT);
+        // S88P: Progress — transition to delegation/worker phase or SSE done
+        if (runtimeTrace) {
+          updateTraceProgress(runtimeTrace,
+            llmNativeResult?.delegation ? RUNTIME_TRACE_STAGES.WORKER_EXECUTION : RUNTIME_TRACE_STAGES.SSE_DONE_PREPARE
+          );
+        }
         // S84P: Update routing metadata
         if (runtimeTrace && llmNativeResult) {
           updateTraceRouting(runtimeTrace, {
