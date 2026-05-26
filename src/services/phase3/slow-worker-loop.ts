@@ -648,6 +648,16 @@ async function executeDelegateCommand(
 
     // ── 写 archive slow_execution ──────────────────────────────────────────────
     const auditExtract = taskContract ? buildCycleAuditExtract(cycleAuditEntry!) : null;
+    // S84P: Worker stage timings for runtime trace
+    const workerStageTimings: Record<string, number> = {
+      worker_execution_total_ms: totalMs,
+    };
+    if (auditExtract) {
+      workerStageTimings.cycle_runtime_ms = auditExtract.cycleAuditMs;
+    }
+    if (verificationEntry) {
+      workerStageTimings.verification_ms = (verificationEntry as any).decisionMs ?? 0;
+    }
     await TaskArchiveRepo.setSlowExecution(archive_id, {
       result: content,
       confidence: 0.85,
@@ -663,6 +673,8 @@ async function executeDelegateCommand(
       contractVerification: contractVerificationEntry ?? undefined,
       // Sprint 75P: Cycle Audit
       cycleAudit: auditExtract ?? undefined,
+      // S84P: Worker stage timings for runtime trace
+      workerStageTimings,
     });
 
     // 更新 task_commands 状态为 completed

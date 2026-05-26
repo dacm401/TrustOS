@@ -44,6 +44,10 @@ import type { ContextPackageV1 } from "../services/context/context-package.js";
 import { contextPackageToLedgerExtract } from "../services/context/context-package-builder.js";
 // Sprint 82P: Resume Execution Event ledger extract
 import { humanReviewResumeExecutionToLedgerExtract } from "../services/human-review/human-review-service.js";
+// S84P: Runtime Trace — lightweight performance observability
+import { createTrace, startStage, endStage, traceStage, finalizeTrace, updateTraceRouting, updateTraceCycleSummary, updateTraceWorkerSummary, updateTraceLedgerSummary } from "../services/runtime-trace.js";
+import type { RuntimeTrace, RuntimeTraceExtract } from "../types/runtime-trace.js";
+import { buildRuntimeTraceExtract, RUNTIME_TRACE_STAGES } from "../types/runtime-trace.js";
 const chatRouter = new Hono();
 
 chatRouter.post("/chat", async (c) => {
@@ -58,6 +62,9 @@ chatRouter.post("/chat", async (c) => {
     return c.json({ error: "invalid JSON body" }, 400);
   }
   const startTime = Date.now();
+
+  // S84P: Create runtime trace (SSE path only — non-SSE doesn't need detailed staging)
+  let runtimeTrace: RuntimeTrace | null = null;
 
   // C3a: Priority 1 — middleware context (trusted X-User-Id header)
   // C3a: Priority 2 — dev-only body shim (only when allowDevFallback=true and no context)
@@ -163,6 +170,8 @@ chatRouter.post("/chat", async (c) => {
     // 防止 stream=true 但走错了路径导致前端 SSE reader 永远挂起
     if (useStream) {
       // ── SSE 流式分支 ───────────────────────────────────────────────────────────
+      // S84P: Initialize runtime trace for SSE path
+      runtimeTrace = createTrace(userId + "_" + sessionId + "_" + startTime);
       let llmNativeResult;
       let activeArtifact: import("../services/context/active-artifact.js").ActiveArtifactContext | undefined;
       try {
@@ -170,6 +179,10 @@ chatRouter.post("/chat", async (c) => {
         const intentStart = Date.now();
         const intent = classifyIntent(body.message ?? "");
         const intentTime = Date.now() - intentStart;
+        // S84P: Record intent classification stage (already completed)
+        if (runtimeTrace) {
+          runtimeTrace.stages.push({ name: RUNTIME_TRACE_STAGES.INTENT_CLASSIFY, startedAt: intentStart, endedAt: intentStart + intentTime, durationMs: intentTime });
+        }
         console.log(`[chat] Intent classification: ${intent.category} (${intentTime}ms, confidence: ${intent.confidence})`);
 
         // 如果是高置信度的简单意图，可以快速返回
@@ -208,6 +221,8 @@ chatRouter.post("/chat", async (c) => {
           }
         }
 
+        // S84P: Cross-session context stage
+        const crossSessionT = runtimeTrace ? startStage(runtimeTrace, RUNTIME_TRACE_STAGES.CROSS_SESSION_CONTEXT) : 0;
         const cross = await buildCrossSessionContext({
           userId,
           sessionId,
@@ -217,8 +232,12 @@ chatRouter.post("/chat", async (c) => {
           return { crossSessionText: "" };
         });
         const crossSessionContext = cross.crossSessionText || undefined;
+        // S84P: End cross-session stage
+        if (runtimeTrace && crossSessionT) endStage(runtimeTrace, RUNTIME_TRACE_STAGES.CROSS_SESSION_CONTEXT, crossSessionT);
 
         // Context Boundary V0: 构建 Manager Safe View
+        // S84P: Manager view build stage
+        const managerViewT = runtimeTrace ? startStage(runtimeTrace, RUNTIME_TRACE_STAGES.MANAGER_VIEW_BUILD) : 0;
         const rawHistory = body.history ?? [];
         const managerView = buildManagerView(rawHistory);
         activeArtifact = extractActiveArtifactContext(rawHistory);
@@ -231,6 +250,9 @@ chatRouter.post("/chat", async (c) => {
           activeArtifactId: activeArtifact?.artifactId,
           activeArtifactSummaryChars: activeArtifact?.summaryForManager?.length ?? 0,
         });
+        // S84P: End manager view build stage, start manager routing stage
+        if (runtimeTrace && managerViewT) endStage(runtimeTrace, RUNTIME_TRACE_STAGES.MANAGER_VIEW_BUILD, managerViewT);
+        const managerRoutingT = runtimeTrace ? startStage(runtimeTrace, RUNTIME_TRACE_STAGES.MANAGER_ROUTING) : 0;
 
         llmNativeResult = await Promise.race([
           routeWithManagerDecision({
@@ -256,6 +278,17 @@ chatRouter.post("/chat", async (c) => {
           return null;
         });
         console.log("[chat] routeWithManagerDecision done, decision_type:", llmNativeResult?.decision_type, "delegation:", !!llmNativeResult?.delegation);
+        // S84P: End manager routing stage
+        if (runtimeTrace && managerRoutingT) endStage(runtimeTrace, RUNTIME_TRACE_STAGES.MANAGER_ROUTING, managerRoutingT);
+        // S84P: Update routing metadata
+        if (runtimeTrace && llmNativeResult) {
+          updateTraceRouting(runtimeTrace, {
+            decisionType: llmNativeResult.decision_type ?? "unknown",
+            policyRoute: llmNativeResult.requestSummary?.policyRoute ?? "unknown",
+            routingLayer: llmNativeResult.routing_layer ?? "unknown",
+            delegation: !!llmNativeResult.delegation,
+          });
+        }
 
         // Sprint 61P: ContextPackage V1 — trace from llm-native-router
         if (llmNativeResult.contextPackage) {
@@ -467,15 +500,15 @@ chatRouter.post("/chat", async (c) => {
           let ledgerPayload: Record<string, unknown> | null = null;
           // Sprint 65P: Verifier V0 — 从 archive.slow_execution 提取 verification 结果
           let verificationPayload: Record<string, unknown> | null = null;
+          // S84P: Worker data for runtime trace (hoisted for scope)
+          let workerInputTokens = 0;
+          let workerOutputTokens = 0;
+          let workerCostUsd = 0;
+          let workerLatencyMs = 0;
+          let workerModelName = "unknown";
           if (llmNativeResult.requestSummary) {
             const rs = llmNativeResult.requestSummary;
             const rsStartTime = Date.now() - rs.totalLatencyMs;
-
-            let workerInputTokens = 0;
-            let workerOutputTokens = 0;
-            let workerCostUsd = 0;
-            let workerLatencyMs = 0;
-            let workerModelName = "unknown";
             if (llmNativeResult.delegation) {
               try {
                 const archive = await TaskArchiveRepo.getById(archiveId!);
@@ -602,6 +635,48 @@ chatRouter.post("/chat", async (c) => {
           const doneMsg = doneIsDel
             ? (lang === "zh" ? "✅ 完成" : "✅ Done")
             : (lang === "zh" ? "已返回答案" : "Answer ready");
+
+          // S84P: Finalize runtime trace and build extract for SSE done event
+          if (runtimeTrace) {
+            finalizeTrace(runtimeTrace, doneIsDel ? "delegation_complete" : "direct_answer");
+          }
+
+          // S84P: Build runtimeTrace extract with ledger + cycle + worker data
+          let runtimeTraceExtract: RuntimeTraceExtract | null = null;
+          if (runtimeTrace && llmNativeResult.requestSummary) {
+            const rs = llmNativeResult.requestSummary;
+            const totalRequestMs = Date.now() - startTime;
+            // Ledger summary
+            updateTraceLedgerSummary(runtimeTrace, {
+              totalLatencyMs: totalRequestMs,
+              totalModelCalls: rs.totalModelCalls,
+              managerModelCalls: rs.managerModelCalls,
+              slowModelCalls: rs.slowModelCalls,
+              routerTaxRatio: rs.routerTaxRatio,
+              estimatedTotalCost: rs.estimatedTotalCost,
+            });
+            // Cycle summary (from requestSummary)
+            if (rs.cycleAudit) {
+              updateTraceCycleSummary(runtimeTrace, {
+                totalCycles: rs.cycleAudit.totalCycles,
+                maxCycles: rs.cycleAudit.maxCycles,
+                finalStatus: rs.cycleAudit.finalStatus,
+                cycleAuditMs: rs.cycleAudit.cycleAuditMs,
+              });
+            }
+            // Worker summary (from archive data read during ledger rebuild)
+            if (workerLatencyMs > 0) {
+              updateTraceWorkerSummary(runtimeTrace, {
+                inputTokens: workerInputTokens,
+                outputTokens: workerOutputTokens,
+                costUsd: workerCostUsd,
+                latencyMs: workerLatencyMs,
+                modelName: workerModelName,
+              });
+            }
+            runtimeTraceExtract = buildRuntimeTraceExtract(runtimeTrace);
+          }
+
           const doneObj: Record<string, unknown> = {
             type: "done",
             stream: doneMsg,
@@ -632,6 +707,8 @@ chatRouter.post("/chat", async (c) => {
             humanReviewResumeExecution: (llmNativeResult.requestSummary as any)?.humanReviewResumeExecutionEvent
               ? humanReviewResumeExecutionToLedgerExtract((llmNativeResult.requestSummary as any).humanReviewResumeExecutionEvent)
               : null,
+            // S84P: Runtime Trace — lightweight performance observability extract
+            runtimeTrace: runtimeTraceExtract,
           };
           await s.write(`data: ${JSON.stringify(doneObj)}\n\n`);
 
