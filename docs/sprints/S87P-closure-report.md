@@ -2,7 +2,10 @@
 
 ## Status
 
-BUILD COMPLETE ✅ / FUNCTIONALLY APPROVED ✅ / PENDING FINAL SIGN-OFF
+**CLOSED ✅**
+
+Closure baseline: `704d737`
+Date: 2026-05-26
 
 ## Baseline
 
@@ -173,5 +176,44 @@ Output format stability: When synthesis is skipped, the same `result` SSE event 
 - [x] S75P–S86P full regression complete (non-DB unit: PASS, DB-backed E2E: BLOCKED)
 - [x] Closure report written
 - [x] Semantic boundary review complete
-- [ ] Commit / push / three-end sync
-- [ ] PM final closure sign-off
+- [x] Commit / push / three-end sync
+- [x] PM final closure sign-off
+
+## Three-End Sync
+
+| Location | Commit | Status |
+|----------|--------|--------|
+| Desktop | `704d737` | ✅ |
+| origin/master | `704d73780f8c9e10c09655764e173c18d7bcab71` | ✅ |
+| WorkBuddy | `704d737` (same workspace as Desktop) | ✅ |
+
+## PM Sign-Off Record
+
+```
+PM SIGN-OFF:
+Sprint 87P — LLM Call Budget & Duplicate Call Reduction V0
+Status: CLOSED ✅
+Closure baseline: 704d737
+Date: 2026-05-26
+
+S87P introduced non-blocking LLM call budget observability and a conservative
+manager_synthesis skip for short, safe worker results.
+
+Key design:
+- Budget warnings are non-blocking metadata.
+- Duplicate detection is metadata-only using kind+model.
+- shouldSkipSynthesis only skips short, safe, directly presentable worker results.
+- Full semantic veto prevents skip on human_review, verification failure,
+  security failure, blocking issues, block/revise/rewrite, cycle activity,
+  or execution errors.
+- SSE result event shape remains unchanged.
+
+Non-goals respected:
+- No S85P fast path eligibility expansion.
+- No semantic cache.
+- No planner rewrite.
+- No Human Review / Resume semantic changes.
+- No UI dashboard.
+- No prompt/content capture.
+- No billing/cost estimate.
+```
