@@ -108,8 +108,8 @@
 | PM 签字 | ✅ BUILD COMPLETE (2026-05-26) |
 | Functional acceptance | APPROVED |
 | 基线 commit | `a634bfc` |
-| 实现 commit | _see Three-End Sync below_ |
-| 三端同步 | _see Three-End Sync below_ |
+| 实现 commit | `a2c9d72` |
+| 三端同步 | ✅ |
 
 ---
 
@@ -117,9 +117,9 @@
 
 | 端 | Commit | 状态 |
 |----|--------|------|
-| Desktop | _pending_ | ⏳ |
-| WorkBuddy | _pending_ | ⏳ |
-| origin/master | _pending_ | ⏳ |
+| Desktop | `a2c9d72` | ✅ |
+| WorkBuddy | `a2c9d72` | ✅ |
+| origin/master | `a2c9d72` | ✅ |
 
 ---
 
