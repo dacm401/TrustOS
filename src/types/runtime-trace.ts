@@ -109,6 +109,29 @@ export interface RuntimeTrace {
     routerTaxRatio: number;
     estimatedTotalCost: number | null;
   };
+
+  /** S85P: Fast path metadata */
+  fastPath?: RuntimeTraceFastPath;
+}
+
+// ── S85P: Fast Path Types ──────────────────────────────────────────────────
+
+export interface RuntimeTraceFastPath {
+  /** Whether the task was eligible for fast path */
+  eligible: boolean;
+  /** Whether the fast path was actually used */
+  used: boolean;
+  /** Reason code from classifier */
+  reasonCode: string;
+  /** Stages that were skipped by the fast path */
+  skippedStages: string[];
+  /**
+   * Estimated additional cycle-driven Worker LLM calls prevented.
+   * 1 = fast path bypassed cycle runtime; actual saved calls may be 0
+   *     if normal cycle would not trigger revise/rewrite.
+   * This is a conservative estimate, not measured live LLM call counts.
+   */
+  estimatedRoundTripsSaved: number;
 }
 
 // ── Well-known stage names ──────────────────────────────────────────────────
@@ -156,6 +179,7 @@ export interface RuntimeTraceExtract {
   workerSummary?: RuntimeTrace["workerSummary"];
   ledgerSummary?: RuntimeTrace["ledgerSummary"];
   routing?: RuntimeTrace["routing"];
+  fastPath?: RuntimeTrace["fastPath"];
 }
 
 export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtract {
@@ -178,5 +202,6 @@ export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtra
     workerSummary: trace.workerSummary,
     ledgerSummary: trace.ledgerSummary,
     routing: trace.routing,
+    fastPath: trace.fastPath,
   };
 }

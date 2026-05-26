@@ -29,6 +29,8 @@ import { runCycle, buildCycleAuditExtract } from "../cycle/cycle-runtime.js";
 import type { CycleEventEmitter } from "../cycle/cycle-events.js";
 import { buildTaskContract, buildTaskContractAuditExtract } from "../task-contract/task-contract-builder.js";
 import type { TaskContractV0, BudgetPolicy, ContractVerificationResult } from "../task-contract/task-contract-types.js";
+// S85P: Simple Task Fast Path
+import { classifySimpleTask } from "../simple-task-classifier.js";
 
 // 自适应轮询间隔
 function getPollInterval(elapsedMs: number): number {
@@ -263,6 +265,159 @@ async function executeDelegateCommand(
       console.warn("[cycle] Failed to build TaskContract:", contractErr.message);
     }
 
+    // ── S85P: Simple Task Fast Path (early return) ────────────────────────────
+    // If the task is simple + low-risk, execute with a single Worker call,
+    // skip cycle runtime entirely, and return early.
+    const fastPathClassification = classifySimpleTask({
+      taskBrief: taskBrief ?? "",
+      goal: goal ?? "",
+      constraints: payload_json.constraints ?? [],
+      sections: payload_json.required_output?.sections ?? [],
+      isRevisionTask,
+    });
+
+    if (fastPathClassification.eligible) {
+      console.log(JSON.stringify({
+        msg: "[S85P_FAST_PATH] Simple task eligible, skipping cycle runtime",
+        archiveId: archive_id,
+        traceId: traceId ?? null,
+        reasonCode: fastPathClassification.reasonCode,
+      }));
+
+      try {
+        const resp = await callModelFull(slowModel, messages);
+        const fastContent = resp.content;
+        const fastInputTokens = resp.input_tokens ?? 0;
+        const fastOutputTokens = resp.output_tokens ?? 0;
+        const fastTotalMs = Date.now() - startTime;
+        const fastCostUsd = estimateCost(fastInputTokens, fastOutputTokens, slowModel);
+
+        // Basic artifact verifier only (no contract verification, no cycle)
+        let fastVerificationEntry: VerificationLedgerEntry | null = null;
+        try {
+          const verifyRes = verifyArtifact({
+            traceId: traceId ?? archive_id,
+            content: fastContent,
+            security: {
+              artifactToManager: false,
+              rawHistoryToWorker: false,
+              rawMemoryToWorker: false,
+            },
+          });
+          fastVerificationEntry = verificationToLedgerEntry(verifyRes);
+        } catch {}
+
+        // Write worker result
+        const fastWorkerResult: WorkerResult = {
+          task_id: task_id,
+          worker_type: "slow_analyst",
+          status: "completed",
+          summary: fastContent.substring(0, 300),
+          structured_result: { analysis: fastContent },
+          confidence: 0.85,
+        };
+
+        await TaskWorkerResultRepo.create({
+          task_id: task_id,
+          archive_id: archive_id,
+          command_id: id,
+          user_id: user_id,
+          worker_role: "slow_analyst",
+          result: fastWorkerResult,
+          tokens_input: fastInputTokens,
+          tokens_output: fastOutputTokens,
+          cost_usd: fastCostUsd,
+          started_at: new Date(startTime),
+        });
+
+        // Write archive with fastPath metadata
+        await TaskArchiveRepo.setSlowExecution(archive_id, {
+          result: fastContent,
+          confidence: 0.85,
+          model_used: slowModel,
+          tokens_input: fastInputTokens,
+          tokens_output: fastOutputTokens,
+          cost_usd: fastCostUsd,
+          duration_ms: fastTotalMs,
+          completed_at: new Date().toISOString(),
+          verification: fastVerificationEntry ?? undefined,
+          workerStageTimings: {
+            worker_execution_total_ms: fastTotalMs,
+          },
+            // S85P: Fast path metadata
+          // estimatedRoundTripsSaved = 1 means the fast path prevents
+          // additional cycle-driven Worker LLM calls (revise/rewrite).
+          // It is a conservative estimate — if the normal cycle would not
+          // trigger an extra Worker call, actual saved calls could be 0.
+          fastPath: {
+            eligible: true,
+            used: true,
+            reasonCode: fastPathClassification.reasonCode,
+            skippedStages: ["cycle_runtime", "contract_verification"],
+            estimatedRoundTripsSaved: 1,
+          },
+        });
+
+        await TaskCommandRepo.updateStatus(id, "completed", { finished_at: new Date() });
+        try {
+          await TaskArchiveRepo.updateStateWithIntegrity(archive_id, "completed");
+        } catch (validErr: any) {
+          if (validErr.code === "INTEGRITY_VIOLATION") {
+            console.warn(`[slow-worker] ⚠️ INTEGRITY_VIOLATION marking ${archive_id} done:`, validErr.message);
+            await TaskArchiveRepo.setSlowExecution(archive_id, {
+              result: "",
+              errors: [`INTEGRITY_VIOLATION: ${validErr.message}`],
+              completed_at: new Date().toISOString(),
+            });
+          }
+          throw validErr;
+        }
+
+        console.log(JSON.stringify({
+          msg: "[CALL_LEDGER_WORKER] Worker model call complete (fast path)",
+          traceId: traceId ?? null,
+          archiveId: archive_id,
+          taskId: task_id,
+          model: slowModel,
+          modelRole: "worker",
+          inputTokens: fastInputTokens,
+          outputTokens: fastOutputTokens,
+          estimatedCost: fastCostUsd,
+          latencyMs: fastTotalMs,
+          startedAt: startTime,
+          completedAt: Date.now(),
+          verification: fastVerificationEntry ?? null,
+          fastPath: { eligible: true, used: true },
+        }));
+
+        console.log(`[slow-worker] Fast path completed task ${task_id} in ${fastTotalMs}ms`);
+        return; // Early return — skip all cycle/legacy logic below
+      } catch (err: any) {
+        console.error(`[slow-worker] Fast path failed for command ${id}:`, err.message);
+        try {
+          await TaskCommandRepo.updateStatus(id, "failed", {
+            finished_at: new Date(),
+            error_message: err.message,
+          });
+          await TaskArchiveRepo.updateStateWithIntegrity(archive_id, "failed");
+          await TaskArchiveRepo.setSlowExecution(archive_id, {
+            result: "",
+            errors: [err.message],
+            completed_at: new Date().toISOString(),
+            fastPath: {
+              eligible: true,
+              used: false,
+              reasonCode: fastPathClassification.reasonCode,
+              skippedStages: [],
+              estimatedRoundTripsSaved: 0,
+            },
+          });
+        } catch {}
+        return; // Don't fall through to normal path on fast path failure
+      }
+    }
+
+    // ── Normal Path: Cycle Runtime or Legacy ────────────────────────────────
     let content: string;
     let contractVerificationEntry: ContractVerificationResult | null = null;
     let cycleAuditEntry: import("../cycle/cycle-runtime.js").CycleAudit | null = null;

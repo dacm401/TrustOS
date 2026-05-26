@@ -131,3 +131,11 @@ export function updateTraceLedgerSummary(
 ): void {
   trace.ledgerSummary = summary;
 }
+
+/** S85P: Update fast path metadata. */
+export function updateTraceFastPath(
+  trace: RuntimeTrace,
+  fastPath: NonNullable<RuntimeTrace["fastPath"]>
+): void {
+  trace.fastPath = fastPath;
+}
