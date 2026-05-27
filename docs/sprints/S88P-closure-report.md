@@ -2,12 +2,15 @@
 
 ## Status
 
-**BUILD COMPLETE ✅ / FUNCTIONALLY APPROVED ✅ / FINAL CLOSURE PENDING ⚠️**
+**CLOSED ✅**
+
+Closure baseline: `960f2e3`
+Date: 2026-05-27
 
 ## Baseline
 
 - S87P closure baseline: `704d737`
-- S88P build: `ccc7689` → closure commit: TBD
+- S88P build: `ccc7689` → closure commit: `960f2e3`
 
 ## Goal
 
@@ -223,17 +226,54 @@ Model name (`kind`, `model`) is treated as safe metadata — consistent with S86
 
 ---
 
+## PM Sign-Off Record
+
+```
+PM SIGN-OFF:
+Sprint 88P — Runtime Progress & LLM Wait Visibility V0
+Status: CLOSED ✅
+Closure baseline: 960f2e3
+Date: 2026-05-27
+
+S88P exposed safe runtime progress and LLM wait visibility for long-running
+LLM-bound tasks through existing RuntimeTrace and SSE paths.
+
+Key design:
+- RuntimeProgressState tracks current execution stage + active LLM wait (kind/model).
+- beginLlmWait/endLlmWait lifecycle manages wait visibility.
+- recordLlmCall() auto-clears wait on both success and error paths in model-gateway.
+- SLOW_LLM_CALL_THRESHOLD_MS = 5000 for slow-call detection.
+- Poll-based SSE "progress" event every 5s during worker execution.
+- Safe metadata only — no prompt/content/messages/tool arguments/user data/API keys.
+- Existing result/error/done event shapes unchanged.
+- Progress events are additive and optional.
+- Slow-call metadata is non-blocking.
+
+Non-goals respected:
+- No UI dashboard.
+- No billing/cost estimate.
+- No fast path eligibility expansion.
+- No synthesis skip expansion.
+- No semantic cache.
+- No planner rewrite.
+- No Human Review / Resume semantic changes.
+- No prompt/content/user data capture.
+```
+
+
+---
+
 ## PM Sign-Off Checklist
 
 - [x] Build complete
 - [x] Functional acceptance
-- [x] S88P targeted tests passing
+- [x] S88P targeted tests passing (44/44)
 - [x] S75P–S87P non-DB regression passing
 - [x] Progress event is additive/backward-compatible
 - [x] Privacy boundary reviewed
 - [x] Closure report written
-- [ ] Commit / push / three-end sync
-- [ ] PM final closure sign-off
+- [x] Commit / push / three-end sync
+- [x] PM final closure sign-off
 
 ---
 
@@ -241,9 +281,9 @@ Model name (`kind`, `model`) is treated as safe metadata — consistent with S86
 
 | Location | Commit | Status |
 |----------|--------|--------|
-| Desktop | `ccc7689` | ✅ (S88P build) |
-| origin/master | TBD | ⚠️ (pending closure push) |
-| WorkBuddy | same workspace as Desktop | ✅ |
+| Desktop | `960f2e3` | ✅ |
+| origin/master | `960f2e3` | ✅ |
+| WorkBuddy | `960f2e3` (same workspace as Desktop) | ✅ |
 
 **Target:** All three at closure commit after `git push`.
 
@@ -262,5 +302,5 @@ adc53a5  S86P closure
   ↓
 ccc7689  S88P BUILD COMPLETE
   ↓
-<next>   S88P CLOSURE (closure report + expanded tests)
+960f2e3  S88P CLOSURE (closure report + 44/44 tests)
 ```
