@@ -545,3 +545,156 @@ describe("S88P: AsyncLocalStorage isolation", () => {
     expect(progress).toBeNull();
   });
 });
+
+// ── T11: LLM wait error path lifecycle ────────────────────────────────────
+
+describe("S88P: LLM wait error path lifecycle", () => {
+  it("T11.1: recordLlmCall on failure clears in-flight LLM wait", () => {
+    const trace = createTrace("test-t11-1");
+    setRequestTrace(trace);
+    updateTraceProgress(trace, "manager_routing");
+    beginLlmWait(trace, "manager", "gpt-4o");
+
+    // Simulate a failed LLM call
+    const now = Date.now();
+    recordLlmCall("manager", "gpt-4o", now - 1000, now, false, "provider_error");
+
+    expect(trace.progress!.llmWaitKind).toBeUndefined();
+    expect(trace.progress!.llmWaitModel).toBeUndefined();
+    expect(trace.progress!.llmWaitStartedAt).toBeUndefined();
+    setRequestTrace(null);
+  });
+
+  it("T11.2: endLlmWait clears wait state after error/exception", () => {
+    const trace = createTrace("test-t11-2");
+    updateTraceProgress(trace, "worker_execution");
+    beginLlmWait(trace, "worker", "deepseek-chat");
+
+    // Simulate an error that triggers cleanup
+    endLlmWait(trace);
+
+    expect(trace.progress!.llmWaitKind).toBeUndefined();
+    expect(trace.progress!.llmWaitModel).toBeUndefined();
+    expect(trace.progress!.isWaitingOnSlowCall).toBe(false);
+  });
+
+  it("T11.3: no active llmWait remains after request finalization", () => {
+    const trace = createTrace("test-t11-3");
+    setRequestTrace(trace);
+    updateTraceProgress(trace, "manager_routing");
+    beginLlmWait(trace, "planner", "gpt-4o-mini");
+
+    // recordLlmCall auto-clears
+    const now = Date.now();
+    recordLlmCall("planner", "gpt-4o-mini", now - 500, now, true);
+
+    // Verify cleanup
+    expect(trace.progress!.llmWaitKind).toBeUndefined();
+
+    // After finalization, progress still has stage info but no wait
+    const progress = getCurrentProgress();
+    expect(progress?.llmWaitKind).toBeUndefined();
+    setRequestTrace(null);
+  });
+
+  it("T11.4: stage-level llmWait types are only kind names (not prompts)", () => {
+    const trace = createTrace("test-t11-4");
+    updateTraceProgress(trace, "worker_execution");
+    beginLlmWait(trace, "worker", "gpt-4o");
+
+    // Verify that llmWaitKind is a call-kind identifier, not user content
+    const validKinds = ["manager", "planner", "worker", "compressor",
+      "manager_synthesis", "unknown"];
+    expect(validKinds).toContain(trace.progress!.llmWaitKind);
+    // It should NOT be a prompt string
+    expect(trace.progress!.llmWaitKind).not.toContain("what is");
+    expect(trace.progress!.llmWaitKind).not.toContain("user");
+    expect(trace.progress!.llmWaitKind!.length).toBeLessThan(50);
+  });
+});
+
+// ── T12: Progress timer lifecycle (poll-based, no setInterval leaks) ──────
+
+describe("S88P: Progress timer lifecycle (poll-based)", () => {
+  it("T12.1: progress state still valid after endLlmWait (stage tracked, no wait)", () => {
+    const trace = createTrace("test-t12-1");
+    updateTraceProgress(trace, "worker_execution");
+    beginLlmWait(trace, "worker", "gpt-4o");
+    endLlmWait(trace);
+
+    // After endLlmWait, progress exists but no active LLM wait
+    expect(trace.progress!.stage).toBe("worker_execution");
+    expect(trace.progress!.llmWaitKind).toBeUndefined();
+    expect(trace.progress!.isWaitingOnSlowCall).toBe(false);
+  });
+
+  it("T12.2: progress does not emit after stage clears wait (idle guard)", () => {
+    const trace = createTrace("test-t12-2");
+    updateTraceProgress(trace, "worker_execution");
+    beginLlmWait(trace, "worker", "gpt-4o");
+    // Simulate: LLM call completes, record clears wait
+    const now = Date.now();
+    endLlmWait(trace);
+
+    // Progress snapshot after completion should not have llmWait
+    const payload: Record<string, unknown> = {
+      stage: trace.progress!.stage,
+      stageElapsedMs: trace.progress!.stageElapsedMs,
+    };
+    // llmWait should NOT be emitted since it's cleared
+    if (trace.progress!.llmWaitKind) {
+      payload.llmWait = {};
+    }
+    expect(payload.llmWait).toBeUndefined();
+  });
+
+  it("T12.3: consecutive stage transitions do not accumulate wait state", () => {
+    const trace = createTrace("test-t12-3");
+
+    // Stage 1: set wait, then transition
+    updateTraceProgress(trace, "manager_routing");
+    beginLlmWait(trace, "manager", "gpt-4o");
+    updateTraceProgress(trace, "worker_execution"); // clears wait
+
+    expect(trace.progress!.stage).toBe("worker_execution");
+    expect(trace.progress!.llmWaitKind).toBeUndefined();
+
+    // Stage 2: set new wait
+    beginLlmWait(trace, "worker", "deepseek-chat");
+    expect(trace.progress!.llmWaitKind).toBe("worker");
+    expect(trace.progress!.llmWaitModel).toBe("deepseek-chat");
+
+    // Stage 3: transition again
+    updateTraceProgress(trace, "sse_done_prepare");
+    expect(trace.progress!.llmWaitKind).toBeUndefined();
+  });
+
+  it("T12.4: refreshProgressElapsed is a no-op without progress", () => {
+    const trace = createTrace("test-t12-4");
+    setRequestTrace(trace);
+    // No progress set — should not throw
+    expect(() => refreshProgressElapsed()).not.toThrow();
+    setRequestTrace(null);
+  });
+
+  it("T12.5: refreshProgressElapsed updates elapsed timestamps", () => {
+    const trace = createTrace("test-t12-5");
+    setRequestTrace(trace);
+    updateTraceProgress(trace, "worker_execution");
+    beginLlmWait(trace, "worker", "gpt-4o");
+
+    const waitStart = trace.progress!.llmWaitStartedAt;
+
+    // Simulate time passing
+    const t = Date.now();
+    while (Date.now() - t < 10) { /* busy wait ~10ms */ }
+
+    refreshProgressElapsed();
+
+    expect(trace.progress!.stageElapsedMs).toBeGreaterThanOrEqual(10);
+    expect(trace.progress!.llmWaitElapsedMs).toBeGreaterThanOrEqual(10);
+    // wait startedAt unchanged (identifies the same wait)
+    expect(trace.progress!.llmWaitStartedAt).toBe(waitStart);
+    setRequestTrace(null);
+  });
+});
