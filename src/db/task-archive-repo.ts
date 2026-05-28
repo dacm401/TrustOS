@@ -203,6 +203,30 @@ export const TaskArchiveRepo = {
   },
 
   /**
+   * S89P: Append a partial worker result to slow_execution.partialResults[] JSONB array.
+   * Used by Cycle Runtime to expose intermediate worker outputs before final completion.
+   *
+   * Privacy: partialResult.content is worker-presentable text only.
+   * No prompt, messages, tool arguments, or API keys.
+   */
+  async appendPartialResult(
+    archiveId: string,
+    partialResult: { index: number; content: string; cycleIndex?: number; timestamp: number }
+  ): Promise<void> {
+    await query(
+      `UPDATE task_archives
+       SET slow_execution = COALESCE(slow_execution, '{}'::jsonb)
+         || jsonb_build_object(
+             'partialResults',
+             COALESCE(slow_execution->'partialResults', '[]'::jsonb)
+               || to_jsonb($1::jsonb)
+           )
+       WHERE id = $2`,
+      [JSON.stringify(partialResult), archiveId]
+    );
+  },
+
+  /**
    * 标记为已投递（delivered=true）。
    */
   async markDelivered(archiveId: string): Promise<void> {

@@ -331,6 +331,37 @@ export interface RuntimeTraceExtract {
   slowCallSummary?: RuntimeSlowCallSummary;
 }
 
+// ── S89P: Partial Result Types ──────────────────────────────────────────────
+
+/**
+ * A single partial worker result captured during Cycle Runtime execution.
+ * SAFETY: content is worker-presentable text only — no prompt, messages,
+ * tool arguments, or API keys.
+ */
+export interface PartialResult {
+  /** Sequential index within this request (0-based) */
+  index: number;
+  /** Worker-presentable content (truncated for SSE, full content in archive) */
+  content: string;
+  /** Which cycle iteration produced this result (undefined for non-cycle) */
+  cycleIndex?: number;
+  /** When this partial result was captured (Date.now()) */
+  timestamp: number;
+}
+
+/** Max characters for partial_result content in SSE events (privacy + payload size). */
+export const PARTIAL_RESULT_MAX_LENGTH = 500;
+
+/**
+ * Truncate worker content to a safe preview length for SSE partial_result events.
+ * Ensures we never emit full-length content in progress events.
+ */
+export function truncatePartialContent(content: string): string {
+  const trimmed = content.trim();
+  if (trimmed.length <= PARTIAL_RESULT_MAX_LENGTH) return trimmed;
+  return trimmed.substring(0, PARTIAL_RESULT_MAX_LENGTH) + "…";
+}
+
 export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtract {
   const stageTimings: Record<string, number> = {};
   for (const stage of trace.stages) {

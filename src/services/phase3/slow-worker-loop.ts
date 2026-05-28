@@ -463,6 +463,9 @@ async function executeDelegateCommand(
             let result: { content: string; artifactType?: string; patchApplied?: boolean } = { content: "" };
             let lastError: string | undefined;
 
+            // S89P: Track partial result index in closure for appendPartialResult
+            let partialIndex = 0;
+
             // Patch-first: 尝试 patch，失败则 fallback
             if (isRevisionTask && originalArtifactContent) {
               try {
@@ -575,6 +578,20 @@ async function executeDelegateCommand(
               const msg = `[Worker call failed] ${lastError ?? "unknown error"}`;
               result = { content: msg };
             }
+
+            // S89P: Append partial result to archive for SSE early display
+            if (result.content && result.content !== "" && !lastError) {
+              try {
+                await TaskArchiveRepo.appendPartialResult(archive_id, {
+                  index: partialIndex++,
+                  content: result.content,
+                  timestamp: Date.now(),
+                });
+              } catch (err: unknown) {
+                console.warn("[slow-worker] appendPartialResult failed:", err instanceof Error ? err.message : String(err));
+              }
+            }
+
             return result;
           },
           originalGoal: goal,

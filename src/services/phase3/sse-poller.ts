@@ -7,6 +7,8 @@ import { callModelFull, callModelStream } from "../../models/model-gateway";
 import { config } from "../../config";
 // S88P: Progress visibility
 import { getCurrentProgress, refreshProgressElapsed } from "../runtime-trace.js";
+// S89P: Partial result types
+import { PARTIAL_RESULT_MAX_LENGTH } from "../../types/runtime-trace.js";
 import { estimateCost } from "../../models/token-counter";
 import type { ChatMessage } from "../../types/index";
 import type { DelegationLogExecutionUpdate } from "../../types/index";
@@ -25,11 +27,14 @@ export interface SSEEvent {
   type: "status" | "result" | "error" | "done" | "chunk" | "fast_reply"
        | "manager_synthesized" // Phase 3.0
        | "cycle_event" // Sprint 76P: Cycle Runtime SSE Events
-       | "progress"; // S88P: Runtime Progress & Wait Visibility
+       | "progress" // S88P: Runtime Progress & Wait Visibility
+       | "partial_result"; // S89P: Partial Result Streaming & Early Display
   /** Sprint 76P: cycle event payload */
   cycleEvent?: Record<string, unknown>;
   /** S88P: progress event payload — safe metadata only, no prompt/content */
   progress?: Record<string, unknown>;
+  /** S89P: partial result payload — safe preview content, no prompt/messages/tools/API keys */
+  partialResult?: Record<string, unknown>;
   /** Sprint 73: 统一使用 stream 字段，content 已弃用 */
   content?: string;
   stream?: string;
@@ -324,6 +329,9 @@ export async function* pollArchiveAndYield(
   let sentResult = false;
   let failedChecked = false;
 
+  // S89P: Track emitted partial result indices to avoid duplicates
+  let lastEmittedPartialIndex = -1;
+
   // S88P: Progress event — throttle to every 5s to avoid flooding
   const PROGRESS_INTERVAL_MS = 5000;
 
@@ -420,6 +428,50 @@ export async function* pollArchiveAndYield(
           routing_layer: "L2",
           progress: progressPayload,
         };
+      }
+    }
+
+    // S89P: Check for new partial results from slow_execution.partialResults[]
+    // Only during active execution — not after completion/delivery
+    if (
+      (currentState === "executing" || currentState === "delegated" ||
+       currentState === "waiting_result" || currentState === "synthesizing")
+    ) {
+      try {
+        const partialResults = Array.isArray(task.slow_execution?.partialResults)
+          ? (task.slow_execution.partialResults as Array<{
+              index: number;
+              content: string;
+              cycleIndex?: number;
+              timestamp: number;
+            }>)
+          : [];
+        // Emit any new partial results since last check
+        for (const pr of partialResults) {
+          if (pr.index > lastEmittedPartialIndex && typeof pr.content === "string" && pr.content.trim()) {
+            lastEmittedPartialIndex = pr.index;
+            // Truncate to safe preview length for SSE
+            const previewContent = pr.content.length > PARTIAL_RESULT_MAX_LENGTH
+              ? pr.content.substring(0, PARTIAL_RESULT_MAX_LENGTH) + "…"
+              : pr.content;
+            yield {
+              type: "partial_result",
+              stream: lang === "zh"
+                ? `📋 中间结果 #${pr.index + 1}`
+                : `📋 Partial result #${pr.index + 1}`,
+              routing_layer: "L2",
+              partialResult: {
+                index: pr.index,
+                content: previewContent,
+                cycleIndex: pr.cycleIndex,
+                timestamp: pr.timestamp,
+                isPartial: true,
+              },
+            };
+          }
+        }
+      } catch (_) {
+        // Silently ignore partial result detection errors
       }
     }
 
