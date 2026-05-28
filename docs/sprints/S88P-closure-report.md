@@ -5,12 +5,13 @@
 **CLOSED ✅**
 
 Closure baseline: `960f2e3`
-Date: 2026-05-27
+Final repository HEAD after sign-off bookkeeping: `691fca7`
+Date: 2026-05-28
 
 ## Baseline
 
 - S87P closure baseline: `704d737`
-- S88P build: `ccc7689` → closure commit: `960f2e3`
+- S88P build: `ccc7689` → closure baseline: `960f2e3` → sign-off bookkeeping: `691fca7`
 
 ## Goal
 
@@ -233,21 +234,23 @@ PM SIGN-OFF:
 Sprint 88P — Runtime Progress & LLM Wait Visibility V0
 Status: CLOSED ✅
 Closure baseline: 960f2e3
-Date: 2026-05-27
+Final repository HEAD after sign-off bookkeeping: 691fca7
+Date: 2026-05-28
 
 S88P exposed safe runtime progress and LLM wait visibility for long-running
 LLM-bound tasks through existing RuntimeTrace and SSE paths.
 
 Key design:
-- RuntimeProgressState tracks current execution stage + active LLM wait (kind/model).
+- RuntimeProgressState tracks current execution stage + one active LLM wait per request.
+- LLM wait exposes only kind/model/timing metadata.
 - beginLlmWait/endLlmWait lifecycle manages wait visibility.
 - recordLlmCall() auto-clears wait on both success and error paths in model-gateway.
-- SLOW_LLM_CALL_THRESHOLD_MS = 5000 for slow-call detection.
-- Poll-based SSE "progress" event every 5s during worker execution.
+- SLOW_LLM_CALL_THRESHOLD_MS = 5000 for slow-call detection; non-blocking metadata.
+- Poll-based SSE "progress" event every 5s during worker execution; no interval timer leak.
 - Safe metadata only — no prompt/content/messages/tool arguments/user data/API keys.
 - Existing result/error/done event shapes unchanged.
 - Progress events are additive and optional.
-- Slow-call metadata is non-blocking.
+- S88P V0 tracks one active LLM wait per request.
 
 Non-goals respected:
 - No UI dashboard.
@@ -281,9 +284,9 @@ Non-goals respected:
 
 | Location | Commit | Status |
 |----------|--------|--------|
-| Desktop | `960f2e3` | ✅ |
-| origin/master | `960f2e3` | ✅ |
-| WorkBuddy | `960f2e3` (same workspace as Desktop) | ✅ |
+| Desktop | `691fca7` HEAD / `960f2e3` closure baseline | ✅ |
+| origin/master | `691fca7` HEAD / contains `960f2e3` | ✅ |
+| WorkBuddy | `691fca7` (same workspace as Desktop) | ✅ |
 
 **Target:** All three at closure commit after `git push`.
 
@@ -302,5 +305,7 @@ adc53a5  S86P closure
   ↓
 ccc7689  S88P BUILD COMPLETE
   ↓
-960f2e3  S88P CLOSURE (closure report + 44/44 tests)
+960f2e3  S88P closure baseline — closure report + 44/44 tests
+  ↓
+691fca7  S88P PM sign-off bookkeeping
 ```
