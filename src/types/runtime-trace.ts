@@ -299,7 +299,20 @@ export const RUNTIME_TRACE_FINAL_STATUS = {
   TIMEOUT: "timeout",
   /** S90P: Task was cancelled by user via PATCH /v1/tasks/:id cancel */
   CANCELLED: "cancelled",
+  /** S91P: Task was stopped by timeout policy (soft or hard threshold exceeded) */
+  TIMED_OUT: "timed_out",
 } as const;
+
+// ── S91P: Timeout Policy Types ──────────────────────────────────────────────────
+
+/** Default soft timeout threshold in milliseconds (2 minutes). */
+export const TASK_SOFT_TIMEOUT_MS = Number(process.env["TASK_SOFT_TIMEOUT_MS"]) || 120_000;
+
+/** Default hard timeout threshold in milliseconds (5 minutes). */
+export const TASK_HARD_TIMEOUT_MS = Number(process.env["TASK_HARD_TIMEOUT_MS"]) || 300_000;
+
+/** Kind of timeout that triggered the stop. */
+export type TimeoutKind = "soft" | "hard";
 
 // ── Ledger Extract (safe subset for SSE done payload) ───────────────────────
 

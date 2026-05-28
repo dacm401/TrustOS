@@ -340,7 +340,7 @@ export async function* pollArchiveAndYield(
     if (!task) break;
 
     // 检查 task_commands 是否有失败（防止 SSE 无限挂起）
-    if (!failedChecked && task.state !== "completed" && task.state !== "failed" && task.state !== "cancelled") {
+    if (!failedChecked && task.state !== "completed" && task.state !== "failed" && task.state !== "cancelled" && task.state !== "timed_out") {
       try {
         const pool = getPool();
         const result = await pool.query(
@@ -521,6 +521,47 @@ export async function* pollArchiveAndYield(
             execution_status: "cancelled",
             execution_correct: false,
             error_message: cancelReason,
+          }).catch(() => {});
+        }
+
+        await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
+          console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
+        );
+      }
+      break;
+    }
+
+    // S91P: Handle timed_out separately — policy-driven stop, not user-requested cancel
+    if (currentState === "timed_out") {
+      if (!task.delivered) {
+        const execution: Record<string, unknown> = task.slow_execution ?? {};
+        const timeoutKind = (execution.timeoutKind as string) ?? "soft";
+        const elapsedMs = (execution.elapsedMs as number) ?? 0;
+        const thresholdMs = (execution.thresholdMs as number) ?? 0;
+
+        // Emit any remaining cycle events that were already stored
+        const cycleEvents = Array.isArray(execution.cycleEvents) ? execution.cycleEvents as Record<string, unknown>[] : [];
+        for (const event of cycleEvents) {
+          yield { type: "cycle_event", cycleEvent: event, routing_layer: "L2" as RoutingLayer };
+        }
+
+        const elapsedSec = Math.round(elapsedMs / 1000);
+        const thresholdSec = Math.round(thresholdMs / 1000);
+        yield {
+          type: "error",
+          stream: lang === "zh"
+            ? `⏰ 任务超时 (${timeoutKind === "hard" ? "硬" : "软"}超时, ${elapsedSec}s / ${thresholdSec}s)`
+            : `⏰ Task timed out (${timeoutKind} timeout, ${elapsedSec}s / ${thresholdSec}s)`,
+          routing_layer: "L2",
+        };
+        yield { type: "done", stream: lang === "zh" ? "已超时" : "Timed out", routing_layer: "L2" };
+
+        // G4: Mark execution as timed_out in delegation logs
+        if (delegation_log_id) {
+          DelegationLogRepo.updateExecution(delegation_log_id, {
+            execution_status: "timed_out",
+            execution_correct: false,
+            error_message: `Task timed out (${timeoutKind}, ${elapsedMs}ms / ${thresholdMs}ms)`,
           }).catch(() => {});
         }
 

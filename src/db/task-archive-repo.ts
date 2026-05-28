@@ -271,6 +271,41 @@ export const TaskArchiveRepo = {
       [archiveId, new Date().toISOString(), reason ?? null]
     );
   },
+
+  /**
+   * S91P: Mark a task as timed out with timeout kind and threshold metadata.
+   * Writes timeout metadata into slow_execution and sets state=timed_out.
+   *
+   * V0 guard: Only transitions active states (created, queued, running, awaiting_review)
+   * to timed_out. Terminal states (completed, failed, cancelled, timed_out) are NOT overwritten.
+   * Idempotent and terminal-safe.
+   */
+  async markTimedOut(
+    archiveId: string,
+    metadata: { timeoutKind: string; thresholdMs: number; elapsedMs: number }
+  ): Promise<void> {
+    await query(
+      `UPDATE task_archives
+       SET state = 'timed_out',
+           slow_execution = COALESCE(slow_execution, '{}'::jsonb)
+             || jsonb_build_object(
+               'timedOutAt', to_jsonb($2::text),
+               'timeoutKind', to_jsonb($3::text),
+               'thresholdMs', to_jsonb($4::int),
+               'elapsedMs', to_jsonb($5::int),
+               'errors', COALESCE(slow_execution->'errors', '[]'::jsonb)
+             )
+       WHERE id = $1
+         AND state NOT IN ('completed', 'failed', 'cancelled', 'timed_out')`,
+      [
+        archiveId,
+        new Date().toISOString(),
+        metadata.timeoutKind,
+        metadata.thresholdMs,
+        metadata.elapsedMs,
+      ]
+    );
+  },
 } as const;
 
 // ── TaskCommandRepo ────────────────────────────────────────────────────────────

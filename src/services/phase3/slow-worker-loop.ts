@@ -31,6 +31,8 @@ import { buildTaskContract, buildTaskContractAuditExtract } from "../task-contra
 import type { TaskContractV0, BudgetPolicy, ContractVerificationResult } from "../task-contract/task-contract-types.js";
 // S85P: Simple Task Fast Path
 import { classifySimpleTask } from "../simple-task-classifier.js";
+// S91P: Timeout Policy
+import { TASK_SOFT_TIMEOUT_MS, TASK_HARD_TIMEOUT_MS } from "../../types/runtime-trace.js";
 
 // 自适应轮询间隔
 function getPollInterval(elapsedMs: number): number {
@@ -83,6 +85,51 @@ async function checkCancellation(archiveId: string, taskId: string): Promise<voi
   }
 }
 
+// S91P: Timeout-aware error class — thrown when task exceeds timeout threshold
+class TaskTimedOutError extends Error {
+  public readonly archiveId: string;
+  public readonly taskId: string;
+  public readonly timeoutKind: "soft" | "hard";
+  public readonly thresholdMs: number;
+  public readonly elapsedMs: number;
+  constructor(
+    archiveId: string,
+    taskId: string,
+    timeoutKind: "soft" | "hard",
+    thresholdMs: number,
+    elapsedMs: number,
+  ) {
+    super(`Task ${archiveId} timed out (${timeoutKind}, ${elapsedMs}ms / ${thresholdMs}ms)`);
+    this.name = "TaskTimedOutError";
+    this.archiveId = archiveId;
+    this.taskId = taskId;
+    this.timeoutKind = timeoutKind;
+    this.thresholdMs = thresholdMs;
+    this.elapsedMs = elapsedMs;
+  }
+}
+
+/** S91P: Check if task has exceeded soft or hard timeout, throw TaskTimedOutError if so. */
+async function checkTimeout(
+  archiveId: string,
+  taskId: string,
+  startedAt: number,
+  softTimeoutMs: number,
+  hardTimeoutMs: number,
+): Promise<void> {
+  const elapsed = Date.now() - startedAt;
+
+  // Check hard timeout first (more severe)
+  if (elapsed > hardTimeoutMs) {
+    throw new TaskTimedOutError(archiveId, taskId, "hard", hardTimeoutMs, elapsed);
+  }
+
+  // Check soft timeout
+  if (elapsed > softTimeoutMs) {
+    throw new TaskTimedOutError(archiveId, taskId, "soft", softTimeoutMs, elapsed);
+  }
+}
+
 // 执行单个 delegate 命令
 async function executeDelegateCommand(
   commandRecord: {
@@ -104,6 +151,26 @@ async function executeDelegateCommand(
       error_message: "Task cancelled by user before execution",
     });
     return;
+  }
+
+  // S91P: Check timeout at entry — skip already-timed-out tasks
+  try {
+    await checkTimeout(archive_id, task_id, startTime, TASK_SOFT_TIMEOUT_MS, TASK_HARD_TIMEOUT_MS);
+  } catch (err: any) {
+    if (err instanceof TaskTimedOutError) {
+      console.log(`[slow-worker] Task ${task_id} timed out before execution (${err.timeoutKind})`);
+      await TaskCommandRepo.updateStatus(id, "timed_out", {
+        finished_at: new Date(),
+        error_message: `Task timed out (${err.timeoutKind}, ${err.elapsedMs}ms)`,
+      });
+      await TaskArchiveRepo.markTimedOut(archive_id, {
+        timeoutKind: err.timeoutKind,
+        thresholdMs: err.thresholdMs,
+        elapsedMs: err.elapsedMs,
+      });
+      return;
+    }
+    throw err;
   }
 
   // 更新状态为 running
@@ -316,6 +383,8 @@ async function executeDelegateCommand(
       try {
         // S90P: Check cancellation before fast path LLM call
         await checkCancellation(archive_id, task_id);
+        // S91P: Check timeout before fast path LLM call
+        await checkTimeout(archive_id, task_id, startTime, TASK_SOFT_TIMEOUT_MS, TASK_HARD_TIMEOUT_MS);
         const resp = await callModelFull(slowModel, messages, undefined, "worker");
         const fastContent = resp.content;
         const fastInputTokens = resp.input_tokens ?? 0;
@@ -493,6 +562,8 @@ async function executeDelegateCommand(
           executeWorker: async (p) => {
             // S90P: Check cancellation before each worker call in cycle
             await checkCancellation(archive_id, task_id);
+            // S91P: Check timeout before each worker call in cycle
+            await checkTimeout(archive_id, task_id, startTime, TASK_SOFT_TIMEOUT_MS, TASK_HARD_TIMEOUT_MS);
 
             let result: { content: string; artifactType?: string; patchApplied?: boolean } = { content: "" };
             let lastError: string | undefined;
@@ -698,6 +769,8 @@ async function executeDelegateCommand(
       try {
         // S90P: Check cancellation before legacy LLM call
         await checkCancellation(archive_id, task_id);
+        // S91P: Check timeout before legacy LLM call
+        await checkTimeout(archive_id, task_id, startTime, TASK_SOFT_TIMEOUT_MS, TASK_HARD_TIMEOUT_MS);
         const resp = await callModelFull(slowModel, messages, undefined, "worker");
         content = resp.content;
         inputTokens = resp.input_tokens ?? 0;
@@ -950,6 +1023,25 @@ async function executeDelegateCommand(
         });
       } catch (updateErr: any) {
         console.error("[slow-worker] Failed to mark cancellation:", updateErr.message);
+      }
+      return;
+    }
+
+    // S91P: Handle task timeout separately from other errors
+    if (err instanceof TaskTimedOutError) {
+      console.log(`[slow-worker] Task ${err.archiveId} timed out (${err.timeoutKind}), marking as timed_out`);
+      try {
+        await TaskCommandRepo.updateStatus(id, "timed_out", {
+          finished_at: new Date(),
+          error_message: `Task timed out (${err.timeoutKind}, ${err.elapsedMs}ms / ${err.thresholdMs}ms)`,
+        });
+        await TaskArchiveRepo.markTimedOut(archive_id, {
+          timeoutKind: err.timeoutKind,
+          thresholdMs: err.thresholdMs,
+          elapsedMs: err.elapsedMs,
+        });
+      } catch (updateErr: any) {
+        console.error("[slow-worker] Failed to mark timeout:", updateErr.message);
       }
       return;
     }
