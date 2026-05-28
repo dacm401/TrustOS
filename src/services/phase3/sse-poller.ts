@@ -450,7 +450,8 @@ export async function* pollArchiveAndYield(
         for (const pr of partialResults) {
           if (pr.index > lastEmittedPartialIndex && typeof pr.content === "string" && pr.content.trim()) {
             lastEmittedPartialIndex = pr.index;
-            // Truncate to safe preview length for SSE
+            // Content is already truncated before persistence (S89P conservative gate).
+            // Defense-in-depth: re-truncate at emission boundary.
             const previewContent = pr.content.length > PARTIAL_RESULT_MAX_LENGTH
               ? pr.content.substring(0, PARTIAL_RESULT_MAX_LENGTH) + "…"
               : pr.content;

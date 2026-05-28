@@ -580,11 +580,21 @@ async function executeDelegateCommand(
             }
 
             // S89P: Append partial result to archive for SSE early display
-            if (result.content && result.content !== "" && !lastError) {
+            // Conservative gates:
+            // - Skip if content is empty/whitespace-only
+            // - Skip if execution had error (lastError set)
+            // - Skip if content contains tool_call indicators (raw tool output, not user-visible)
+            // - Truncate before persistence (privacy + DB payload size)
+            const trimmedContent = (result.content ?? "").trim();
+            const hasToolIndicator = /tool_call|function_call|"tool_calls"/i.test(trimmedContent);
+            if (trimmedContent && !lastError && !hasToolIndicator) {
               try {
+                const safePreview = trimmedContent.length > 500
+                  ? trimmedContent.substring(0, 500) + "…"
+                  : trimmedContent;
                 await TaskArchiveRepo.appendPartialResult(archive_id, {
                   index: partialIndex++,
-                  content: result.content,
+                  content: safePreview,
                   timestamp: Date.now(),
                 });
               } catch (err: unknown) {
