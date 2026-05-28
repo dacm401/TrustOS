@@ -314,6 +314,47 @@ export const TASK_HARD_TIMEOUT_MS = Number(process.env["TASK_HARD_TIMEOUT_MS"]) 
 /** Kind of timeout that triggered the stop. */
 export type TimeoutKind = "soft" | "hard";
 
+// ── S92P: Terminal State Observability & Recovery UX Metadata ─────────────────
+
+/** Category of the terminal outcome, for UI/observability distinction. */
+export type TerminalCategory =
+  | "success"
+  | "runtime_error"
+  | "model_error"
+  | "tool_error"
+  | "user_cancelled"
+  | "policy_timeout"
+  | "unknown";
+
+/** Recoverability hint for terminal states. Advisory only — no retry execution. */
+export type TerminalRecoverability =
+  | "none"
+  | "retry_possible"
+  | "manual_review"
+  | "resume_possible";
+
+/**
+ * S92P: Safe, structured terminal-state metadata.
+ *
+ * Privacy: userMessage is template-safe text only.
+ * NO prompt, messages, tools, tool arguments, API keys, raw stack traces,
+ * model completions, or user content.
+ */
+export interface RuntimeTerminalSummary {
+  /** Terminal state: completed, failed, cancelled, or timed_out */
+  status: string;
+  /** Broad category for UI distinction */
+  category: TerminalCategory;
+  /** Stable reason code for observability (not user-facing) */
+  reasonCode: string;
+  /** Template-safe user-facing message */
+  userMessage: string;
+  /** Whether recovery is possible (advisory only) */
+  recoverability: TerminalRecoverability;
+  /** Advisory flag — does NOT trigger retry execution */
+  canRetry: boolean;
+}
+
 // ── Ledger Extract (safe subset for SSE done payload) ───────────────────────
 
 /**
@@ -344,6 +385,8 @@ export interface RuntimeTraceExtract {
   progress?: RuntimeProgressState;
   /** S88P: Slow LLM calls summary (only when slow calls detected) */
   slowCallSummary?: RuntimeSlowCallSummary;
+  /** S92P: Terminal state observability metadata (additive, safe) */
+  terminalSummary?: RuntimeTerminalSummary;
 }
 
 // ── S89P: Partial Result Types ──────────────────────────────────────────────
@@ -445,5 +488,98 @@ export function buildRuntimeTraceExtract(trace: RuntimeTrace): RuntimeTraceExtra
     progress: trace.progress ? { ...trace.progress } : undefined,
     // S88P: Slow call summary
     slowCallSummary,
+  };
+}
+
+// ── S92P: Terminal Summary Builder ────────────────────────────────────────────
+
+/**
+ * S92P: Build a safe RuntimeTerminalSummary from task execution metadata.
+ *
+ * Privacy: userMessage uses template-safe text only.
+ * NO prompt, messages, tools, tool arguments, API keys, raw stacks,
+ * model completions, or user content.
+ */
+export function buildTerminalSummary(params: {
+  status: string;
+  execution?: Record<string, unknown>;
+  errorMessage?: string;
+}): RuntimeTerminalSummary {
+  const { status, execution = {}, errorMessage } = params;
+
+  const summaries: Record<string, () => RuntimeTerminalSummary> = {
+    completed: () => ({
+      status: "completed",
+      category: "success",
+      reasonCode: "task_completed",
+      userMessage: "Task completed successfully.",
+      recoverability: "none",
+      canRetry: false,
+    }),
+
+    failed: () => {
+      const errors = Array.isArray(execution.errors) ? execution.errors as string[] : [];
+      const firstError = errorMessage ?? (errors.length > 0 ? String(errors[0]) : "Unknown error");
+
+      // Determine category from error message
+      let category: TerminalCategory = "runtime_error";
+      const lowerErr = firstError.toLowerCase();
+      if (lowerErr.includes("model") || lowerErr.includes("llm") || lowerErr.includes("api key") || lowerErr.includes("rate limit")) {
+        category = "model_error";
+      } else if (lowerErr.includes("tool") || lowerErr.includes("function_call") || lowerErr.includes("tool_call")) {
+        category = "tool_error";
+      }
+
+      // Safe template message (no raw stack)
+      return {
+        status: "failed",
+        category,
+        reasonCode: "execution_error",
+        userMessage: `Task failed due to ${category === "model_error" ? "a model error" : category === "tool_error" ? "a tool error" : "a runtime error"}.`,
+        recoverability: "retry_possible",
+        canRetry: true,
+      };
+    },
+
+    cancelled: () => {
+      const cancelReason = typeof execution.cancelReason === "string" ? execution.cancelReason : "Task cancelled by user";
+      return {
+        status: "cancelled",
+        category: "user_cancelled",
+        reasonCode: "user_cancelled",
+        userMessage: cancelReason.length > 200 ? cancelReason.substring(0, 200) + "..." : cancelReason,
+        recoverability: "none",
+        canRetry: false,
+      };
+    },
+
+    timed_out: () => {
+      const timeoutKind = typeof execution.timeoutKind === "string" ? execution.timeoutKind : "soft";
+      const elapsedMs = typeof execution.elapsedMs === "number" ? execution.elapsedMs : 0;
+      const thresholdMs = typeof execution.thresholdMs === "number" ? execution.thresholdMs : 0;
+      const elapsedSec = Math.round(elapsedMs / 1000);
+      const thresholdSec = Math.round(thresholdMs / 1000);
+      return {
+        status: "timed_out",
+        category: "policy_timeout",
+        reasonCode: `timeout_${timeoutKind}`,
+        userMessage: `Task timed out after reaching the configured ${timeoutKind} timeout threshold (${elapsedSec}s / ${thresholdSec}s).`,
+        recoverability: "retry_possible",
+        canRetry: true,
+      };
+    },
+  };
+
+  const builder = summaries[status];
+  if (builder) return builder();
+
+  // Fallback for unknown status
+  return {
+    status,
+    category: "unknown",
+    reasonCode: "unknown_status",
+    userMessage: `Task ended with status: ${status}.`,
+    recoverability: "none",
+    canRetry: false,
   };
 }

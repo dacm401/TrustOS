@@ -1,7 +1,8 @@
 # Sprint 91P — Timeout Policy & Graceful Timeout V0 — Closure Report
 
-**Status**: BUILD COMPLETE / FUNCTIONALLY APPROVED / PENDING FINAL CLOSURE  
+**Status**: CLOSED ✅  
 **Baseline**: S90P closure baseline `34ecee3`  
+**HEAD**: `be579c7`  
 **Date**: 2026-05-28
 
 ---

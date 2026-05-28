@@ -428,14 +428,18 @@ export type TaskState =
   | "synthesizing"
   | "completed"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  /** S91P: Task stopped by timeout policy (soft or hard threshold exceeded) */
+  | "timed_out";
 
 export type CommandStatus =
   | "queued"
   | "running"
   | "completed"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  /** S91P: Command stopped by timeout policy */
+  | "timed_out";
 
 /** task_archives 表记录（Phase 3.0 扩展版） */
 export interface TaskArchiveRecord {

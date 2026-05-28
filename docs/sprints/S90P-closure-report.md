@@ -1,8 +1,10 @@
 # Sprint 90P — Cancel / Timeout / Retry Control V0 — Closure Report
 
-**Status**: BUILD COMPLETE / PENDING FINAL SIGN-OFF  
+**Status**: CLOSED ✅  
 **Baseline**: S89P closure baseline `6f42dcc`  
-**Date**: 2026-05-28
+**Closure Baseline**: `34ecee3`  
+**Date**: 2026-05-28  
+**PM Sign-Off**: 2026-05-28 — Desktop/WorkBuddy/origin/master synced
 
 ---
 
@@ -196,5 +198,5 @@ Timeout and Retry are non-goals / deferred from S90P V0.
 - [x] PATCH cancel best-effort archive sync
 - [x] SSE cancelled semantics documented
 - [x] Timeout/retry scope explicitly deferred
-- [ ] Commit / push / three-end sync
-- [ ] PM final closure sign-off
+- [x] Commit / push / three-end sync (34ecee3)
+- [x] PM final closure sign-off (2026-05-28)

@@ -33,6 +33,8 @@ import type { TaskContractV0, BudgetPolicy, ContractVerificationResult } from ".
 import { classifySimpleTask } from "../simple-task-classifier.js";
 // S91P: Timeout Policy
 import { TASK_SOFT_TIMEOUT_MS, TASK_HARD_TIMEOUT_MS } from "../../types/runtime-trace.js";
+// S92P: Terminal state observability
+import { buildTerminalSummary } from "../../types/runtime-trace.js";
 
 // 自适应轮询间隔
 function getPollInterval(elapsedMs: number): number {
@@ -966,6 +968,8 @@ async function executeDelegateCommand(
       cycleAudit: auditExtract ?? undefined,
       // S84P: Worker stage timings for runtime trace
       workerStageTimings,
+      // S92P: Terminal state observability for completed state
+      terminalSummary: buildTerminalSummary({ status: "completed" }),
     });
 
     // 更新 task_commands 状态为 completed
@@ -1011,6 +1015,8 @@ async function executeDelegateCommand(
     if (err instanceof TaskCancelledError) {
       console.log(`[slow-worker] Task ${err.archiveId} cancelled, marking as cancelled`);
       try {
+        // S92P: Build terminal summary for cancelled state
+        const cancelledSummary = buildTerminalSummary({ status: "cancelled" });
         await TaskCommandRepo.updateStatus(id, "cancelled", {
           finished_at: new Date(),
           error_message: "Task cancelled by user",
@@ -1020,6 +1026,7 @@ async function executeDelegateCommand(
           cancelledAt: new Date().toISOString(),
           cancelReason: "Task cancelled by user",
           completed_at: new Date().toISOString(),
+          terminalSummary: cancelledSummary,
         });
       } catch (updateErr: any) {
         console.error("[slow-worker] Failed to mark cancellation:", updateErr.message);
@@ -1031,6 +1038,15 @@ async function executeDelegateCommand(
     if (err instanceof TaskTimedOutError) {
       console.log(`[slow-worker] Task ${err.archiveId} timed out (${err.timeoutKind}), marking as timed_out`);
       try {
+        // S92P: Build terminal summary for timed_out state
+        const timedOutSummary = buildTerminalSummary({
+          status: "timed_out",
+          execution: {
+            timeoutKind: err.timeoutKind,
+            elapsedMs: err.elapsedMs,
+            thresholdMs: err.thresholdMs,
+          },
+        });
         await TaskCommandRepo.updateStatus(id, "timed_out", {
           finished_at: new Date(),
           error_message: `Task timed out (${err.timeoutKind}, ${err.elapsedMs}ms / ${err.thresholdMs}ms)`,
@@ -1040,6 +1056,9 @@ async function executeDelegateCommand(
           thresholdMs: err.thresholdMs,
           elapsedMs: err.elapsedMs,
         });
+        await TaskArchiveRepo.setSlowExecution(archive_id, {
+          terminalSummary: timedOutSummary,
+        });
       } catch (updateErr: any) {
         console.error("[slow-worker] Failed to mark timeout:", updateErr.message);
       }
@@ -1048,6 +1067,8 @@ async function executeDelegateCommand(
 
     console.error(`[slow-worker] Failed to execute command ${id}:`, err.message);
     try {
+      // S92P: Build terminal summary for failed state
+      const failedSummary = buildTerminalSummary({ status: "failed", errorMessage: err.message });
       await TaskCommandRepo.updateStatus(id, "failed", {
         finished_at: new Date(),
         error_message: err.message,
@@ -1057,6 +1078,7 @@ async function executeDelegateCommand(
         result: "",
         errors: [err.message],
         completed_at: new Date().toISOString(),
+        terminalSummary: failedSummary,
       });
     } catch (updateErr: any) {
       console.error("[slow-worker] Failed to update status:", updateErr.message);

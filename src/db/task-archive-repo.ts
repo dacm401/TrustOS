@@ -253,8 +253,9 @@ export const TaskArchiveRepo = {
    * S90P: Mark a task as cancelled with an optional reason.
    * Writes the cancellation reason into slow_execution metadata and sets state=cancelled.
    *
-   * V0 guard: Only transitions active states (created, queued, running, awaiting_review)
-   * to cancelled. Terminal states (completed, failed) are NOT overwritten.
+   * V0 guard: Only transitions active states to cancelled.
+   * Terminal states (completed, failed, cancelled, timed_out) are NOT overwritten.
+   * Idempotent and terminal-safe.
    */
   async markCancelled(archiveId: string, reason?: string): Promise<void> {
     await query(
@@ -267,7 +268,7 @@ export const TaskArchiveRepo = {
                'errors', COALESCE(slow_execution->'errors', '[]'::jsonb)
              )
        WHERE id = $1
-         AND state NOT IN ('completed', 'failed')`,
+         AND state NOT IN ('completed', 'failed', 'cancelled', 'timed_out')`,
       [archiveId, new Date().toISOString(), reason ?? null]
     );
   },
