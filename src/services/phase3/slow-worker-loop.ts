@@ -64,6 +64,25 @@ async function loadArchiveContext(archiveId: string): Promise<{
   };
 }
 
+// S90P: Cancellation-aware error class — thrown when task is cancelled mid-execution
+class TaskCancelledError extends Error {
+  public readonly archiveId: string;
+  public readonly taskId: string;
+  constructor(archiveId: string, taskId: string) {
+    super(`Task ${archiveId} cancelled by user`);
+    this.name = "TaskCancelledError";
+    this.archiveId = archiveId;
+    this.taskId = taskId;
+  }
+}
+
+/** S90P: Check if task has been cancelled, throw TaskCancelledError if so. */
+async function checkCancellation(archiveId: string, taskId: string): Promise<void> {
+  if (await TaskArchiveRepo.isCancelled(archiveId)) {
+    throw new TaskCancelledError(archiveId, taskId);
+  }
+}
+
 // 执行单个 delegate 命令
 async function executeDelegateCommand(
   commandRecord: {
@@ -76,6 +95,16 @@ async function executeDelegateCommand(
 ): Promise<void> {
   const { id, task_id, archive_id, user_id, payload_json } = commandRecord;
   const startTime = Date.now();
+
+  // S90P: Check cancellation before starting — don't execute cancelled tasks
+  if (await TaskArchiveRepo.isCancelled(archive_id)) {
+    console.log(`[slow-worker] Task ${task_id} already cancelled, skipping`);
+    await TaskCommandRepo.updateStatus(id, "cancelled", {
+      finished_at: new Date(),
+      error_message: "Task cancelled by user before execution",
+    });
+    return;
+  }
 
   // 更新状态为 running
   await TaskCommandRepo.updateStatus(id, "running", { started_at: new Date() });
@@ -285,6 +314,8 @@ async function executeDelegateCommand(
       }));
 
       try {
+        // S90P: Check cancellation before fast path LLM call
+        await checkCancellation(archive_id, task_id);
         const resp = await callModelFull(slowModel, messages, undefined, "worker");
         const fastContent = resp.content;
         const fastInputTokens = resp.input_tokens ?? 0;
@@ -460,6 +491,9 @@ async function executeDelegateCommand(
             }
           }) as unknown as CycleEventEmitter,
           executeWorker: async (p) => {
+            // S90P: Check cancellation before each worker call in cycle
+            await checkCancellation(archive_id, task_id);
+
             let result: { content: string; artifactType?: string; patchApplied?: boolean } = { content: "" };
             let lastError: string | undefined;
 
@@ -662,6 +696,8 @@ async function executeDelegateCommand(
     } else {
       // ── Legacy 路径（无 criteria / TaskContract 构建失败）───────────────────
       try {
+        // S90P: Check cancellation before legacy LLM call
+        await checkCancellation(archive_id, task_id);
         const resp = await callModelFull(slowModel, messages, undefined, "worker");
         content = resp.content;
         inputTokens = resp.input_tokens ?? 0;
@@ -898,6 +934,26 @@ async function executeDelegateCommand(
 
     console.log(`[slow-worker] Completed task ${task_id} in ${totalMs}ms, ${inputTokens}+${outputTokens} tokens`);
   } catch (err: any) {
+    // S90P: Handle task cancellation separately from other errors
+    if (err instanceof TaskCancelledError) {
+      console.log(`[slow-worker] Task ${err.archiveId} cancelled, marking as cancelled`);
+      try {
+        await TaskCommandRepo.updateStatus(id, "cancelled", {
+          finished_at: new Date(),
+          error_message: "Task cancelled by user",
+        });
+        await TaskArchiveRepo.updateState(archive_id, "cancelled" as TaskState);
+        await TaskArchiveRepo.setSlowExecution(archive_id, {
+          cancelledAt: new Date().toISOString(),
+          cancelReason: "Task cancelled by user",
+          completed_at: new Date().toISOString(),
+        });
+      } catch (updateErr: any) {
+        console.error("[slow-worker] Failed to mark cancellation:", updateErr.message);
+      }
+      return;
+    }
+
     console.error(`[slow-worker] Failed to execute command ${id}:`, err.message);
     try {
       await TaskCommandRepo.updateStatus(id, "failed", {

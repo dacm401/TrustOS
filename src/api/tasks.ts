@@ -135,6 +135,25 @@ taskRouter.patch("/:task_id", async (c) => {
 
   try {
     await TaskRepo.setStatus(taskId, newStatus);
+
+    // S90P: When cancelling, best-effort write to task_archives.state so the
+    // slow-worker loop and SSE poller can detect cancellation immediately.
+    // If the archive row doesn't exist or the update fails, cancellation still
+    // succeeds (archive write is not required for task-level cancel).
+    if (action === "cancel") {
+      try {
+        await TaskArchiveRepo.updateState(taskId, "cancelled");
+        // Also write cancel metadata into slow_execution for poller visibility
+        await TaskArchiveRepo.setSlowExecution(taskId, {
+          cancelledAt: new Date().toISOString(),
+          cancelReason: "Task cancelled by user",
+        });
+      } catch (archiveErr: any) {
+        console.warn(`[S90P] PATCH cancel: archive sync failed for ${taskId}:`, archiveErr.message);
+        // Best-effort: task cancel succeeds even if archive sync fails
+      }
+    }
+
     return c.json({ task_id: taskId, action, status: newStatus });
   } catch (error: any) {
     console.error("Task PATCH error:", error);

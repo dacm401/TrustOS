@@ -492,7 +492,46 @@ export async function* pollArchiveAndYield(
       break;
     }
 
-    if (currentState === "completed" || currentState === "cancelled") {
+    // S90P: Handle cancelled separately from completed — cancelled tasks
+    // should NOT trigger Manager Synthesis or mark as success.
+    if (currentState === "cancelled") {
+      if (!task.delivered) {
+        const execution: Record<string, unknown> = task.slow_execution ?? {};
+        const cancelReason = (execution.cancelReason as string) ?? "Task cancelled by user";
+        const cancelledAt = (execution.cancelledAt as string) ?? new Date().toISOString();
+
+        // Emit any remaining cycle events that were already stored
+        const cycleEvents = Array.isArray(execution.cycleEvents) ? execution.cycleEvents as Record<string, unknown>[] : [];
+        for (const event of cycleEvents) {
+          yield { type: "cycle_event", cycleEvent: event, routing_layer: "L2" as RoutingLayer };
+        }
+
+        yield {
+          type: "error",
+          stream: lang === "zh"
+            ? `⏹ 任务已取消: ${cancelReason}`
+            : `⏹ Task cancelled: ${cancelReason}`,
+          routing_layer: "L2",
+        };
+        yield { type: "done", stream: lang === "zh" ? "已取消" : "Cancelled", routing_layer: "L2" };
+
+        // G4: Mark execution as cancelled in delegation logs
+        if (delegation_log_id) {
+          DelegationLogRepo.updateExecution(delegation_log_id, {
+            execution_status: "cancelled",
+            execution_correct: false,
+            error_message: cancelReason,
+          }).catch(() => {});
+        }
+
+        await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
+          console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
+        );
+      }
+      break;
+    }
+
+    if (currentState === "completed") {
       if (!task.delivered) {
             const execution: Record<string, unknown> = task.slow_execution ?? {};
             const workerResult = typeof execution.result === "string"

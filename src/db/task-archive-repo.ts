@@ -235,6 +235,42 @@ export const TaskArchiveRepo = {
       [archiveId]
     );
   },
+
+  /**
+   * S90P: Check if a task archive has been cancelled.
+   * Used by the slow-worker loop to periodically check for cancellation signals
+   * and abort long-running work.
+   */
+  async isCancelled(archiveId: string): Promise<boolean> {
+    const result = await query(
+      `SELECT state FROM task_archives WHERE id = $1 AND state = 'cancelled' LIMIT 1`,
+      [archiveId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  },
+
+  /**
+   * S90P: Mark a task as cancelled with an optional reason.
+   * Writes the cancellation reason into slow_execution metadata and sets state=cancelled.
+   *
+   * V0 guard: Only transitions active states (created, queued, running, awaiting_review)
+   * to cancelled. Terminal states (completed, failed) are NOT overwritten.
+   */
+  async markCancelled(archiveId: string, reason?: string): Promise<void> {
+    await query(
+      `UPDATE task_archives
+       SET state = 'cancelled',
+           slow_execution = COALESCE(slow_execution, '{}'::jsonb)
+             || jsonb_build_object(
+               'cancelledAt', to_jsonb($2::text),
+               'cancelReason', to_jsonb($3::text),
+               'errors', COALESCE(slow_execution->'errors', '[]'::jsonb)
+             )
+       WHERE id = $1
+         AND state NOT IN ('completed', 'failed')`,
+      [archiveId, new Date().toISOString(), reason ?? null]
+    );
+  },
 } as const;
 
 // ── TaskCommandRepo ────────────────────────────────────────────────────────────

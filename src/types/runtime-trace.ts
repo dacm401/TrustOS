@@ -297,6 +297,8 @@ export const RUNTIME_TRACE_FINAL_STATUS = {
   DELEGATION_COMPLETE: "delegation_complete",
   FAILED: "failed",
   TIMEOUT: "timeout",
+  /** S90P: Task was cancelled by user via PATCH /v1/tasks/:id cancel */
+  CANCELLED: "cancelled",
 } as const;
 
 // ── Ledger Extract (safe subset for SSE done payload) ───────────────────────
