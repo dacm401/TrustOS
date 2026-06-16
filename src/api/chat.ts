@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { v4 as uuid } from "uuid";
 import type { ChatRequest, ChatResponse, DecisionRecord, ExecutionStepsSummary, FeedbackType, TaskSummary } from "../types/index.js";
+// S93P: 导入 ProviderError 用于用户友好错误映射
+import { ProviderError } from "../models/model-gateway.js";
 
 const VALID_FEEDBACK_TYPES: readonly FeedbackType[] = [
   "accepted", "regenerated", "edited",
@@ -346,8 +348,10 @@ chatRouter.post("/chat", async (c) => {
           });
         }
       } catch (e: any) {
-        console.warn("[stream-llm] routeWithManagerDecision failed:", e.message);
-        return c.json({ error: "LLM-native routing failed: " + e.message }, 500);
+        // S93P: 使用 ProviderError.userMessage 或通用 fallback，不暴露内部错误
+        const userMsg = e instanceof ProviderError ? e.userMessage : "抱歉，我暂时无法完成这个请求。请稍后重试。";
+        console.warn("[stream-llm] routeWithManagerDecision failed:", e.code ?? e.message);
+        return c.json({ error: userMsg }, 500);
       }
 
       const lang = features.language as "zh" | "en";
@@ -830,7 +834,10 @@ chatRouter.post("/chat", async (c) => {
         return null;
       });
     } catch (e: any) {
-      return c.json({ error: "LLM-native routing failed: " + e.message }, 500);
+      // S93P: 使用 ProviderError.userMessage 或通用 fallback
+      const userMsg = e instanceof ProviderError ? e.userMessage : "抱歉，我暂时无法完成这个请求。请稍后重试。";
+      console.warn("[chat] routeWithManagerDecision failed:", e.code ?? e.message);
+      return c.json({ error: userMsg }, 500);
     }
 
     const nonSseLang = features.language as "zh" | "en";

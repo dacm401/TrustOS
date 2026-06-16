@@ -206,7 +206,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, content: `⚠️ 流式错误：${data.stream ?? data.message ?? "Unknown error"}`, streaming: false, meta: m.meta ?? inferredMeta }
+                  ? { ...m, content: `抱歉，处理您的请求时出现了问题，请稍后重试。`, streaming: false, meta: m.meta ?? inferredMeta }
                   : m
               )
             );
@@ -378,7 +378,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
         }).catch((err) => {
           setMessages((prev) => [
             ...prev,
-            { id: uuid(), role: "assistant", content: `⚠️ 请求失败：${(err as Error)?.message || "请检查API配置"}`, meta: { origin: "system", contentKind: "status" } },
+            { id: uuid(), role: "assistant", content: `抱歉，处理您的请求时出现了问题，请稍后重试。`, meta: { origin: "system", contentKind: "status" } },
           ]);
         }).finally(() => {
           setLoading(false);
@@ -432,7 +432,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
               ◈
             </div>
             <div className="text-base font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
-              SmartRouter Pro
+              TrustOS
             </div>
             <div className="text-xs mb-6 max-w-xs" style={{ color: "var(--text-muted)" }}>
               你能看到它在思考，你能看到它在成长

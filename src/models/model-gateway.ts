@@ -11,6 +11,196 @@ import { config } from "../config.js";
 
 const providers: ModelProvider[] = [openaiProvider, anthropicProvider];
 
+// ── S93P: Provider Error — 统一错误类型 + 用户友好消息映射 ─────────────────────
+// 每个 provider 调用可能因网络、认证、限流、超时等原因失败。
+// ProviderError 携带 HTTP status 和预映射的 userMessage，供上层（chat.ts）直接展示。
+
+export class ProviderError extends Error {
+  /** HTTP status code (e.g. 401, 429, 500) or 0 if non-HTTP */
+  status: number;
+  /** User-safe message (no stack traces, no raw provider errors) */
+  userMessage: string;
+  /** Internal error code for logging/metrics */
+  code: string;
+
+  constructor(status: number, userMessage: string, code: string, cause?: Error) {
+    super(userMessage);
+    this.name = "ProviderError";
+    this.status = status;
+    this.userMessage = userMessage;
+    this.code = code;
+    if (cause) this.cause = cause;
+  }
+}
+
+/**
+ * S93P: 将原始 provider 异常映射为 ProviderError。
+ * 映射规则：
+ *   - 401 → AI 服务配置不可用
+ *   - 429 → 当前请求较多
+ *   - 5xx → 服务暂时不可用
+ *   - timeout/AbortError → 任务耗时过长
+ *   - unknown → 出现了未知错误
+ */
+function mapProviderError(error: any, model: string): ProviderError {
+  // Already a ProviderError — pass through
+  if (error instanceof ProviderError) return error;
+
+  // HTTP status from OpenAI/Anthropic SDKs
+  const status = error?.status ?? error?.statusCode ?? 0;
+
+  // Timeout detection (AbortError or message contains "timeout")
+  const isTimeout =
+    error?.name === "AbortError" ||
+    error?.name === "TimeoutError" ||
+    (typeof error?.message === "string" &&
+      (error.message.includes("timeout") || error.message.includes("timed out")));
+
+  if (isTimeout) {
+    return new ProviderError(
+      0,
+      "任务耗时过长，已停止。可以简化需求后重试。",
+      "provider_timeout",
+      error
+    );
+  }
+
+  if (status === 401 || status === 403) {
+    return new ProviderError(
+      status,
+      "AI 服务配置不可用，请联系管理员。",
+      "provider_unauthorized",
+      error
+    );
+  }
+
+  if (status === 429) {
+    return new ProviderError(
+      status,
+      "当前请求较多，请稍后再试。",
+      "provider_rate_limited",
+      error
+    );
+  }
+
+  if (status >= 500) {
+    return new ProviderError(
+      status,
+      "AI 服务暂时不可用，请稍后重试。",
+      "provider_server_error",
+      error
+    );
+  }
+
+  // Connection errors (ECONNREFUSED, ENOTFOUND, etc.)
+  if (error?.code && typeof error.code === "string" && (
+    error.code === "ECONNREFUSED" ||
+    error.code === "ENOTFOUND" ||
+    error.code === "ETIMEDOUT" ||
+    error.code === "ECONNRESET"
+  )) {
+    return new ProviderError(
+      0,
+      "无法连接到 AI 服务，请检查网络连接。",
+      "provider_connection_error",
+      error
+    );
+  }
+
+  // Unknown error — log the real cause but return user-safe message
+  console.error(`[provider-error] unhandled provider error for model=${model}:`, error?.message ?? error);
+  return new ProviderError(
+    0,
+    "出现了未知错误，请稍后重试。",
+    "provider_unknown_error",
+    error
+  );
+}
+
+// ── S93P: Provider 超时配置 ──────────────────────────────────────────────────
+// Manager 调用使用较短超时（路由决策应快），Worker 调用使用较长超时（代码生成耗时）。
+// 这些超时通过 Promise.race 实现，覆盖 OpenAI SDK 的 180s timeout。
+
+const MANAGER_TIMEOUT_MS = 30_000;  // 30s for Manager routing decisions
+const WORKER_TIMEOUT_MS = 120_000;  // 120s for Worker code generation
+
+/**
+ * S93P: 根据调用角色返回超时毫秒数。
+ */
+function getTimeoutMs(llmCallKind?: LlmCallKind): number {
+  // Manager/Synthesis 类调用 → 短超时
+  if (llmCallKind === "manager" || llmCallKind === "manager_synthesis" || llmCallKind === "fast") {
+    return MANAGER_TIMEOUT_MS;
+  }
+  // Worker/executor 类调用 → 长超时
+  return WORKER_TIMEOUT_MS;
+}
+
+/**
+ * S93P: 带超时的 provider.chat 包装器。
+ * 用 Promise.race 限制 provider 调用时间，超时抛出 ProviderError。
+ */
+async function callProviderWithTimeout(
+  provider: ModelProvider,
+  model: string,
+  messages: ChatMessage[],
+  tools: ToolParam[] | undefined,
+  timeoutMs: number,
+): Promise<ModelResponse> {
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(
+      () => reject(new ProviderError(0, "任务耗时过长，已停止。可以简化需求后重试。", "provider_timeout")),
+      timeoutMs
+    )
+  );
+  const callPromise = provider.chat(model, messages, tools);
+  return Promise.race([callPromise, timeoutPromise]);
+}
+
+// ── S93P: 启动时 Provider 配置校验 ──────────────────────────────────────────
+// 非 mock 模式下，检查 API key 是否配置。缺失时打印警告但不断启动，
+// 实际调用时由 mapProviderError 将 401 映射为用户友好消息。
+
+function validateProviderConfig() {
+  if (MOCK_LLM_ENABLED) return; // mock 模式不需要真实 API key
+
+  const issues: string[] = [];
+
+  // OpenAI provider — 支持 gpt-/o1/o3/含/斜杠/含:冒号 的模型
+  if (!config.openaiApiKey) {
+    const modelsNeedingOpenAI = [config.fastModel, config.slowModel, config.compressorModel]
+      .filter((m) => openaiProvider.supports(m));
+    if (modelsNeedingOpenAI.length > 0) {
+      issues.push(
+        `OPENAI_API_KEY is not set, but models require it: ${modelsNeedingOpenAI.join(", ")}. ` +
+        `Set OPENAI_API_KEY and OPENAI_BASE_URL in .env.`
+      );
+    }
+  }
+
+  // Anthropic provider
+  if (!config.anthropicApiKey) {
+    const modelsNeedingAnthropic = [config.fastModel, config.slowModel, config.compressorModel]
+      .filter((m) => anthropicProvider.supports(m));
+    if (modelsNeedingAnthropic.length > 0) {
+      issues.push(
+        `ANTHROPIC_API_KEY is not set, but models require it: ${modelsNeedingAnthropic.join(", ")}. ` +
+        `Set ANTHROPIC_API_KEY in .env.`
+      );
+    }
+  }
+
+  if (issues.length > 0) {
+    console.warn(`[provider-config] ${issues.length} provider configuration issue(s):`);
+    for (const issue of issues) {
+      console.warn(`[provider-config]   - ${issue}`);
+    }
+    console.warn(`[provider-config] Provider calls will fail with user-friendly error messages.`);
+  } else {
+    console.log(`[provider-config] API key configuration looks OK.`);
+  }
+}
+
 // ── Mock LLM (TRUSTOS_E2E_MOCK_LLM=true) ─────────────────────────────────────
 //
 // 用于 E2E runtime 验证，不依赖真实 SiliconFlow/OpenAI API。
@@ -29,6 +219,9 @@ if (MOCK_LLM_ENABLED) {
 // 只打印 true/false，不打印 secrets。
 console.log(`[model-gateway] TRUSTOS_E2E_MOCK_LLM=${String(MOCK_LLM_ENABLED)}`);
 console.log(`[model-gateway] fastModel=${config.fastModel} slowModel=${config.slowModel}`);
+
+// S93P: 启动时执行 provider 配置校验（必须在 MOCK_LLM_ENABLED 声明之后）
+validateProviderConfig();
 
 /**
  * 根据对话最后一条用户消息选取 mock 回复。
@@ -323,14 +516,17 @@ export async function callModelFull(
     throw new Error(`[mock-llm] BLOCKED external provider call for ${model} — MOCK_LLM_ENABLED is true but mock gate was bypassed`);
   }
   try {
-    const response = await provider.chat(model, messages, tools);
+    // S93P: 带超时的 provider 调用
+    const timeoutMs = getTimeoutMs(llmCallKind);
+    const response = await callProviderWithTimeout(provider, model, messages, tools, timeoutMs);
     recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
     return response;
   } catch (error: any) {
-    const errorCode = error?.status ? `http_${error.status}` : (error?.name === "AbortError" ? "timeout" : "provider_error");
-    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, errorCode);
-    console.error(`Model call failed [${model}]:`, error.message);
-    throw error;
+    const mapped = mapProviderError(error, model);
+    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, mapped.code);
+    // 只打印 code，不打印 raw provider error（隐私保护）
+    console.error(`[model-gateway] callModelFull failed: model=${model} code=${mapped.code}`);
+    throw mapped;
   }
 }
 
@@ -366,14 +562,16 @@ export async function callModelWithTools(
     throw new Error(`[mock-llm] BLOCKED external provider call for ${model} (callModelWithTools) — mock gate was bypassed`);
   }
   try {
-    const response = await provider.chat(model, messages, tools);
+    // S93P: 带超时的 provider 调用
+    const timeoutMs = getTimeoutMs(llmCallKind);
+    const response = await callProviderWithTimeout(provider, model, messages, tools, timeoutMs);
     recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
     return response;
   } catch (error: any) {
-    const errorCode = error?.status ? `http_${error.status}` : (error?.name === "AbortError" ? "timeout" : "provider_error");
-    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, errorCode);
-    console.error(`Model call failed with tools [${model}]:`, error.message);
-    throw error;
+    const mapped = mapProviderError(error, model);
+    recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, mapped.code);
+    console.error(`[model-gateway] callModelWithTools failed: model=${model} code=${mapped.code}`);
+    throw mapped;
   }
 }
 
@@ -427,9 +625,10 @@ export async function callOpenAIWithOptionsTraced(
     recordLlmCall(llmCallKind, model, startedAt, Date.now(), true);
     return resp;
   } catch (err: any) {
-    const errorCode = err?.status ? `http_${err.status}` : (err?.name === "AbortError" ? "timeout" : "provider_error");
-    recordLlmCall(llmCallKind, model, startedAt, Date.now(), false, errorCode);
-    throw err;
+    const mapped = mapProviderError(err, model);
+    recordLlmCall(llmCallKind, model, startedAt, Date.now(), false, mapped.code);
+    console.error(`[model-gateway] callOpenAIWithOptionsTraced failed: model=${model} code=${mapped.code}`);
+    throw mapped;
   }
 }
 
@@ -501,8 +700,9 @@ export async function* callModelStream(
       }
       recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
     } catch (err: any) {
-      recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, "stream_error");
-      throw err;
+      const mapped = mapProviderError(err, model);
+      recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, mapped.code);
+      throw mapped;
     }
   } else {
     // OpenAI-compatible streaming path (gpt-*, o1, o3, provider/model, etc.)
@@ -536,8 +736,9 @@ export async function* callModelStream(
       }
       recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
     } catch (err: any) {
-      recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, "stream_error");
-      throw err;
+      const mapped = mapProviderError(err, model);
+      recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, mapped.code);
+      throw mapped;
     }
   }
 }

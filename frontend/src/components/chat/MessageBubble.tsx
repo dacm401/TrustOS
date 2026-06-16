@@ -1,6 +1,9 @@
 "use client";
 import { useState } from "react";
 import { DecisionCard } from "./DecisionCard";
+import { CodeBlock } from "./CodeBlock";
+import { PreviewPane } from "./PreviewPane";
+import { ActionBar } from "./ActionBar";
 import { sendFeedback } from "@/lib/api";
 import type { Decision } from "@/types/dashboard";
 
@@ -19,11 +22,12 @@ interface MessageBubbleProps {
   routingLayer?: "L0" | "L1" | "L2" | "L3";
 }
 
+// S93P: 路由分层标签产品化 — 隐藏 L0/L1/L2/L3 内部术语，改用进度描述
 const LAYER_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  L0: { bg: "rgba(156,163,175,0.12)", text: "#9CA3AF", label: "Fast 直接" },
-  L1: { bg: "rgba(59,130,246,0.12)", text: "#3B82F6", label: "Fast + 搜索" },
-  L2: { bg: "rgba(139,92,246,0.12)", text: "#8B5CF6", label: "Slow 委托" },
-  L3: { bg: "rgba(245,158,11,0.12)", text: "#F59E0B", label: "Execute" },
+  L0: { bg: "rgba(156,163,175,0.12)", text: "#9CA3AF", label: "即时响应" },
+  L1: { bg: "rgba(59,130,246,0.12)", text: "#3B82F6", label: "智能分析" },
+  L2: { bg: "rgba(139,92,246,0.12)", text: "#8B5CF6", label: "深度处理" },
+  L3: { bg: "rgba(245,158,11,0.12)", text: "#F59E0B", label: "任务执行" },
 };
 
 function initials(name: string): string {
@@ -70,7 +74,7 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
               >
                 ◈
               </div>
-              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>SmartRouter Pro</span>
+              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>TrustOS</span>
             </>
           )}
         </div>
@@ -96,6 +100,19 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
           {content}
         </div>
 
+        {/* S93P: 检测代码/HTML 内容，自动展示 CodeBlock + PreviewPane */}
+        {!isUser && (
+          <ResultDisplay content={content} />
+        )}
+
+        {/* S93P: AI 消息操作按钮（复制/重新生成/继续修改） */}
+        {!isUser && content && !isUser && (
+          <ActionBar
+            content={content}
+            isArtifact={content.includes("import React") || content.includes("export default") || content.includes("function ")}
+          />
+        )}
+
         {/* AI: Decision card + metadata */}
         {!isUser && (decision || routingLayer) && (
           <>
@@ -111,7 +128,7 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
                     {decision.execution.model_used}
                   </span>
                 )}
-                {/* Phase 2.0: 路由分层 badge */}
+                {/* S93P: 路由分层 badge — 只显示产品化标签，隐藏内部 L0/L1/L2/L3 */}
                 {routingLayer && LAYER_COLORS[routingLayer] && (
                   <span
                     className="text-[9px] px-1.5 py-0.5 rounded font-medium"
@@ -119,9 +136,8 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
                       backgroundColor: LAYER_COLORS[routingLayer].bg,
                       color: LAYER_COLORS[routingLayer].text,
                     }}
-                    title={LAYER_COLORS[routingLayer].label}
                   >
-                    {routingLayer} {LAYER_COLORS[routingLayer].label}
+                    {LAYER_COLORS[routingLayer].label}
                   </span>
                 )}
                 {decision?.execution && (
@@ -174,13 +190,13 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
             {delegation.status === "completed" && (
               <div className="flex items-center gap-1.5">
                 <span>✓</span>
-                <span>慢模型已完成，可刷新查看</span>
+                <span>处理完成，可刷新查看</span>
               </div>
             )}
             {delegation.status === "failed" && (
               <div className="flex items-center gap-1.5">
                 <span>⚠️</span>
-                <span>慢模型处理失败: {delegation.error || "未知错误"}</span>
+                <span>处理失败，请重试</span>
               </div>
             )}
           </div>
@@ -233,4 +249,44 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
       </div>
     </div>
   );
+}
+
+/**
+ * S93P: ResultDisplay — 智能检测内容类型并展示代码块/预览。
+ * 如果 content 包含 React 组件代码（import/export/function），展示 CodeBlock + PreviewPane。
+ * 如果 content 包含 HTML 标签，展示 PreviewPane。
+ * 否则不额外展示（普通文本消息）。
+ */
+function ResultDisplay({ content }: { content: string }) {
+  // 检测是否是 React/TSX 代码
+  const isReactCode =
+    content.includes("import React") ||
+    (content.includes("import ") && content.includes("from ")) ||
+    content.includes("export default function") ||
+    content.includes("export function") ||
+    (content.includes("function ") && content.includes("return ("));
+
+  // 检测是否包含 HTML 结构
+  const hasHtml = content.includes("</") && (content.includes("<div") || content.includes("<main") || content.includes("<section") || content.includes("<html"));
+
+  // 提取纯 HTML 用于预览
+  const extractHtml = (code: string): string => {
+    // 如果是 React 组件，尝试提取 JSX return 部分
+    if (code.includes("return (")) {
+      const returnMatch = code.match(/return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}/);
+      if (returnMatch) return returnMatch[1];
+    }
+    return code;
+  };
+
+  if (isReactCode || hasHtml) {
+    return (
+      <>
+        <CodeBlock code={content} language={isReactCode ? "tsx" : "html"} />
+        <PreviewPane htmlContent={extractHtml(content)} />
+      </>
+    );
+  }
+
+  return null;
 }

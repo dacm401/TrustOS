@@ -64,7 +64,7 @@ export function DecisionCard({ decision }: DecisionCardProps) {
         <div className="flex items-center gap-2 flex-wrap">
           <span style={{ color: "var(--text-muted)" }}>🔍</span>
           <Badge variant={isFast ? "fast" : "slow"}>
-            {isFast ? "⚡ 快模型" : "🧠 慢模型"}
+            {isFast ? "快速模式" : "深度模式"}
           </Badge>
           <span style={{ color: "var(--text-secondary)" }}>
             {formatTokens((execution?.input_tokens || 0) + (execution?.output_tokens || 0))} tokens
@@ -90,7 +90,7 @@ export function DecisionCard({ decision }: DecisionCardProps) {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <div className="flex justify-between mb-0.5" style={{ color: "var(--text-secondary)" }}>
-                  <span className="text-[10px]">快模型</span>
+                  <span className="text-[10px]">快速模式</span>
                   <span className="text-[10px] font-mono" style={{ color: "var(--accent-green)" }}>
                     {Math.round(routingScores.fast * 100)}%
                   </span>
@@ -99,7 +99,7 @@ export function DecisionCard({ decision }: DecisionCardProps) {
               </div>
               <div>
                 <div className="flex justify-between mb-0.5" style={{ color: "var(--text-secondary)" }}>
-                  <span className="text-[10px]">慢模型</span>
+                  <span className="text-[10px]">深度模式</span>
                   <span className="text-[10px] font-mono" style={{ color: "var(--accent-purple)" }}>
                     {Math.round(routingScores.slow * 100)}%
                   </span>

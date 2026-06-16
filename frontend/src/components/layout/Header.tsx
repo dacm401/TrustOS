@@ -43,7 +43,7 @@ export function Header({ userId, onUserIdChange, sidebarOpen, onToggleSidebar }:
       <div className="flex items-center gap-2">
         <span className="text-base" style={{ color: "var(--accent-blue)" }}>◈</span>
         <span className="font-semibold text-sm tracking-tight" style={{ color: "var(--text-primary)" }}>
-          SmartRouter Pro
+          TrustOS
         </span>
         <span
           className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
