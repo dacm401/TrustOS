@@ -37,14 +37,15 @@ function buildExplanation(
 export function DecisionCard({ decision }: DecisionCardProps) {
   const [expanded, setExpanded] = useState(false);
   if (!decision) return null;
-  const { routing, context, execution } = decision;
+  const { routing, context: rawContext, execution } = decision;
+  const context = rawContext ?? ({} as NonNullable<typeof rawContext>);
   // done 事件的 decision 是扁平结构 { intent, selected_model, selected_role, confidence }
   // 非 done 事件的 decision 是完整结构 { routing, context, execution }
-  const selectedRole = routing?.selected_role ?? decision.selected_role ?? "fast";
+  const selectedRole = routing?.selected_role ?? (decision as { selected_role?: string }).selected_role ?? "fast";
   const isFast = selectedRole === "fast";
   // done 事件的路由字段默认值
   const routingScores = routing?.scores ?? { fast: isFast ? 0.69 : 0.31, slow: isFast ? 0.31 : 0.69 };
-  const routingConfidence = routing?.confidence ?? decision.confidence ?? 0.8;
+  const routingConfidence = routing?.confidence ?? (decision as { confidence?: number }).confidence ?? 0.8;
 
   return (
     <div
@@ -138,21 +139,21 @@ export function DecisionCard({ decision }: DecisionCardProps) {
           </div>
 
           {/* Context compression */}
-          {context?.compression_ratio > 0 && (
+          {(context.compression_ratio ?? 0) > 0 && (
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
                 🗜️ 上下文压缩
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-                  {formatTokens(context.original_tokens)}
+                  {formatTokens(context.original_tokens ?? 0)}
                 </span>
                 <span style={{ color: "var(--text-muted)" }}>→</span>
                 <span className="text-xs font-mono font-bold" style={{ color: "var(--accent-green)" }}>
-                  {formatTokens(context.compressed_tokens)}
+                  {formatTokens(context.compressed_tokens ?? 0)}
                 </span>
                 <Badge variant="fast">
-                  省 {Math.round(context.compression_ratio * 100)}%
+                  省 {Math.round((context.compression_ratio ?? 0) * 100)}%
                 </Badge>
               </div>
             </div>
@@ -176,7 +177,7 @@ export function DecisionCard({ decision }: DecisionCardProps) {
               {buildExplanation(
                 selectedRole,
                 routingScores.slow * 100,
-                routing?.intent ?? decision.intent ?? "",
+                routing?.intent ?? (decision as { intent?: string }).intent ?? "",
                 execution?.did_fallback ?? false,
               )}
             </p>

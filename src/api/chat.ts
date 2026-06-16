@@ -30,7 +30,7 @@ import { setArtifactVerification } from "../services/verifier/quality-router.js"
 // Stream V2: thinking state visualization
 import { createThinkingEvent } from "../services/phase3/stream-v2.js";
 // Stream V2: 轻量级意图分类器
-import { classifyIntent, shouldSkipLLMRouting, generateQuickResponse } from "../services/intent-classifier.js";
+import { classifyIntent, shouldSkipLLMRouting, generateQuickResponse, tryDateQueryFastPath } from "../services/intent-classifier.js";
 // Context Boundary V0: Manager 不能直接消费 raw body.history
 import { buildManagerView } from "../services/context/manager-view.js";
 import { buildWorkerResultEnvelope } from "../services/context/worker-result-envelope.js";
@@ -132,43 +132,42 @@ chatRouter.post("/chat", async (c) => {
     // 不阻断主流程，继续正常处理
   }
 
-  try {
-    // Sprint 69: 统一 dispatcher — 不再区分 use_llm_native_routing
-    // 所有请求走 routeWithManagerDecision，由 stream 标志决定返回格式
-    // Sprint 68 发现：use_llm_native_routing 隐式分支导致规则路径和 SSE 路径不对齐
-    const useStream = body.stream === true;
-    const useLLMNative = body.use_llm_native_routing !== false; // 默认 true
+  // Sprint 69: 统一 dispatcher — 不再区分 use_llm_native_routing
+  // 所有请求走 routeWithManagerDecision，由 stream 标志决定返回格式
+  // Sprint 68 发现：use_llm_native_routing 隐式分支导致规则路径和 SSE 路径不对齐
+  const useStream = body.stream === true;
+  const useLLMNative = body.use_llm_native_routing !== false; // 默认 true
 
-    if (!useLLMNative) {
-      return c.json({ error: "Legacy routing path (use_llm_native_routing=false) has been removed. Please remove this flag." }, 400);
-    }
+  if (!useLLMNative) {
+    return c.json({ error: "Legacy routing path (use_llm_native_routing=false) has been removed. Please remove this flag." }, 400);
+  }
 
-    // Sprint 69: 轻量 features 提取（仅用于 logDecision / execute mode）
-    // 不再走旧的 analyzeAndRoute，统一由 routeWithManagerDecision 提供
-    const { features } = (() => {
-      const message = body.message ?? "";
-      const safeText = message ?? "";
-      const chineseChars = safeText.match(/[\u4e00-\u9fff]/g);
-      const language = (chineseChars && chineseChars.length > safeText.length * 0.1) ? "zh" : "en";
-      return {
-        features: {
-          raw_query: message,
-          token_count: 0,
-          context_token_count: 0,
-          conversation_depth: (body.history ?? []).filter((m: any) => m.role === "user").length,
-          language,
-          intent: "general" as const,
-          complexity_score: 50,
-          has_code: false,
-          has_math: false,
-          requires_reasoning: false,
-        }
-      };
-    })();
+  // Sprint 69: 轻量 features 提取（仅用于 logDecision / execute mode）
+  // 不再走旧的 analyzeAndRoute，统一由 routeWithManagerDecision 提供
+  const { features } = (() => {
+    const message = body.message ?? "";
+    const safeText = message ?? "";
+    const chineseChars = safeText.match(/[\u4e00-\u9fff]/g);
+    const language = (chineseChars && chineseChars.length > safeText.length * 0.1) ? "zh" : "en";
+    return {
+      features: {
+        raw_query: message,
+        token_count: 0,
+        context_token_count: 0,
+        conversation_depth: (body.history ?? []).filter((m: any) => m.role === "user").length,
+        language,
+        intent: "general" as const,
+        complexity_score: 50,
+        has_code: false,
+        has_math: false,
+        requires_reasoning: false,
+      }
+    };
+  })();
 
-    // SSE 契约强制：stream=true 必须走 SSE 路径，否则 500
-    // 防止 stream=true 但走错了路径导致前端 SSE reader 永远挂起
-    if (useStream) {
+  // SSE 契约强制：stream=true 必须走 SSE 路径，否则 500
+  // 防止 stream=true 但走错了路径导致前端 SSE reader 永远挂起
+  if (useStream) {
       // ── SSE 流式分支 ───────────────────────────────────────────────────────────
       // S84P: Initialize runtime trace for SSE path
       runtimeTrace = createTrace(userId + "_" + sessionId + "_" + startTime);
@@ -176,8 +175,21 @@ chatRouter.post("/chat", async (c) => {
       setTraceBudget(runtimeTrace, 10);
       // S88P: Initialize progress tracking
       updateTraceProgress(runtimeTrace, RUNTIME_TRACE_STAGES.INTENT_CLASSIFY);
+      // S84P: Cross-session context — moved before runWithRequestTrace for esbuild compat
+      const crossSessionT = runtimeTrace ? startStage(runtimeTrace, RUNTIME_TRACE_STAGES.CROSS_SESSION_CONTEXT) : 0;
+      if (runtimeTrace) updateTraceProgress(runtimeTrace, RUNTIME_TRACE_STAGES.CROSS_SESSION_CONTEXT);
+      const cross = await buildCrossSessionContext({
+        userId,
+        sessionId,
+        userMessage: body.message ?? "",
+      }).catch((e: any) => {
+        console.warn("[chat] cross-session context build failed:", e.message);
+        return { crossSessionText: "" };
+      });
+      const crossSessionContext = cross.crossSessionText || undefined;
+      if (runtimeTrace && crossSessionT) endStage(runtimeTrace, RUNTIME_TRACE_STAGES.CROSS_SESSION_CONTEXT, crossSessionT);
       // S86P: Wrap SSE handler in AsyncLocalStorage-based trace context
-      return runWithRequestTrace(runtimeTrace, () => {
+      const sseHandler = async () => {
         let llmNativeResult;
         let activeArtifact: import("../services/context/active-artifact.js").ActiveArtifactContext | undefined;
         try {
@@ -190,6 +202,39 @@ chatRouter.post("/chat", async (c) => {
           runtimeTrace.stages.push({ name: RUNTIME_TRACE_STAGES.INTENT_CLASSIFY, startedAt: intentStart, endedAt: intentStart + intentTime, durationMs: intentTime });
         }
         console.log(`[chat] Intent classification: ${intent.category} (${intentTime}ms, confidence: ${intent.confidence})`);
+
+        // S92P-HF1: Deterministic date/time fast path — no LLM call needed
+        const dateFastResponse = tryDateQueryFastPath(body.message ?? "");
+        if (dateFastResponse) {
+          const quickLang = features.language as "zh" | "en";
+          console.log("[chat] Using date/time fast path");
+          c.header("Content-Type", "text/event-stream");
+          c.header("Cache-Control", "no-cache");
+          c.header("Connection", "keep-alive");
+          return stream(c, async (s) => {
+            await s.write(`data: ${JSON.stringify({
+              type: "thinking",
+              thinking_state: "completed",
+              stream: quickLang === "zh" ? "✅ 完成" : "✅ Done",
+              routing_layer: "L0",
+              timestamp: Date.now(),
+              meta: { origin: "system", contentKind: "thinking" },
+            })}\n\n`);
+            await s.write(`data: ${JSON.stringify({
+              type: "fast_reply",
+              stream: dateFastResponse,
+              routing_layer: "L0",
+              meta: { origin: "manager", contentKind: "chat" },
+            })}\n\n`);
+            await s.write(`data: ${JSON.stringify({
+              type: "done",
+              stream: quickLang === "zh" ? "已返回答案" : "Answer ready",
+              routing_layer: "L0",
+              meta: { origin: "system", contentKind: "status" },
+              budget: null,
+            })}\n\n`);
+          });
+        }
 
         // 如果是高置信度的简单意图，可以快速返回
         if (shouldSkipLLMRouting(intent)) {
@@ -226,21 +271,6 @@ chatRouter.post("/chat", async (c) => {
             });
           }
         }
-
-        // S84P: Cross-session context stage
-        const crossSessionT = runtimeTrace ? startStage(runtimeTrace, RUNTIME_TRACE_STAGES.CROSS_SESSION_CONTEXT) : 0;
-        if (runtimeTrace) updateTraceProgress(runtimeTrace, RUNTIME_TRACE_STAGES.CROSS_SESSION_CONTEXT);
-        const cross = await buildCrossSessionContext({
-          userId,
-          sessionId,
-          userMessage: body.message ?? "",
-        }).catch((e: any) => {
-          console.warn("[chat] cross-session context build failed:", e.message);
-          return { crossSessionText: "" };
-        });
-        const crossSessionContext = cross.crossSessionText || undefined;
-        // S84P: End cross-session stage
-        if (runtimeTrace && crossSessionT) endStage(runtimeTrace, RUNTIME_TRACE_STAGES.CROSS_SESSION_CONTEXT, crossSessionT);
 
         // Context Boundary V0: 构建 Manager Safe View
         // S84P: Manager view build stage
@@ -320,11 +350,17 @@ chatRouter.post("/chat", async (c) => {
         return c.json({ error: "LLM-native routing failed: " + e.message }, 500);
       }
 
-      if (!llmNativeResult) {
-        return c.json({ error: "Manager returned null decision" }, 500);
-      }
-
       const lang = features.language as "zh" | "en";
+      if (!llmNativeResult) {
+        console.warn("[chat] SSE routeWithManagerDecision returned null/undefined — returning safe error");
+        return c.json({ error: lang === "zh" ? "抱歉，我暂时无法完成这个请求。请稍后重试。" : "Sorry, I couldn't complete this request. Please try again later." }, 500);
+      }
+      // S92P-HF2: 防御 null decision — llmNativeResult 存在但 decision 为 null 时
+      // 真实 API 401、mock parse fail、协议异常都可能导致此情况
+      if (!llmNativeResult.decision) {
+        console.warn("[chat] SSE routeWithManagerDecision returned null decision — returning safe fallback");
+        return c.json({ error: lang === "zh" ? "抱歉，我暂时无法完成这个请求。请稍后重试。" : "Sorry, I couldn't complete this request. Please try again later." }, 500);
+      }
       // Phase 3.0 fix: 使用 archive_id 而非 delegation.task_id，因为 task_archives 表的主键是 archive_id
       // Bug3 fix: direct_answer 时没有真实 archive，不能用随机 UUID（前端会去查 404）
       const archiveId = llmNativeResult.archive_id || llmNativeResult.delegation?.task_id;
@@ -738,13 +774,15 @@ chatRouter.post("/chat", async (c) => {
           // （SSE已失败，客户端已经断开）
         }
       });
-      }); // runWithRequestTrace
+      };
+      return runWithRequestTrace(runtimeTrace, sseHandler);
+    }
 
-    // ── 非 SSE 分支（stream=false / undefined）───────────────────────────────────
-    // 走 routeWithManagerDecision，返回 Manager 完整响应（直接回答或澄清）
-    let llmNativeResult;
-    try {
-      const cross = await buildCrossSessionContext({
+  // ── 非 SSE 分支（stream=false / undefined）───────────────────────────────────
+  // 走 routeWithManagerDecision，返回 Manager 完整响应（直接回答或澄清）
+  let llmNativeResult;
+  try {
+    const cross = await buildCrossSessionContext({
         userId,
         sessionId,
         userMessage: body.message ?? "",
@@ -795,8 +833,15 @@ chatRouter.post("/chat", async (c) => {
       return c.json({ error: "LLM-native routing failed: " + e.message }, 500);
     }
 
+    const nonSseLang = features.language as "zh" | "en";
     if (!llmNativeResult) {
-      return c.json({ error: "Manager returned null decision" }, 500);
+      console.warn("[chat] routeWithManagerDecision returned null/undefined — returning safe error");
+      return c.json({ error: nonSseLang === "zh" ? "抱歉，我暂时无法完成这个请求。请稍后重试。" : "Sorry, I couldn't complete this request. Please try again later." }, 500);
+    }
+    // S92P-HF2: 防御 null decision
+    if (!llmNativeResult.decision) {
+      console.warn("[chat] routeWithManagerDecision returned null decision — returning safe fallback");
+      return c.json({ error: nonSseLang === "zh" ? "抱歉，我暂时无法完成这个请求。请稍后重试。" : "Sorry, I couldn't complete this request. Please try again later." }, 500);
     }
 
     const archiveId = llmNativeResult.archive_id || llmNativeResult.delegation?.task_id;
@@ -899,10 +944,6 @@ chatRouter.post("/chat", async (c) => {
         : undefined,
       meta: { origin: "manager", contentKind: "chat" },
     });
-  } catch (error: any) {
-    console.error("Chat error:", error);
-    return c.json({ error: error.message }, 500);
-  }
 });
 
 // 旧 /chat-result 端点已废弃（委托结果通过 LLM-Native SSE 实时推送，无需轮询）

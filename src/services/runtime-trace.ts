@@ -54,8 +54,8 @@ function _getStore(): { trace: RuntimeTrace; llmCallSeq: number } | null {
  */
 export function runWithRequestTrace<T>(
   trace: RuntimeTrace,
-  fn: () => T
-): T {
+  fn: () => T | Promise<T>
+): T | Promise<T> {
   // Initialize llmCalls array on the trace if not present
   if (!trace.llmCalls) {
     trace.llmCalls = [];

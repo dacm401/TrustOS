@@ -197,3 +197,66 @@ export function generateQuickResponse(
   const response = responses[intent.category]?.[lang];
   return response || null;
 }
+
+// ── S92P-HF1: Deterministic Date/Time Fast Path ────────────────────────────
+
+const DATE_QUERY_PATTERNS_ZH = [
+  /今天(是)?几号/,
+  /今天(是)?什么日期/,
+  /今天日期/,
+  /现在几号/,
+  /今天星期几/,
+  /今天是?周几/,
+  /当前日期/,
+];
+
+const DATE_QUERY_PATTERNS_EN = [
+  /what date is (it )?today/i,
+  /what('s| is) today('s)? date/i,
+  /what day is (it )?today/i,
+  /current date/i,
+  /today('s)? date/i,
+];
+
+const ZH_WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+const EN_WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const EN_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/**
+ * Check if the message is a simple current-date query that can be answered
+ * deterministically without any LLM call.
+ * Returns the answer string, or null if not a date query.
+ */
+export function tryDateQueryFastPath(message: string): string | null {
+  const trimmed = message.trim();
+  const lower = trimmed.toLowerCase();
+
+  // Check Chinese patterns
+  for (const pattern of DATE_QUERY_PATTERNS_ZH) {
+    if (pattern.test(trimmed)) {
+      return formatDateResponse("zh");
+    }
+  }
+
+  // Check English patterns
+  for (const pattern of DATE_QUERY_PATTERNS_EN) {
+    if (pattern.test(lower)) {
+      return formatDateResponse("en");
+    }
+  }
+
+  return null;
+}
+
+function formatDateResponse(lang: "zh" | "en"): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+  const weekday = now.getDay();
+
+  if (lang === "zh") {
+    return `今天是${year}年${month}月${day}日，星期${ZH_WEEKDAYS[weekday]}。`;
+  }
+  return `Today is ${EN_WEEKDAYS[weekday]}, ${EN_MONTHS[now.getMonth()]} ${day}, ${year}.`;
+}

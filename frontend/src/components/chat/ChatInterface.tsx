@@ -165,7 +165,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
             setStatusMsg(data.stream ?? null);
           } else if (data.type === "thinking") {
             // Stream V2: thinking 状态可视化
-            const state = data.thinking_state || data.state || "thinking";
+            const state = (data.thinking_state || data.state || "thinking") as typeof thinkingState;
             setThinkingState(state);
             setStatusMsg(data.content ?? data.stream ?? null);
           } else if (data.type === "result") {

@@ -1340,6 +1340,9 @@ async function callManagerModel(input: {
   const effectiveFastModel = fastModel || config.fastModel;
   const effectiveBaseUrl = reqLlmBaseUrl || config.openaiBaseUrl || undefined;
 
+  // S92P-HF2: 诊断日志 — 记录 callManagerModel 调用路径参数
+  console.log(`[llm-native-router] callManagerModel: fastModel=${effectiveFastModel} hasBaseUrl=${!!effectiveBaseUrl} hasApiKey=${!!reqApiKey} path=${(reqApiKey || effectiveBaseUrl) ? "callOpenAIWithOptionsTraced" : "callModelFull"}`);
+
   const { prompt: systemPrompt } = await loadManagerPrompt(language, crossSessionContext, userMemories);
   // 保留最近 6 轮对话作为上下文，不传全量 history（Manager 只读当前任务）
   const recentHistory = history.filter((m) => m.role !== "system").slice(-6);
@@ -1382,6 +1385,8 @@ async function _callFastModel(
   reqApiKey: string | undefined
 ): Promise<string> {
   const hasAuthOverride = reqApiKey || effectiveBaseUrl;
+  // S92P-HF2: 诊断日志 — 记录 Manager LLM 调用路径，帮助定位 mock bypass
+  console.log(`[llm-native-router] _callFastModel: model=${effectiveFastModel} hasAuthOverride=${hasAuthOverride}`);
   if (hasAuthOverride) {
     const resp = await callOpenAIWithOptionsTraced(
       effectiveFastModel,

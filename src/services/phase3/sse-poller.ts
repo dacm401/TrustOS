@@ -74,6 +74,35 @@ const SYNTHESIS_SKIP_TOOL_INDICATORS = [
   "<function",
 ];
 
+// S92P-HF1: Patterns that indicate internal protocol JSON (should not be shown to users)
+const INTERNAL_PROTOCOL_JSON_KEYS = [
+  "decision_type",
+  "confidence",
+  "reasoning",
+  "direct_response",
+  "clarify_question",
+  "command",
+  "task_description",
+  "artifact_type",
+  "tech_stack",
+];
+
+/**
+ * S92P-HF1: Detect if a result string looks like an internal ManagerDecision or
+ * protocol JSON that should never be shown directly to the end user.
+ * Returns true if the content appears to be internal protocol JSON.
+ */
+function looksLikeInternalProtocolJson(text: string): boolean {
+  if (!text.startsWith("{")) return false;
+  const lower = text.toLowerCase();
+  let matchCount = 0;
+  for (const key of INTERNAL_PROTOCOL_JSON_KEYS) {
+    if (lower.includes(`"${key}"`)) matchCount++;
+  }
+  // Require at least 2 internal keys to avoid false positives
+  return matchCount >= 2;
+}
+
 /**
  * S87P: Determine if Manager Synthesis can be safely skipped for a worker result.
  *
@@ -98,6 +127,11 @@ export function shouldSkipSynthesis(workerResult: string, execution?: Record<str
 
   // Must have content
   if (trimmed.length === 0) return false;
+
+  // S92P-HF1: Guard against internal JSON leakage.
+  // If the result looks like a ManagerDecision or internal protocol JSON,
+  // force Manager Synthesis to convert it to user-facing text.
+  if (looksLikeInternalProtocolJson(trimmed)) return false;
 
   // Must be short
   if (trimmed.length >= SYNTHESIS_SKIP_MAX_LENGTH) return false;
@@ -693,17 +727,17 @@ export async function* pollArchiveAndYield(
           };
         } else {
           try {
-            // 发一个"开始整理"的提示
-            yield {
-              type: "result",
-              stream: `${msgs.done}\n\n`,
-              routing_layer: "L2",
-            };
-
-            // 流式 yield chunks，直接推给前端
+            // S92P-HF1: synthesis chunk 追加到 placeholder 消息中（Manager 合成文本）
             for await (const chunkEvent of synthesizeManagerOutputStream(taskId, workerResult, workerConfidence, lang, reqApiKey)) {
               yield chunkEvent;
             }
+            // S92P-HF2: synthesis 完成后，发送 result 事件携带 worker 的实际产出（代码/artifact）
+            // 前端 result 处理会创建新消息，这样产物就独立显示在 synthesis 文本之后
+            yield {
+              type: "result",
+              stream: workerResult,
+              routing_layer: "L2",
+            };
           } catch (e: any) {
             console.warn("[pollArchiveAndYield] Manager synthesis failed, using raw result:", e.message);
             yield {
