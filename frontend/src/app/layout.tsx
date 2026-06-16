@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SmartRouter Pro - 透明AI路由专家",
-  description: "看得见思考过程、看得见成长轨迹的AI对话系统",
+  title: "TrustOS - 透明AI工作台",
+  description: "你能看到它在思考，你能看到它在成长",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

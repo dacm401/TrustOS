@@ -27,8 +27,8 @@ export function TokenSankey({ tokenFlow }: TokenSankeyProps) {
           </div>
         </div>
         <div className="flex flex-wrap gap-3 text-xs">
-          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-green-400" /><span className="text-gray-600">⚡ 快模型 {formatTokens(tokenFlow.fast_tokens || 0)}</span></div>
-          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-indigo-400" /><span className="text-gray-600">🧠 慢模型 {formatTokens(tokenFlow.slow_tokens || 0)}</span></div>
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-green-400" /><span className="text-gray-600">⚡ 快速模式 {formatTokens(tokenFlow.fast_tokens || 0)}</span></div>
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-indigo-400" /><span className="text-gray-600">🧠 深度模式 {formatTokens(tokenFlow.slow_tokens || 0)}</span></div>
           {(tokenFlow.fallback_tokens || 0) > 0 && <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-amber-400" /><span className="text-gray-600">🔄 Fallback {formatTokens(tokenFlow.fallback_tokens || 0)}</span></div>}
         </div>
       </div>

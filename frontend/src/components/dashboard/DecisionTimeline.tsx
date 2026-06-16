@@ -25,7 +25,7 @@ export function DecisionTimeline({ decisions }: DecisionTimelineProps) {
                 <span className="text-xs text-gray-400 flex-shrink-0">{timeAgo(d.timestamp || Date.now())}</span>
               </div>
               <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                <Badge variant={isFast ? "fast" : "slow"}>{isFast ? "⚡ 快模型" : "🧠 慢模型"}</Badge>
+                <Badge variant={isFast ? "fast" : "slow"}>{isFast ? "⚡ 快速模式" : "🧠 深度模式"}</Badge>
                 {d.execution?.did_fallback && <Badge variant="warn">🔄 已升级</Badge>}
                 <Badge variant="default">{INTENT_LABELS[d.input_features?.intent] || "未知"}</Badge>
                 <span className="text-xs text-gray-400">复杂度 <span className={complexity > 60 ? "text-red-500" : complexity > 30 ? "text-amber-500" : "text-green-500"}>{complexity}</span></span>
