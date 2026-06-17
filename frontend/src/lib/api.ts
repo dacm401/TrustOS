@@ -260,3 +260,67 @@ export async function fetchPerformance(userId: string, range: string = "7d"): Pr
   if (!res.ok) throw new Error(`加载性能数据失败 (${res.status})`);
   return res.json() as Promise<PerformanceData>;
 }
+
+// ── S94P: Observability API ─────────────────────────────────────────────────
+
+export interface ObservabilitySummary {
+  summary: {
+    total_requests_24h: number;
+    success_count_24h: number;
+    failure_count_24h: number;
+    cancelled_count_24h: number;
+    success_rate_pct: number;
+    avg_duration_sec: number;
+    p95_duration_sec: number;
+  };
+  cost: {
+    today_cost_usd: number;
+    today_input_tokens: number;
+    today_output_tokens: number;
+  };
+  sessions: {
+    active_24h: number;
+  };
+  health: {
+    database: string;
+    llm_api: string;
+    overall: string;
+  };
+}
+
+export async function fetchObservability(userId: string): Promise<ObservabilitySummary> {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(`${apiBase}/v1/observability/summary`, {
+    headers: { "X-User-Id": userId },
+  });
+  if (!res.ok) throw new Error(`加载可观测性数据失败 (${res.status})`);
+  return res.json() as Promise<ObservabilitySummary>;
+}
+
+// S94P: Paginated task list
+export async function fetchTasksRecent(
+  userId: string,
+  options?: { limit?: number; offset?: number; status?: string }
+) {
+  const { apiBase } = await getApiConfig();
+  const params = new URLSearchParams();
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.offset) params.set("offset", String(options.offset));
+  if (options?.status) params.set("status", options.status);
+
+  const res = await fetch(`${apiBase}/v1/tasks/recent?${params.toString()}`, {
+    headers: { "X-User-Id": userId },
+  });
+  if (!res.ok) throw new Error(`加载任务列表失败 (${res.status})`);
+  return res.json();
+}
+
+// S94P: Get task result
+export async function fetchTaskResult(taskId: string, userId: string) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}/result`, {
+    headers: { "X-User-Id": userId },
+  });
+  if (!res.ok) throw new Error(`加载任务结果失败 (${res.status})`);
+  return res.json();
+}

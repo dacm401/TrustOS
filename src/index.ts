@@ -22,6 +22,8 @@ import { sessionsRouter } from "./api/sessions.js";
 import { hrRouter } from "./api/human-review.js";
 // Sprint 64: Permission-Gated Worker Architecture
 import { createPermissionsRouter, createWorkspacesRouter } from "./api/permissions.js";
+// S94P: Observability API
+import { observabilityRouter } from "./api/observability.js";
 // Phase 3.0: 启动后台 Worker 轮询循环
 import { startSlowWorker, stopSlowWorker } from "./services/phase3/slow-worker-loop.js";
 import { startExecuteWorker, stopExecuteWorker } from "./services/phase3/execute-worker-loop.js";
@@ -51,6 +53,7 @@ app.route("/v1", archiveRouter);
 app.route("/v1/prompt-templates", promptTemplatesRouter);
 app.route("/v1/sessions", sessionsRouter);
 app.route("/v1/human-review", hrRouter);  // S78P
+app.route("/v1/observability", observabilityRouter);  // S94P
 app.route("/v1/permissions", createPermissionsRouter());
 app.route("/v1/workspaces", createWorkspacesRouter());
 app.route("/metrics", metricsRouter);

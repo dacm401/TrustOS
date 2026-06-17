@@ -6,6 +6,7 @@ import { TokenSankey } from "@/components/dashboard/TokenSankey";
 import { DecisionTimeline } from "@/components/dashboard/DecisionTimeline";
 import { GrowthChart } from "@/components/dashboard/GrowthChart";
 import { LearningPanel } from "@/components/dashboard/LearningPanel";
+import { ObservabilityPanel } from "@/components/dashboard/ObservabilityPanel"; // S94P
 
 const USER_ID = "user-001";
 
@@ -19,7 +20,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3">
           <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">← 返回对话</Link>
           <span className="text-gray-300">|</span>
-          <div className="flex items-center gap-2"><span className="text-xl">📊</span><span className="font-bold text-gray-800">透明观测仪表盘</span></div>
+          <div className="flex items-center gap-2"><span className="text-xl">📊</span><span className="font-bold text-gray-800">TrustOS 仪表盘</span></div>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-400">更新于 {lastUpdated.toLocaleTimeString()}</span>
@@ -36,6 +37,8 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
+            {/* S94P: Observability Panel first — system health at a glance */}
+            <ObservabilityPanel userId={USER_ID} />
             <StatsCards data={data} />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <TokenSankey tokenFlow={data?.token_flow} />

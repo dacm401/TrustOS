@@ -1,13 +1,17 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
+import { API_BASE } from '@/lib/api';
 
 interface Session {
-  id: string;
-  summary: string | null;
+  session_id: string;
+  active_topic?: string;
+  summary_text?: string;
+  topic?: string;
+  total_requests?: number;
+  turn_count?: number;
   created_at: string;
   updated_at: string;
-  message_count?: number;
 }
 
 interface SessionSwitcherProps {
@@ -26,13 +30,14 @@ export function SessionSwitcher({
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [page, setPage] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     fetchRecentSessions(controller.signal);
     return () => controller.abort();
-  }, [userId]);
+  }, [userId, page]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -48,7 +53,7 @@ export function SessionSwitcher({
     setLoading(true);
     try {
       const res = await fetch(
-        `http://localhost:3001/v1/sessions/recent?user_id=${encodeURIComponent(userId)}&limit=10`,
+        `${API_BASE}/v1/sessions/recent?limit=20`,
         { headers: { 'X-User-Id': userId }, signal }
       );
       if (res.ok) {
@@ -63,12 +68,16 @@ export function SessionSwitcher({
     }
   };
 
+  const sessionLabel = (s: Session): string => {
+    return s.topic || s.active_topic || s.summary_text || `Session ${s.session_id.slice(0, 8)}`;
+  };
+
   const handleSelect = (sessionId: string) => {
     onSessionChange(sessionId);
     setIsOpen(false);
   };
 
-  const currentSession = sessions.find(s => s.id === currentSessionId);
+  const currentSession = sessions.find(s => s.session_id === currentSessionId);
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -83,7 +92,7 @@ export function SessionSwitcher({
       >
         <span className="text-sm">💬</span>
         <span className="text-xs max-w-[120px] truncate" style={{ color: 'var(--text-secondary)' }}>
-          {currentSession?.summary || `Session ${currentSessionId.slice(0, 8)}`}
+          {currentSession ? sessionLabel(currentSession) : `Session ${currentSessionId.slice(0, 8)}`}
         </span>
         <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
           {isOpen ? '▲' : '▼'}
@@ -93,7 +102,7 @@ export function SessionSwitcher({
       {/* Dropdown */}
       {isOpen && (
         <div
-          className="absolute top-full left-0 mt-1 w-64 rounded-xl shadow-lg z-50 overflow-hidden"
+          className="absolute top-full left-0 mt-1 w-72 rounded-xl shadow-lg z-50 overflow-hidden"
           style={{
             backgroundColor: 'var(--bg-surface)',
             border: '1px solid var(--border-subtle)',
@@ -123,7 +132,7 @@ export function SessionSwitcher({
           </div>
 
           {/* Session List */}
-          <div className="max-h-64 overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto">
             {loading ? (
               <div className="p-4 text-center">
                 <span className="text-xs animate-pulse" style={{ color: 'var(--text-muted)' }}>
@@ -139,31 +148,43 @@ export function SessionSwitcher({
             ) : (
               sessions.map((session) => (
                 <button
-                  key={session.id}
-                  onClick={() => handleSelect(session.id)}
-                  className="w-full px-3 py-2 text-left transition-colors hover:opacity-80"
+                  key={session.session_id}
+                  onClick={() => handleSelect(session.session_id)}
+                  className="w-full px-3 py-2.5 text-left transition-colors hover:opacity-80"
                   style={{
-                    backgroundColor: session.id === currentSessionId ? 'var(--bg-overlay)' : 'transparent',
+                    backgroundColor: session.session_id === currentSessionId ? 'var(--bg-overlay)' : 'transparent',
                     borderBottom: '1px solid var(--border-subtle)',
                   }}
                 >
                   <div className="flex items-start gap-2">
-                    <span className="text-sm flex-shrink-0">💬</span>
+                    <span className="text-sm flex-shrink-0 mt-0.5">💬</span>
                     <div className="flex-1 min-w-0">
                       <p
-                        className="text-xs truncate"
+                        className="text-xs truncate font-medium"
                         style={{
-                          color: session.id === currentSessionId ? 'var(--text-accent)' : 'var(--text-secondary)',
+                          color: session.session_id === currentSessionId ? 'var(--text-accent)' : 'var(--text-secondary)',
                         }}
                       >
-                        {session.summary || `Session ${session.id.slice(0, 8)}`}
+                        {sessionLabel(session)}
                       </p>
-                      <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                        {new Date(session.updated_at).toLocaleDateString('zh-CN')}
-                      </p>
+                      {session.summary_text && (
+                        <p className="text-[10px] truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                          {session.summary_text.slice(0, 60)}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                          {new Date(session.updated_at).toLocaleDateString('zh-CN')}
+                        </span>
+                        {session.turn_count != null && (
+                          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                            {session.turn_count} 轮
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    {session.id === currentSessionId && (
-                      <span className="text-[10px]" style={{ color: 'var(--accent-blue)' }}>
+                    {session.session_id === currentSessionId && (
+                      <span className="text-[10px] flex-shrink-0 mt-0.5" style={{ color: 'var(--accent-blue)' }}>
                         ✓
                       </span>
                     )}
@@ -171,23 +192,6 @@ export function SessionSwitcher({
                 </button>
               ))
             )}
-          </div>
-
-          {/* Footer */}
-          <div
-            className="px-3 py-2 text-center"
-            style={{ borderTop: '1px solid var(--border-subtle)' }}
-          >
-            <button
-              onClick={() => {
-                onNewSession();
-                setIsOpen(false);
-              }}
-              className="text-xs transition-opacity hover:opacity-80"
-              style={{ color: 'var(--accent-blue)' }}
-            >
-              查看全部会话 →
-            </button>
           </div>
         </div>
       )}

@@ -6,6 +6,83 @@ import { getContextUserId } from "../middleware/identity.js";
 // Mounted at /v1/tasks via index.ts
 export const taskRouter = new Hono();
 
+// S94P: GET /v1/tasks/recent — paginated task list with status filter
+taskRouter.get("/recent", async (c) => {
+  const userId = getContextUserId(c)!;
+  const limit = Math.min(parseInt(c.req.query("limit") || "20"), 100);
+  const offset = parseInt(c.req.query("offset") || "0");
+  const status = c.req.query("status") || undefined;
+
+  try {
+    const { query } = await import("../db/connection.js");
+
+    let sql = `SELECT id, session_id, user_input, command, status, created_at, updated_at,
+               slow_execution->>'result' as result_preview
+               FROM task_archives WHERE user_id = $1`;
+    const params: any[] = [userId];
+    let paramIdx = 2;
+
+    if (status) {
+      sql += ` AND status = $${paramIdx}`;
+      params.push(status);
+      paramIdx++;
+    }
+
+    // Count total
+    const countResult = await query(
+      `SELECT COUNT(*)::int as total FROM task_archives WHERE user_id = $1` +
+      (status ? ` AND status = $2` : ""),
+      status ? [userId, status] : [userId]
+    );
+    const total = countResult.rows[0]?.total || 0;
+
+    sql += ` ORDER BY created_at DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`;
+    params.push(limit, offset);
+
+    const result = await query(sql, params);
+
+    const tasks = result.rows.map((r: any) => ({
+      task_id: r.id,
+      title: r.command?.task || r.user_input || "未命名任务",
+      user_input: r.user_input,
+      mode: r.command?.action || "unknown",
+      status: r.status,
+      result_preview: r.result_preview ? String(r.result_preview).slice(0, 200) : null,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      session_id: r.session_id,
+    }));
+
+    return c.json({ tasks, total, limit, offset });
+  } catch (error: any) {
+    console.error("[S94P] Task recent error:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// S94P: GET /v1/tasks/:task_id/result — get task full result
+taskRouter.get("/:task_id/result", async (c) => {
+  const taskId = c.req.param("task_id");
+  try {
+    const archive = await TaskArchiveRepo.getById(taskId);
+    if (!archive) return c.json({ error: `Task not found: ${taskId}` }, 404);
+
+    return c.json({
+      task_id: archive.id,
+      user_input: archive.user_input,
+      command: archive.command,
+      status: archive.status,
+      result: archive.slow_execution?.result || null,
+      errors: archive.slow_execution?.errors || [],
+      created_at: archive.created_at,
+      updated_at: archive.updated_at,
+    });
+  } catch (error: any) {
+    console.error("[S94P] Task result error:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 // GET /v1/tasks/all — list all tasks (uses /all to avoid /:task_id shadowing the "" route)
 taskRouter.get("/all", async (c) => {
   // C3a: userId from middleware context (trusted source)

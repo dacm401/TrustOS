@@ -1,0 +1,146 @@
+[
+  {
+    "id": "s94p-wp-001",
+    "input": "帮我写一个阳光折射原理的科普网页",
+    "expected_keywords": ["阳光", "折射", "科普", "光线", "介质", "html"],
+    "min_keywords": 4,
+    "quality_criteria": {
+      "keyword_coverage": 5,
+      "html_validity": 5,
+      "content_relevance": 5,
+      "code_executability": 4
+    }
+  },
+  {
+    "id": "s94p-wp-002",
+    "input": "制作一个个人作品集网页，展示我的项目",
+    "expected_keywords": ["作品集", "项目", "html", "展示", "portfolio"],
+    "min_keywords": 3,
+    "quality_criteria": {
+      "keyword_coverage": 4,
+      "html_validity": 4,
+      "content_relevance": 4,
+      "code_executability": 4
+    }
+  },
+  {
+    "id": "s94p-wp-003",
+    "input": "写一个产品登录页，标题是'云端笔记'，副标题是'随时随地记录灵感'",
+    "expected_keywords": ["云端笔记", "记录灵感", "登录", "html", "注册"],
+    "min_keywords": 4,
+    "quality_criteria": {
+      "keyword_coverage": 5,
+      "html_validity": 4,
+      "content_relevance": 5,
+      "code_executability": 4
+    }
+  },
+  {
+    "id": "s94p-wp-004",
+    "input": "生成一个餐厅菜单页面，包含前菜、主菜和甜点",
+    "expected_keywords": ["餐厅", "菜单", "前菜", "主菜", "甜点", "html"],
+    "min_keywords": 4,
+    "quality_criteria": {
+      "keyword_coverage": 5,
+      "html_validity": 4,
+      "content_relevance": 5,
+      "code_executability": 4
+    }
+  },
+  {
+    "id": "s94p-wp-005",
+    "input": "帮我做一个简约风格的倒计时网页，目标日期是2027年1月1日",
+    "expected_keywords": ["倒计时", "2027", "简约", "html", "计时"],
+    "min_keywords": 3,
+    "quality_criteria": {
+      "keyword_coverage": 4,
+      "html_validity": 4,
+      "content_relevance": 5,
+      "code_executability": 4
+    }
+  },
+  {
+    "id": "s94p-wp-006",
+    "input": "写一个天气预报卡片组件，展示今日天气信息",
+    "expected_keywords": ["天气", "预报", "卡片", "html", "温度"],
+    "min_keywords": 3,
+    "quality_criteria": {
+      "keyword_coverage": 4,
+      "html_validity": 4,
+      "content_relevance": 4,
+      "code_executability": 4
+    }
+  },
+  {
+    "id": "s94p-wp-007",
+    "input": "创建一个TODO待办事项网页，可以添加和勾选任务",
+    "expected_keywords": ["TODO", "待办", "任务", "勾选", "html", "添加"],
+    "min_keywords": 4,
+    "quality_criteria": {
+      "keyword_coverage": 5,
+      "html_validity": 4,
+      "content_relevance": 5,
+      "code_executability": 3
+    }
+  },
+  {
+    "id": "s94p-wp-008",
+    "input": "制作一个团队介绍页面，包含4个团队成员的卡片",
+    "expected_keywords": ["团队", "介绍", "成员", "卡片", "html"],
+    "min_keywords": 4,
+    "quality_criteria": {
+      "keyword_coverage": 5,
+      "html_validity": 4,
+      "content_relevance": 5,
+      "code_executability": 4
+    }
+  },
+  {
+    "id": "s94p-wp-009",
+    "input": "写一个颜色渐变生成器网页，可以选择起始和结束颜色",
+    "expected_keywords": ["颜色", "渐变", "生成器", "html", "选择"],
+    "min_keywords": 3,
+    "quality_criteria": {
+      "keyword_coverage": 4,
+      "html_validity": 4,
+      "content_relevance": 4,
+      "code_executability": 4
+    }
+  },
+  {
+    "id": "s94p-wp-010",
+    "input": "做一个FAQ常见问题页面，包含5个问答",
+    "expected_keywords": ["FAQ", "常见问题", "问答", "html", "问题"],
+    "min_keywords": 4,
+    "quality_criteria": {
+      "keyword_coverage": 5,
+      "html_validity": 4,
+      "content_relevance": 5,
+      "code_executability": 4
+    }
+  },
+  {
+    "id": "s94p-wp-011",
+    "input": "创建一个数据统计仪表盘页面，展示4个关键指标卡片",
+    "expected_keywords": ["数据", "统计", "仪表盘", "指标", "html", "卡片"],
+    "min_keywords": 4,
+    "quality_criteria": {
+      "keyword_coverage": 5,
+      "html_validity": 4,
+      "content_relevance": 5,
+      "code_executability": 4
+    }
+  },
+  {
+    "id": "s94p-wp-012",
+    "input": "写一个唐诗三百首目录页面，列出10首诗的标题和作者",
+    "expected_keywords": ["唐诗", "目录", "标题", "作者", "html", "三百首"],
+    "min_keywords": 4,
+    "quality_criteria": {
+      "keyword_coverage": 5,
+      "html_validity": 4,
+      "content_relevance": 5,
+      "code_executability": 5
+    }
+  }
+]

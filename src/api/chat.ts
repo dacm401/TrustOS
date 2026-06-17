@@ -733,6 +733,16 @@ chatRouter.post("/chat", async (c) => {
             // S86P: Trace context is cleaned up by AsyncLocalStorage when runWithRequestTrace exits
           }
 
+          // S94P: Build cost summary from requestSummary for done event
+          const costPayload = llmNativeResult.requestSummary ? {
+            input_tokens: llmNativeResult.requestSummary.totalInputTokens ?? 0,
+            output_tokens: llmNativeResult.requestSummary.totalOutputTokens ?? 0,
+            estimated_cost_usd: llmNativeResult.requestSummary.estimatedTotalCost ?? null,
+            model: llmNativeResult.requestSummary.modelUsed ?? config.fastModel,
+            manager_calls: llmNativeResult.requestSummary.managerModelCalls ?? 0,
+            worker_calls: llmNativeResult.requestSummary.slowModelCalls ?? 0,
+          } : null;
+
           const doneObj: Record<string, unknown> = {
             type: "done",
             stream: doneMsg,
@@ -741,6 +751,8 @@ chatRouter.post("/chat", async (c) => {
             ledger: ledgerPayload,
             artifactMeta: artifactMetaFromSSE ?? null,
             meta: { origin: "system", contentKind: "status" },
+            // S94P: Cost observability
+            cost: costPayload,
             // Sprint 61P: ContextPackage V1 — 运行时审计合同
             contextPackage: llmNativeResult.contextPackage ?? null,
             // Sprint 61P: ContextPackage ledger 摘要（用于 harness 快速解析）

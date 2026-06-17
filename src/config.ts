@@ -131,14 +131,15 @@ export const config = {
     httpMaxResponseBytes: parseInt(process.env.HTTP_MAX_RESPONSE_BYTES || "1048576"), // 1 MB
   },
 
-  // P2-2: Rate Limiting Middleware
-  // Opt-in: defaults to disabled until production limits are tuned.
+  // S94P: Rate Limiting Middleware — enabled by default for Private Beta
   rateLimit: {
-    enabled: process.env.RATE_LIMIT_ENABLED === "true",
+    enabled: process.env.RATE_LIMIT_ENABLED !== "false",
     // Sliding window size in milliseconds
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000"),
-    // Max requests per window per IP / userId
+    // Max requests per window per IP / userId (default: 60/min for general, 10/min for SSE)
     maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "60"),
+    // S94P: SSE 单独限流 — 长连接不应占满通用窗口
+    sseMaxRequests: parseInt(process.env.RATE_LIMIT_SSE_MAX || "10"),
   },
 
   // Sprint 68: Phase 2.0 L2 Feature Flag — 控制 Layer 2 委托流量的灰度开关

@@ -119,9 +119,16 @@ export async function rateLimitMiddleware(c: Context, next: Next): Promise<Respo
   }
 
   const { windowMs, maxRequests } = config.rateLimit;
-  const key = getRateLimitKey(c);
 
-  const result = punch(key, windowMs, maxRequests);
+  // S94P: SSE endpoints use separate (lower) rate limit
+  const isSSE = c.req.path.includes("/api/chat") && c.req.method === "POST";
+  const effectiveMax = isSSE
+    ? (config.rateLimit as any).sseMaxRequests ?? 10
+    : maxRequests;
+
+  const key = getRateLimitKey(c) + (isSSE ? ":sse" : "");
+
+  const result = punch(key, windowMs, effectiveMax);
 
   if (!result.allowed) {
     // Return a raw Response directly — avoids c.res.headers.set() being
