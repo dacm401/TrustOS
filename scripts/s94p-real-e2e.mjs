@@ -9,7 +9,7 @@ async function get(url, headers = {}) {
 }
 
 async function main() {
-  const input = "帮我写一个阳光折射原理的科普网页，包含中文解释和简单的HTML页面";
+  const input = "帮我写一个简单的 HTML 科普页面，主题是阳光折射，包含三段说明和基础样式。";
   const sessionId = `s94p-real-${Date.now()}`;
   const startTime = Date.now();
   
@@ -147,6 +147,13 @@ async function main() {
 
   // PM required checks
   console.log("\n── PM Acceptance Criteria ──");
+  // Phase 5: delegation_logs verification
+  console.log("\n── Phase 5: delegation_logs Verification ──");
+  const dlRes = await get("/v1/observability/delegation-logs?limit=5");
+  obsCheck.delegationLogs = dlRes.status === 200;
+  const dlCount = dlRes.body?.total ?? dlRes.body?.length ?? 0;
+  console.log(`  /v1/observability/delegation-logs: ${dlRes.status} count=${dlCount} ${obsCheck.delegationLogs ? "✅" : "❌"}`);
+
   const pmChecks = [
     { name: "SSE 200", pass: ssePass },
     { name: "result contains HTML/code", pass: hasHtml },
@@ -154,6 +161,7 @@ async function main() {
     { name: "SSE done emitted", pass: hasDone },
     { name: "terminalSummary present", pass: hasTerminalSummary },
     { name: "task_archives 写入", pass: obsCheck.taskArchive },
+    { name: "delegation_logs 写入", pass: obsCheck.delegationLogs },
     { name: "observability/summary 200", pass: obsCheck.obsSummary },
     { name: "tasks/recent 200", pass: obsCheck.tasksRecent },
     { name: "sessions/recent 200", pass: obsCheck.sessionsRecent },

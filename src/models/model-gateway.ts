@@ -122,7 +122,7 @@ function mapProviderError(error: any, model: string): ProviderError {
 // 这些超时通过 Promise.race 实现，覆盖 OpenAI SDK 的 180s timeout。
 
 const MANAGER_TIMEOUT_MS = 30_000;  // 30s for Manager routing decisions
-const WORKER_TIMEOUT_MS = 120_000;  // 120s for Worker code generation
+const WORKER_TIMEOUT_MS = Number(process.env["WORKER_TIMEOUT_MS"]) || 120_000;  // 120s for Worker code generation (env-overridable)
 
 /**
  * S93P: 根据调用角色返回超时毫秒数。
