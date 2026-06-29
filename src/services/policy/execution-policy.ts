@@ -51,22 +51,40 @@ function detectArtifactCreateIntent(message: string): boolean {
     "写一个", "做一个", "帮我写", "帮我做", "帮我创建",
     "新建", "新做", "重新做", "重新写", "另做",
     "再写一个", "再做一个", "再来一个",
+    "生成一个", "创建一个", "编写一个", "制作一个",
     "write a", "create a", "build a", "make a",
-    "generate a new", "another", "different component",
+    "generate a", "generate a new", "another", "different component",
   ];
+
+  // S96P: Broader artifact creation patterns — detect "生成/创建/编写 + artifact keyword"
+  const artifactKeywords = ["html", "页面", "网页", "网站", "登录页", "首页", "组件", "component", "page", "website"];
+  const hasArtifactKeyword = artifactKeywords.some((k) => trimmed.includes(k));
+  const artifactCreateVerbs = ["生成", "创建", "编写", "制作", "开发", "generate", "create", "build", "develop", "code"];
+  const hasArtifactCreateVerb = artifactCreateVerbs.some((v) => trimmed.includes(v));
 
   // 明确排除：已存在 artifact 的修订
   // 规则：有具体修订对象（按钮/标题/输入框）时才排除；"页面"需要配合修订动词才排除
   // "新建一个页面" 不应该被排除
   const revisionPatterns = [
     "再改一下", "再调整", // 明确修订
-    "按钮", "标题", // 明确修订对象（通常搭配"改颜色/改大小"等）
   ];
   // "页面" 只有在前面有修订动词时才排除（"改页面"），但"写一个页面"/"创建一个页面" 是新建
+  // S95P fix: "按钮"/"标题" 不再无条件视为修订对象。只有当它们出现在明确修订语境中（如"改按钮"、"调整标题"）
+  // 才触发 hasRevisionContext。单独的 "帮我写一个按钮"/"帮我创建一个标题" 是新建意图。
+  const revisionObjectWords = ["按钮", "标题", "输入框", "颜色", "字体", "布局", "背景"];
+  const hasRevisionObjectInContext = revisionObjectWords.some((w) => {
+    if (!trimmed.includes(w)) return false;
+    // 检查是否有修订动词修饰该词（改/调整/修改/换/变 + 按钮/标题等）
+    return /[改调修换变][\u4e00-\u9fa5]{0,2}(按钮|标题|输入框|颜色|字体|布局|背景)/.test(trimmed);
+  });
   const hasRevisionContext = revisionPatterns.some((p) => trimmed.includes(p)) ||
+    hasRevisionObjectInContext ||
     (trimmed.includes("页面") && /[改调换变]页面|把.*页面|[把将].*页/.test(trimmed));
 
-  return createPatterns.some((p) => trimmed.includes(p)) && !hasRevisionContext;
+  // S96P: Broader detection — create verb + artifact keyword (e.g. "生成一个登录页 HTML")
+  const hasBroadCreateIntent = hasArtifactCreateVerb && hasArtifactKeyword && !hasRevisionContext;
+
+  return (createPatterns.some((p) => trimmed.includes(p)) || hasBroadCreateIntent) && !hasRevisionContext;
 }
 
 /**

@@ -263,8 +263,29 @@ async function executeDelegateCommand(
     if (sections.length > 0) {
       promptSections.push("【Required Sections】", sections.join(", "));
     }
+    // S96P: Artifact-specific output guidance
+    if (outputFormat === "html") {
+      promptSections.push(
+        "【Output Format】HTML",
+        "你必须输出完整的 HTML 页面代码。要求：",
+        "- 输出完整的 <!DOCTYPE html> 到 </html>，包含 <head> 和 <body>",
+        "- 在 <style> 标签中编写 CSS，使用现代简洁的设计风格",
+        "- 所有内容直接可用，不需要用户额外修改",
+        "- 不要在 HTML 前后添加任何解释文字或 Markdown 标记",
+      );
+    } else if (outputFormat === "code") {
+      promptSections.push(
+        "【Output Format】Code",
+        "你必须输出完整可运行的代码。要求：",
+        "- 输出完整的代码文件内容，包含所有必要的 import/依赖声明",
+        "- 代码可以直接复制运行，不需要用户额外修改",
+        "- 使用现代最佳实践",
+        "- 不要在代码前后添加任何解释文字（除非用户明确要求）",
+      );
+    } else {
+      promptSections.push("【Output Format】" + outputFormat);
+    }
     promptSections.push(
-      "【Output Format】" + outputFormat,
       "【重要】只使用 Task Brief 提供的信息，不要读取任何外部历史对话。",
       "如果信息不足，在 summary 中注明 ask_for_more_context。"
     );
@@ -315,8 +336,29 @@ async function executeDelegateCommand(
       if (sections.length > 0) {
         sections2.push("【Required Sections】", sections.join(", "));
       }
+      // S96P: Artifact-specific output guidance (cycle path)
+      if (outputFormat === "html") {
+        sections2.push(
+          "【Output Format】HTML",
+          "你必须输出完整的 HTML 页面代码。要求：",
+          "- 输出完整的 <!DOCTYPE html> 到 </html>，包含 <head> 和 <body>",
+          "- 在 <style> 标签中编写 CSS，使用现代简洁的设计风格",
+          "- 所有内容直接可用，不需要用户额外修改",
+          "- 不要在 HTML 前后添加任何解释文字或 Markdown 标记",
+        );
+      } else if (outputFormat === "code") {
+        sections2.push(
+          "【Output Format】Code",
+          "你必须输出完整可运行的代码。要求：",
+          "- 输出完整的代码文件内容，包含所有必要的 import/依赖声明",
+          "- 代码可以直接复制运行，不需要用户额外修改",
+          "- 使用现代最佳实践",
+          "- 不要在代码前后添加任何解释文字（除非用户明确要求）",
+        );
+      } else {
+        sections2.push("【Output Format】" + outputFormat);
+      }
       sections2.push(
-        "【Output Format】" + outputFormat,
         "【重要】只使用 Task Brief 提供的信息，不要读取任何外部历史对话。",
         "如果信息不足，在 summary 中注明 ask_for_more_context。"
       );
@@ -329,7 +371,7 @@ async function executeDelegateCommand(
       const resp = await callModelFull(slowModel, msg2, undefined, "worker");
       inputTokens += resp.input_tokens ?? 0;
       outputTokens += resp.output_tokens ?? 0;
-      return { content: resp.content ?? "" };
+      return { content: resp.content ?? "", artifactType: outputFormat };
     }
 
     // ── Sprint 62P: Patch-first Revision V0 ─────────────────────────────────
@@ -940,12 +982,14 @@ async function executeDelegateCommand(
     const costUsd = estimateCost(inputTokens, outputTokens, slowModel);
 
     // 构造 WorkerResult
+    // S96P: Derive artifactType from outputFormat for downstream artifact detection
+    const artifactType = (outputFormat === "html" || outputFormat === "code") ? outputFormat : undefined;
     const workerResult: WorkerResult = {
       task_id: task_id,
       worker_type: "slow_analyst",
       status: "completed",
       summary: content.substring(0, 300),
-      structured_result: { analysis: content },
+      structured_result: { analysis: content, contentType: artifactType },
       confidence: 0.85,
     };
 

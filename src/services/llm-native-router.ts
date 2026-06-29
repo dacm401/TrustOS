@@ -26,6 +26,7 @@ import type {
   DirectResponse,
   ClarifyQuestion,
   CommandPayload,
+  RequiredOutput,
   ExecutionPlan,
   WorkerHint,
   DecisionFeatures,
@@ -535,6 +536,7 @@ export async function routeWithManagerDecision(
       activeArtifact: effectiveActiveArtifact,
       artifactRevisionIntent: revisionGuard.artifactRevisionIntent,
       traceId: ledgerTraceId,
+      policyRoute: policyDecision.route,
     });
     // 注入 budgetDecision（供 withLedger 使用）
     (gatedRouteResult as any).budgetDecision = bypassBudgetDecision;
@@ -1039,6 +1041,7 @@ export async function routeWithManagerDecision(
       activeArtifact: effectiveActiveArtifact,
       artifactRevisionIntent: revisionGuard.artifactRevisionIntent,
       traceId: ledgerTraceId,
+      policyRoute: policyDecision.route,
   });
 
   // Sprint 59P: 计算安全范围标记
@@ -1674,13 +1677,15 @@ interface GatedRouteContext {
   artifactRevisionIntent?: boolean;
   /** Sprint 60P-H1: trace ID，用于关联 request ledger 与 worker ledger */
   traceId?: string;
+  /** S96P: Execution Policy route, used to inject artifact-specific required_output */
+  policyRoute?: string;
 }
 
 async function routeByGatedDecision(
   gated: GatedDelegationContext,
   ctx: GatedRouteContext
 ): Promise<LLMNativeRouterResult> {
-  const { message, user_id, session_id, turn_id, task_id, language, reqApiKey, rawOutput, v2Decision, traceId } = ctx;
+  const { message, user_id, session_id, turn_id, task_id, language, reqApiKey, rawOutput, v2Decision, traceId, policyRoute } = ctx;
 
   // P2 HITL: 歧义检测（适用于所有决策类型，不限于 ask_clarification）
   const ambiguity = detectDecisionAmbiguity(gated.llmScores, gated.llmConfidenceHint);
@@ -1707,18 +1712,33 @@ async function routeByGatedDecision(
         }
       : undefined,
     command: (gated.routedAction === "delegate_to_slow" || gated.routedAction === "execute_task")
-      ? {
-          command_type: gated.routedAction === "execute_task" ? "execute_plan" as const : "delegate_analysis" as const,
-          task_type: "analysis",
-          // Sprint 57: activeArtifact + revisionIntent 时用结构化消息强制覆盖 task_brief
-          task_brief: (ctx.activeArtifact && ctx.artifactRevisionIntent)
-            ? message
-            : ((v2Decision?.command as { task_brief?: string })?.task_brief ?? message.substring(0, 200)),
-          goal: (ctx.activeArtifact && ctx.artifactRevisionIntent)
-            ? message
-            : ((v2Decision?.command as { task_brief?: string })?.task_brief ?? message),
-          constraints: v2Decision && Array.isArray((v2Decision.command as { constraints?: unknown[] })?.constraints) ? (v2Decision.command as { constraints: unknown[] }).constraints as string[] : [],
-        }
+      ? ((): CommandPayload => {
+          const base: CommandPayload = {
+            command_type: gated.routedAction === "execute_task" ? "execute_plan" as const : "delegate_analysis" as const,
+            task_type: "analysis",
+            // Sprint 57: activeArtifact + revisionIntent 时用结构化消息强制覆盖 task_brief
+            task_brief: (ctx.activeArtifact && ctx.artifactRevisionIntent)
+              ? message
+              : ((v2Decision?.command as { task_brief?: string })?.task_brief ?? message.substring(0, 200)),
+            goal: (ctx.activeArtifact && ctx.artifactRevisionIntent)
+              ? message
+              : ((v2Decision?.command as { task_brief?: string })?.task_brief ?? message),
+            constraints: v2Decision && Array.isArray((v2Decision.command as { constraints?: unknown[] })?.constraints) ? (v2Decision.command as { constraints: unknown[] }).constraints as string[] : [],
+            // S96P: Pass through required_output from Manager LLM decision
+            required_output: (v2Decision?.command as { required_output?: RequiredOutput })?.required_output,
+          };
+          // S96P: Inject artifact-specific required_output when policy bypasses Manager LLM
+          if (policyRoute === "direct_create_artifact" && !base.required_output) {
+            // Detect artifact type from user message
+            const msgLower = message.toLowerCase();
+            if (msgLower.includes("html") || msgLower.includes("页面") || msgLower.includes("网页") || msgLower.includes("page")) {
+              base.required_output = { format: "html", tone: "professional" };
+            } else if (msgLower.includes("代码") || msgLower.includes("函数") || msgLower.includes("code") || msgLower.includes("function") || msgLower.includes("react") || msgLower.includes("组件") || msgLower.includes("component")) {
+              base.required_output = { format: "code", tone: "professional" };
+            }
+          }
+          return base;
+        })()
       : undefined,
   };
 

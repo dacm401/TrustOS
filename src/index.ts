@@ -27,6 +27,8 @@ import { observabilityRouter } from "./api/observability.js";
 // Phase 3.0: 启动后台 Worker 轮询循环
 import { startSlowWorker, stopSlowWorker } from "./services/phase3/slow-worker-loop.js";
 import { startExecuteWorker, stopExecuteWorker } from "./services/phase3/execute-worker-loop.js";
+// S96P: Task watchdog for stuck task detection
+import { startTaskWatchdog, stopTaskWatchdog } from "./services/phase3/task-watchdog.js";
 // Optimization: Prometheus Metrics endpoint
 import { metricsRouter } from "./api/metrics.js";
 
@@ -158,6 +160,8 @@ const server = serve({ fetch: app.fetch, port: config.port });
 console.log("  ✅ Workers starting in background...\n");
 startSlowWorker();
 startExecuteWorker();
+// S96P: Start task watchdog for stuck task detection
+startTaskWatchdog();
 
 // ── 优雅关机：处理 SIGINT / SIGTERM ─────────────────────────────────────
 
@@ -167,6 +171,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   // 1. 停止 worker 轮询
   stopSlowWorker();
   stopExecuteWorker();
+  stopTaskWatchdog();
 
   // 2. 等待 worker 当前迭代结束（最多 500ms）
   await new Promise((resolve) => setTimeout(resolve, 500));

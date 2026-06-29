@@ -38,6 +38,8 @@ export function buildManagerSystemPrompt(
 - **简单问答/闲聊/打招呼**：快模型已经足够好，direct_answer 必须 >= 0.7
 - **需要工具调用（搜索/执行代码）**：execute_task 必须 >= 0.8
 - **artifact 修订任务**：如果当前存在 active artifact（上一轮 Worker 产物摘要），且用户要求"修改/改成/调整/优化"，你不能直接回答修改结果。你没有完整产物原文，必须 delegate_to_slow，delegate_to_slow 必须 >= 0.8，direct_answer 必须 <= 0.2。用 direct_answer 只适用于解释/总结/高层建议。
+- **HTML 页面/网页生成**：用户要求"写/做/生成一个 HTML 页面/网页/网站"时，这是代码生成任务，慢模型显著优于快模型。delegate_to_slow 必须 >= 0.8，direct_answer 必须 <= 0.2。command.required_output.format 设为 "html"。
+- **代码生成/编程**：用户要求"写代码/写函数/写组件"时，delegate_to_slow 必须 >= 0.8，direct_answer 必须 <= 0.2。command.required_output.format 设为 "code"。
 - **schema_version 必须为 JSON 第一个字段**：值为 "manager_decision_v4"，必须作为 JSON 第一行出现，缺失或错位视为协议错误
 
 【输出格式示例】
@@ -127,7 +129,7 @@ export function buildManagerSystemPrompt(
   "direct_response": {
     "content": "当 decision_type=direct_answer 时，直接写用户看到的完整回答（用中文）。当 decision_type 不是 direct_answer 时，写安抚语（如：好的，正在为您分析...）"
   },
-  "command": { "task_brief": "当 decision_type=delegate/execute 时的任务摘要", "constraints": ["约束1"] },
+  "command": { "task_brief": "当 decision_type=delegate/execute 时的任务摘要", "constraints": ["约束1"], "required_output": { "format": "structured_analysis | html | code | json | bullet_summary | answer" } },
   "clarification": {
     "question_text": "当 decision_type=ask_clarification 时的具体澄清问题（用中文）",
     "reason": "为什么需要澄清"

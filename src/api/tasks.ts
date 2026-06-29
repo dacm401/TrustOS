@@ -237,3 +237,62 @@ taskRouter.patch("/:task_id", async (c) => {
     return c.json({ error: error.message }, 500);
   }
 });
+
+// S96P: POST /v1/tasks/:task_id/retry — retry a failed/cancelled/timed_out task
+taskRouter.post("/:task_id/retry", async (c) => {
+  const taskId = c.req.param("task_id");
+  const userId = getContextUserId(c);
+
+  // Validate task exists and belongs to user
+  const task = await TaskRepo.getById(taskId);
+  if (!task) return c.json({ error: `Task not found: ${taskId}` }, 404);
+  if (task.user_id !== userId) return c.json({ error: "Forbidden: task does not belong to this user" }, 403);
+
+  // Only retry terminal states
+  const archive = await TaskArchiveRepo.getById(taskId);
+  if (!archive) return c.json({ error: `Archive not found: ${taskId}` }, 404);
+
+  const terminalStates = ["failed", "cancelled", "timed_out", "completed", "done"];
+  const currentState = (archive as any).state || archive.status;
+  if (!terminalStates.includes(currentState as string)) {
+    return c.json({
+      error: `Task is still active (state=${currentState}). Only terminal tasks can be retried.`,
+      currentState,
+    }, 409);
+  }
+
+  try {
+    // Reset task to running state
+    await TaskRepo.setStatus(taskId, "running");
+
+    // Reset archive state to new so worker picks it up
+    await TaskArchiveRepo.updateState(taskId, "new");
+
+    // Clear old execution result (but preserve user_input for re-submission)
+    await TaskArchiveRepo.setSlowExecution(taskId, {
+      result: null,
+      retriedAt: new Date().toISOString(),
+      retryCount: ((archive.slow_execution as any)?.retryCount ?? 0) + 1,
+      previousState: currentState,
+    });
+
+    // Re-queue the command
+    const { query } = await import("../db/connection.js");
+    await query(
+      `UPDATE task_commands SET status = 'queued', error_message = NULL, started_at = NULL, completed_at = NULL WHERE archive_id = $1`,
+      [taskId]
+    );
+
+    console.log(`[S96P] Task ${taskId} retry: ${currentState} → queued`);
+    return c.json({
+      task_id: taskId,
+      action: "retry",
+      previousState: currentState,
+      status: "queued",
+      message: "Task has been re-queued. Re-submit via POST /api/chat with task_id to resume.",
+    });
+  } catch (error: any) {
+    console.error("Task retry error:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});

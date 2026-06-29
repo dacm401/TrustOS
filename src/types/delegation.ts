@@ -141,7 +141,9 @@ export type OutputFormat =
   | "structured_analysis"
   | "bullet_summary"
   | "answer"
-  | "json";
+  | "json"
+  | "html"
+  | "code";
 
 /** Manager → Worker 的结构化任务命令。仅当 decision_type = "delegate_to_slow" 或 "execute_task" 时出现。 */
 export interface CommandPayload {
