@@ -495,17 +495,35 @@ async function executeDelegateCommand(
         console.log(`[slow-worker] Fast path completed task ${task_id} in ${fastTotalMs}ms`);
         return; // Early return — skip all cycle/legacy logic below
       } catch (err: any) {
-        console.error(`[slow-worker] Fast path failed for command ${id}:`, err.message);
+        // S95P-HF4: Record safe diagnostics on fast path failure
+        const safeErrorCode = err?.code ?? "worker_fastpath_error";
+        const safeErrorMessage = typeof err?.message === "string" ? err.message : "Fast path worker call failed";
+        console.error(`[slow-worker] Fast path failed for command ${id}: code=${safeErrorCode}`);
         try {
           await TaskCommandRepo.updateStatus(id, "failed", {
             finished_at: new Date(),
-            error_message: err.message,
+            error_message: safeErrorMessage,
           });
           await TaskArchiveRepo.updateStateWithIntegrity(archive_id, "failed");
           await TaskArchiveRepo.setSlowExecution(archive_id, {
             result: "",
-            errors: [err.message],
+            errors: [safeErrorMessage],
             completed_at: new Date().toISOString(),
+            workerDiagnostics: {
+              taskId: task_id,
+              delegationId: id,
+              workerRole: "slow_analyst",
+              artifactType: outputFormat ?? "unknown",
+              promptLength: workerPrompt?.length ?? 0,
+              provider: config.slowModel?.split("/")[0] ?? "unknown",
+              model: slowModel,
+              errorCode: safeErrorCode,
+              safeErrorMessage,
+              durationMs: Date.now() - startTime,
+              inputTokens: 0,
+              outputTokens: 0,
+              executionStatus: "failed",
+            },
             fastPath: {
               eligible: true,
               used: false,
@@ -754,14 +772,34 @@ async function executeDelegateCommand(
           inputTokens = resp.input_tokens ?? 0;
           outputTokens = resp.output_tokens ?? 0;
         } catch (modelErr: any) {
+          // S95P-HF4: Record safe diagnostic fields on Worker failure
+          const safeErrorCode = modelErr?.code ?? "worker_model_error";
+          const safeErrorMessage = typeof modelErr?.message === "string"
+            ? modelErr.message : "Worker model call failed";
+          console.error(`[slow-worker] Worker model call failed (cycle fallback): code=${safeErrorCode} model=${slowModel}`);
           await TaskCommandRepo.updateStatus(id, "failed", {
             finished_at: new Date(),
-            error_message: modelErr.message,
+            error_message: safeErrorMessage,
           });
           await TaskArchiveRepo.setSlowExecution(archive_id, {
             result: "",
-            errors: [modelErr.message],
+            errors: [safeErrorMessage],
             completed_at: new Date().toISOString(),
+            workerDiagnostics: {
+              taskId: task_id,
+              delegationId: id,
+              workerRole: "slow_analyst",
+              artifactType: outputFormat ?? "unknown",
+              promptLength: workerPrompt?.length ?? 0,
+              provider: config.slowModel?.split("/")[0] ?? "unknown",
+              model: slowModel,
+              errorCode: safeErrorCode,
+              safeErrorMessage,
+              durationMs: Date.now() - startTime,
+              inputTokens: 0,
+              outputTokens: 0,
+              executionStatus: "failed",
+            },
           });
           throw modelErr;
         }
@@ -778,14 +816,34 @@ async function executeDelegateCommand(
         inputTokens = resp.input_tokens ?? 0;
         outputTokens = resp.output_tokens ?? 0;
       } catch (modelErr: any) {
+        // S95P-HF4: Record safe diagnostic fields on Worker failure (legacy path)
+        const safeErrorCode = modelErr?.code ?? "worker_model_error";
+        const safeErrorMessage = typeof modelErr?.message === "string"
+          ? modelErr.message : "Worker model call failed";
+        console.error(`[slow-worker] Worker model call failed (legacy): code=${safeErrorCode} model=${slowModel}`);
         await TaskCommandRepo.updateStatus(id, "failed", {
           finished_at: new Date(),
-          error_message: modelErr.message,
+          error_message: safeErrorMessage,
         });
         await TaskArchiveRepo.setSlowExecution(archive_id, {
           result: "",
-          errors: [modelErr.message],
+          errors: [safeErrorMessage],
           completed_at: new Date().toISOString(),
+          workerDiagnostics: {
+            taskId: task_id,
+            delegationId: id,
+            workerRole: "slow_analyst",
+            artifactType: outputFormat ?? "unknown",
+            promptLength: workerPrompt?.length ?? 0,
+            provider: config.slowModel?.split("/")[0] ?? "unknown",
+            model: slowModel,
+            errorCode: safeErrorCode,
+            safeErrorMessage,
+            durationMs: Date.now() - startTime,
+            inputTokens: 0,
+            outputTokens: 0,
+            executionStatus: "failed",
+          },
         });
         throw modelErr;
       }
@@ -980,11 +1038,29 @@ async function executeDelegateCommand(
     } catch (validErr: any) {
       if (validErr.code === "INTEGRITY_VIOLATION") {
         console.warn(`[slow-worker] ⚠️ INTEGRITY_VIOLATION marking ${archive_id} done:`, validErr.message);
+        // S95P-HF4: INTEGRITY_VIOLATION must NOT silently overwrite Worker result.
+        // Instead, preserve existing result + tokens and append the violation as an error.
+        // If there is no existing result (empty), mark as failed to avoid "0-token success".
+        const hasContent = typeof content === "string" && content.trim().length > 0;
         await TaskArchiveRepo.setSlowExecution(archive_id, {
-          result: "",
+          result: hasContent ? content : "",
           errors: [`INTEGRITY_VIOLATION: ${validErr.message}`],
           completed_at: new Date().toISOString(),
+          // Preserve existing token/cost data
+          tokens_input: hasContent ? inputTokens : 0,
+          tokens_output: hasContent ? outputTokens : 0,
+          cost_usd: hasContent ? costUsd : 0,
+          duration_ms: hasContent ? totalMs : 0,
         });
+        // S95P-HF4: If Worker produced real content, keep as completed.
+        // If empty, mark as failed so SSE poller routes to error path instead of "执行异常".
+        if (!hasContent) {
+          try {
+            await TaskArchiveRepo.updateStateWithIntegrity(archive_id, "failed");
+          } catch {
+            await TaskArchiveRepo.updateState(archive_id, "failed" as TaskState);
+          }
+        }
       }
       throw validErr;
     }
@@ -1065,20 +1141,38 @@ async function executeDelegateCommand(
       return;
     }
 
-    console.error(`[slow-worker] Failed to execute command ${id}:`, err.message);
+    // S95P-HF4: Record safe diagnostics for unexpected Worker failures
+    const safeErrorCode = err?.code ?? "worker_unexpected_error";
+    const safeErrorMessage = typeof err?.message === "string" ? err.message : "Unexpected worker failure";
+    console.error(`[slow-worker] Failed to execute command ${id}: code=${safeErrorCode} message=${safeErrorMessage}`);
     try {
       // S92P: Build terminal summary for failed state
-      const failedSummary = buildTerminalSummary({ status: "failed", errorMessage: err.message });
+      const failedSummary = buildTerminalSummary({ status: "failed", errorMessage: safeErrorMessage });
       await TaskCommandRepo.updateStatus(id, "failed", {
         finished_at: new Date(),
-        error_message: err.message,
+        error_message: safeErrorMessage,
       });
       await TaskArchiveRepo.updateStateWithIntegrity(archive_id, "failed");
       await TaskArchiveRepo.setSlowExecution(archive_id, {
         result: "",
-        errors: [err.message],
+        errors: [safeErrorMessage],
         completed_at: new Date().toISOString(),
         terminalSummary: failedSummary,
+        workerDiagnostics: {
+          taskId: task_id,
+          delegationId: id,
+          workerRole: "slow_analyst",
+          artifactType: "unknown",
+          promptLength: 0,
+          provider: config.slowModel?.split("/")[0] ?? "unknown",
+          model: config.slowModel,
+          errorCode: safeErrorCode,
+          safeErrorMessage,
+          durationMs: Date.now() - startTime,
+          inputTokens: 0,
+          outputTokens: 0,
+          executionStatus: "failed",
+        },
       });
     } catch (updateErr: any) {
       console.error("[slow-worker] Failed to update status:", updateErr.message);

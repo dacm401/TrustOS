@@ -635,7 +635,18 @@ export async function* pollArchiveAndYield(
 
             // Sprint 75: Detect empty results to prevent "silent success"
             if (!workerResult.trim()) {
-                console.warn("[pollArchiveAndYield] Worker returned empty result for task:", taskId);
+                // S95P-HF4: Include workerDiagnostics in the done event for benchmark observability
+                const diagnostics = execution.workerDiagnostics as Record<string, unknown> | undefined;
+                const safeDiag = diagnostics ? {
+                  errorCode: diagnostics.errorCode ?? "empty_result",
+                  safeErrorMessage: diagnostics.safeErrorMessage ?? "Worker returned empty result",
+                  durationMs: diagnostics.durationMs ?? 0,
+                  promptLength: diagnostics.promptLength ?? 0,
+                  provider: diagnostics.provider ?? "unknown",
+                  model: diagnostics.model ?? "unknown",
+                } : null;
+                console.warn("[pollArchiveAndYield] Worker returned empty result for task:", taskId,
+                  safeDiag ? `diagnostics=${JSON.stringify(safeDiag)}` : "");
                 yield {
                     type: "error",
                     stream: "⚠️ Worker 执行完成但未返回有效结果。请检查 Slow Model 配置或 Worker 环境。",
@@ -646,10 +657,19 @@ export async function* pollArchiveAndYield(
                     DelegationLogRepo.updateExecution(delegation_log_id, {
                         execution_status: "failed",
                         execution_correct: false,
-                        error_message: "Worker returned empty result",
+                        error_message: safeDiag?.safeErrorMessage ?? "Worker returned empty result",
                     }).catch(() => {});
                 }
-                yield { type: "done", stream: lang === "zh" ? "执行异常" : "Execution error", routing_layer: "L2" };
+                // S95P-HF4: Include safe diagnostics in done event
+                const donePayload: Record<string, unknown> = {
+                  type: "done",
+                  stream: lang === "zh" ? "执行异常" : "Execution error",
+                  routing_layer: "L2" as RoutingLayer,
+                };
+                if (safeDiag) {
+                  donePayload.workerDiagnostics = safeDiag;
+                }
+                yield donePayload;
                 await TaskArchiveRepo.markDelivered(taskId).catch(() => {});
                 break;
             }
