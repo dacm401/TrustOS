@@ -5,7 +5,7 @@
 | Sprint | S99P |
 | Baseline | `e4db7b2` (S98P closure) |
 | 目标 | 让 TrustOS Private Beta 可稳定运营 1-2 周，形成每日复盘、问题可定位、反馈可转任务、成本可追踪的运营闭环 |
-| 状态 | PLANNING |
+| 状态 | IN PROGRESS |
 | 日期 | 2026-06-30 |
 
 ---

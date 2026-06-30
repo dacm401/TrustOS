@@ -36,6 +36,8 @@ import { startSlowWorker, stopSlowWorker } from "./services/phase3/slow-worker-l
 import { startExecuteWorker, stopExecuteWorker } from "./services/phase3/execute-worker-loop.js";
 // S96P: Task watchdog for stuck task detection
 import { startTaskWatchdog, stopTaskWatchdog } from "./services/phase3/task-watchdog.js";
+// S99P: Alert detector for beta operations
+import { startAlertDetector, stopAlertDetector } from "./services/alert-detector.js";
 // Optimization: Prometheus Metrics endpoint
 import { metricsRouter } from "./api/metrics.js";
 
@@ -178,6 +180,8 @@ startSlowWorker();
 startExecuteWorker();
 // S96P: Start task watchdog for stuck task detection
 startTaskWatchdog();
+// S99P: Start alert detector for beta operations (every 5 min)
+startAlertDetector(300_000);
 
 // ── 优雅关机：处理 SIGINT / SIGTERM ─────────────────────────────────────
 
@@ -188,6 +192,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   stopSlowWorker();
   stopExecuteWorker();
   stopTaskWatchdog();
+  stopAlertDetector();
 
   // 2. 等待 worker 当前迭代结束（最多 500ms）
   await new Promise((resolve) => setTimeout(resolve, 500));
