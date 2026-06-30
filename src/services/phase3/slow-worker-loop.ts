@@ -287,7 +287,8 @@ async function executeDelegateCommand(
     }
     promptSections.push(
       "【重要】只使用 Task Brief 提供的信息，不要读取任何外部历史对话。",
-      "如果信息不足，在 summary 中注明 ask_for_more_context。"
+      "【禁止 ask_for_more_context】即使信息不完整，也必须尽力生成最佳结果。在产物中用注释标注你做的假设，而不是拒绝生成。",
+      "例如：产品介绍页缺少功能列表 → 基于产品名称推理典型功能并生成完整 HTML，在注释中标注 \"// Assumed features based on product name\"。"
     );
 
     const workerPrompt = promptSections.join("\n");
@@ -360,7 +361,7 @@ async function executeDelegateCommand(
       }
       sections2.push(
         "【重要】只使用 Task Brief 提供的信息，不要读取任何外部历史对话。",
-        "如果信息不足，在 summary 中注明 ask_for_more_context。"
+        "【禁止 ask_for_more_context】即使信息不完整，也必须尽力生成最佳结果。在产物中用注释标注你做的假设，而不是拒绝生成。"
       );
 
       const msg2: ChatMessage[] = [

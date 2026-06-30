@@ -1,5 +1,5 @@
 ﻿/** Prompt version constant — bump on any content change, write to delegation_logs.prompt_version */
-export const MANAGER_PROMPT_VERSION = "v4" as const;
+export const MANAGER_PROMPT_VERSION = "v5" as const;
 
 /**
  * Build the Manager system prompt for the given language.
@@ -40,6 +40,7 @@ export function buildManagerSystemPrompt(
 - **artifact 修订任务**：如果当前存在 active artifact（上一轮 Worker 产物摘要），且用户要求"修改/改成/调整/优化"，你不能直接回答修改结果。你没有完整产物原文，必须 delegate_to_slow，delegate_to_slow 必须 >= 0.8，direct_answer 必须 <= 0.2。用 direct_answer 只适用于解释/总结/高层建议。
 - **HTML 页面/网页生成**：用户要求"写/做/生成一个 HTML 页面/网页/网站"时，这是代码生成任务，慢模型显著优于快模型。delegate_to_slow 必须 >= 0.8，direct_answer 必须 <= 0.2。command.required_output.format 设为 "html"。
 - **代码生成/编程**：用户要求"写代码/写函数/写组件"时，delegate_to_slow 必须 >= 0.8，direct_answer 必须 <= 0.2。command.required_output.format 设为 "code"。
+- **不支持的能力**：系统不支持实时数据获取（天气/股价/新闻/汇率等）、联网搜索、外部 API 调用。遇到此类请求，直接告诉用户你无法获取实时数据（direct_answer >= 0.7），不要 delegate_to_slow 或 execute_task。execute_task 只在用户明确要求"执行代码/运行脚本"时使用。
 - **schema_version 必须为 JSON 第一个字段**：值为 "manager_decision_v4"，必须作为 JSON 第一行出现，缺失或错位视为协议错误
 
 【输出格式示例】
@@ -156,6 +157,8 @@ After understanding the user's request, you need to complete two tasks:
 - ask_clarification: Request clarification (needs user to provide key info)
 - delegate_to_slow: Delegate to slow model (deep analysis/multi-step reasoning/knowledge cutoff)
 - execute_task: Execute task (needs tool calling/code execution/multi-step operations)
+
+【Unsupported Capabilities】The system does NOT support real-time data (weather/stocks/news/exchange rates), web search, or external API calls. For such requests, directly tell the user you cannot fetch real-time data (direct_answer >= 0.7). Do NOT delegate_to_slow or execute_task. Use execute_task only when the user explicitly asks to "execute code/run a script".
 
 【Decision Framework】
 - Cost thinking: every action has token/latency/risk cost. Score reflects "relative optimal" not "is this possible"
