@@ -142,6 +142,25 @@ export const config = {
     sseMaxRequests: parseInt(process.env.RATE_LIMIT_SSE_MAX || "10"),
   },
 
+  // S98P: Beta Hardening — Cost Cap, Quota, Invite, Admin
+  beta: {
+    // Daily cost cap in USD (per user)
+    costCapEnabled: process.env.TRUSTOS_COST_CAP_ENABLED !== "false",
+    dailyCostCapUsd: parseFloat(process.env.TRUSTOS_DAILY_COST_CAP_USD || "1.00"),
+    // Daily session/task quota (per user)
+    quotaEnabled: process.env.TRUSTOS_QUOTA_ENABLED !== "false",
+    dailySessionQuota: parseInt(process.env.TRUSTOS_DAILY_SESSION_QUOTA || "20"),
+    dailyTaskQuota: parseInt(process.env.TRUSTOS_DAILY_TASK_QUOTA || "50"),
+    // Beta invite access control
+    inviteRequired: process.env.TRUSTOS_BETA_INVITE_REQUIRED === "true",
+    inviteCodes: (process.env.TRUSTOS_BETA_INVITE_CODES || "")
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean),
+    // Admin key for admin API
+    adminKey: process.env.TRUSTOS_ADMIN_KEY || "admin-changeme",
+  },
+
   // Sprint 68: Phase 2.0 L2 Feature Flag — 控制 Layer 2 委托流量的灰度开关
   // enabled: Master kill switch，默认 true（LLM-native 路由已稳定）
   // rollout: 0.0~1.0，L2 委托流量占比（delegate_to_slow / execute_task）

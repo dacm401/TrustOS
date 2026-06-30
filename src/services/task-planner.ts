@@ -180,7 +180,8 @@ export class TaskPlanner {
     try {
       parsed = JSON.parse(planCall.function.arguments);
     } catch {
-      console.warn("[planner] Failed to parse plan arguments:", planCall.function.arguments);
+      // S98P: Log redaction — don't log full LLM tool call arguments
+      console.warn(`[planner] Failed to parse plan arguments: length=${planCall.function.arguments.length}`);
       return null;
     }
 

@@ -26,6 +26,11 @@ import { createPermissionsRouter, createWorkspacesRouter } from "./api/permissio
 import { observabilityRouter } from "./api/observability.js";
 // S97P: Beta feedback stats API
 import { betaRouter } from "./api/beta.js";
+// S98P: Beta Hardening — cost cap, quota, invite, admin
+import { costCapMiddleware } from "./middleware/cost-cap.js";
+import { quotaMiddleware } from "./middleware/quota.js";
+import { betaInviteMiddleware } from "./middleware/beta-invite.js";
+import { adminRouter } from "./api/admin.js";
 // Phase 3.0: 启动后台 Worker 轮询循环
 import { startSlowWorker, stopSlowWorker } from "./services/phase3/slow-worker-loop.js";
 import { startExecuteWorker, stopExecuteWorker } from "./services/phase3/execute-worker-loop.js";
@@ -38,12 +43,19 @@ import { metricsRouter } from "./api/metrics.js";
 export const app = new Hono();
 
 app.use("/*", cors());
+// S98P: Beta invite check — runs before everything to block unauthorized access
+app.use("/api/*", betaInviteMiddleware);
+app.use("/v1/*", betaInviteMiddleware);
 // P2-2: Rate limiting — runs before identity so even unauthenticated callers are throttled
 app.use("/api/*", rateLimitMiddleware);
 app.use("/v1/*", rateLimitMiddleware);
 // C3a: mount identity middleware on all API routes
 app.use("/api/*", identityMiddleware);
 app.use("/v1/*", identityMiddleware);
+// S98P: Cost cap + quota — run AFTER identity so userId is available
+// Applied only to POST /api/chat (the expensive endpoint)
+app.use("/api/chat", costCapMiddleware);
+app.use("/api/chat", quotaMiddleware);
 // H1: Runtime Health Dashboard — public, no identity middleware
 app.route("/health", healthRouter);
 // Sprint 48: Auth — public, no identity middleware (it's the login endpoint)
@@ -61,6 +73,7 @@ app.route("/v1/observability", observabilityRouter);  // S94P
 app.route("/v1/beta", betaRouter);  // S97P
 app.route("/v1/permissions", createPermissionsRouter());
 app.route("/v1/workspaces", createWorkspacesRouter());
+app.route("/v1/admin", adminRouter);  // S98P: Admin health/usage/errors
 app.route("/metrics", metricsRouter);
 
 console.log(`

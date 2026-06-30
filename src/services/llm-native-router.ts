@@ -736,8 +736,8 @@ export async function routeWithManagerDecision(
   }
 
   // Step 2: 解析 G1 多动作打分格式（manager_decision_v2）
-  // Debug: 打印 Manager 原始输出，排查 parse 失败
-  console.log(`[llm-native-router] [DEBUG] Manager output (first 600 chars):\n---\n${managerOutput.slice(0, 600)}\n---`);
+  // S98P: Log redaction — only log metadata, not raw Manager output
+  console.log(`[llm-native-router] Manager output received: length=${managerOutput.length}, hasSchema=${managerOutput.includes('"schema_version"')}`);
 
   // Phase 3.2: parseGatedDecision 不再返回 null，schema_version 缺失/未知时直接 throw PROTOCOL_VIOLATION
   // GF-02: 估算 token 数（中文按 2chars/token，英文按 4chars/token 粗估；混合取 3chars/token）
@@ -748,8 +748,9 @@ export async function routeWithManagerDecision(
   } catch (err: any) {
     // PROTOCOL_VIOLATION: 立刻失败，打结构化日志，不走 L0 fallback 拖超时
     if (err.code === "SCHEMA_VERSION_MISSING" || err.code === "SCHEMA_VERSION_UNKNOWN") {
+      // S98P: Log redaction — only log metadata, not raw text/matchedJson
       console.error(
-        `[llm-native-router] 🔥 PROTOCOL_VIOLATION detected — code=${err.code}, textSnippet=${err.textSnippet?.slice(0, 200)}, matchedJson=${err.matchedJson?.slice(0, 200)}, jsonMatch=${err.jsonMatch}, bareMatch=${err.bareMatch}, braceMatch=${err.braceMatch}`
+        `[llm-native-router] 🔥 PROTOCOL_VIOLATION detected — code=${err.code}, jsonMatch=${err.jsonMatch}, bareMatch=${err.bareMatch}, braceMatch=${err.braceMatch}`
       );
 
       // Phase 3.2 修复：把错误写入 archive → SSE poller 能看到 failed 状态 → diagnose 脚本可诊断

@@ -179,7 +179,8 @@ export async function autoLearnFromDecision(
       source: "auto_learn",
     });
 
-    console.log(`[auto_learn] Wrote memory entry ${entry.id} for user ${userId}: ${content}`);
+    // S98P: Log redaction — don't log user memory content
+    console.log(`[auto_learn] Wrote memory entry ${entry.id} for user ${userId}: contentLen=${content.length}`);
     return { observation: content };
   } catch (err) {
     console.error("[auto_learn] Failed silently:", err);

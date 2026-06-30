@@ -136,7 +136,8 @@ ${historyText}
       try {
         summaryData = JSON.parse(jsonMatch[0]);
       } catch (parseErr: any) {
-        console.warn("[sessions] LLM returned malformed JSON:", parseErr.message, "| raw:", jsonMatch[0]);
+        // S98P: Log redaction — don't log raw LLM output
+        console.warn(`[sessions] LLM returned malformed JSON: parseError=${parseErr.message}, jsonLen=${jsonMatch[0].length}`);
       }
     }
   } catch (e: any) {

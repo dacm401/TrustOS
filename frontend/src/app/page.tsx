@@ -14,10 +14,11 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import MemoryView from "@/components/views/MemoryView";
 import DashboardView from "@/components/views/DashboardView";
 import BetaPanel from "@/components/dashboard/BetaPanel";
+import AdminPanel from "@/components/dashboard/AdminPanel";
 import TasksView from "@/components/views/TasksView";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
-type NavView = "chat" | "tasks" | "memory" | "dashboard" | "beta";
+type NavView = "chat" | "tasks" | "memory" | "dashboard" | "beta" | "admin";
 
 const DEFAULT_USER_ID = "dev-user";
 
@@ -105,6 +106,9 @@ export default function HomePage() {
               </div>
               <div style={{ display: activeNav === "beta" ? "block" : "none", height: "100%" }}>
                 <BetaPanel userId={userId} />
+              </div>
+              <div style={{ display: activeNav === "admin" ? "block" : "none", height: "100%" }}>
+                <AdminPanel adminKey={localStorage?.getItem("trustos_admin_key") ?? "admin-changeme"} />
               </div>
             </ErrorBoundary>
           </main>
