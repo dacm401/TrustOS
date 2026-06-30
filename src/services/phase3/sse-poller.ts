@@ -39,6 +39,11 @@ export interface SSEEvent {
   partialResult?: Record<string, unknown>;
   /** S92P: terminal summary payload — safe metadata, additive only */
   terminalSummary?: Record<string, unknown>;
+  /** S97P: token/cost usage from worker execution — safe metadata, additive only */
+  usage?: {
+    tokens: { input: number; output: number; total: number };
+    cost: { estimated_usd: number; provider: string; model: string };
+  };
   /** Sprint 73: 统一使用 stream 字段，content 已弃用 */
   content?: string;
   stream?: string;
@@ -771,7 +776,20 @@ export async function* pollArchiveAndYield(
       // SSE1: 成功路径也发送 done 事件（与 failed/timeout 路径一致）
       // S92P: Build terminal summary for completed state
       const completedTerminalSummary = buildTerminalSummary({ status: "completed", execution });
-      yield { type: "done", stream: lang === "zh" ? "分析完成" : "Analysis complete", routing_layer: "L2", terminalSummary: completedTerminalSummary as Record<string, unknown> };
+      // S97P: Include token/cost usage in done event for frontend display
+      const usage = {
+        tokens: {
+          input: Number(execution.tokens_input ?? 0),
+          output: Number(execution.tokens_output ?? 0),
+          total: Number(execution.tokens_input ?? 0) + Number(execution.tokens_output ?? 0),
+        },
+        cost: {
+          estimated_usd: Number(execution.cost_usd ?? 0),
+          provider: (execution.model_used as string)?.split("/")[0] ?? "unknown",
+          model: (execution.model_used as string) ?? "unknown",
+        },
+      };
+      yield { type: "done", stream: lang === "zh" ? "分析完成" : "Analysis complete", routing_layer: "L2", terminalSummary: completedTerminalSummary as Record<string, unknown>, usage };
 
         await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
           console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)

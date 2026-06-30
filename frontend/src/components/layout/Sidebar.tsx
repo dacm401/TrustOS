@@ -11,6 +11,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "tasks", icon: "📋", label: "Tasks" },
   { id: "memory", icon: "🧠", label: "Memory" },
   { id: "dashboard", icon: "📊", label: "Dashboard" },
+  { id: "beta", icon: "🧪", label: "Beta" },
 ];
 
 interface SidebarProps {

@@ -70,12 +70,14 @@ export async function getGrowth(userId: string) {
   return res.json();
 }
 
-export async function sendFeedback(decisionId: string, type: string, userId: string) {
+export async function sendFeedback(decisionId: string, type: string, userId: string, reason?: string) {
   const { apiBase } = await getApiConfig();
+  const body: Record<string, string> = { decision_id: decisionId, feedback_type: type, user_id: userId };
+  if (reason) body.reason = reason;
   await fetch(`${apiBase}/api/feedback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ decision_id: decisionId, feedback_type: type, user_id: userId }),
+    body: JSON.stringify(body),
   });
 }
 

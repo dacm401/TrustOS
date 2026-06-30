@@ -13,10 +13,11 @@ import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import MemoryView from "@/components/views/MemoryView";
 import DashboardView from "@/components/views/DashboardView";
+import BetaPanel from "@/components/dashboard/BetaPanel";
 import TasksView from "@/components/views/TasksView";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
-type NavView = "chat" | "tasks" | "memory" | "dashboard";
+type NavView = "chat" | "tasks" | "memory" | "dashboard" | "beta";
 
 const DEFAULT_USER_ID = "dev-user";
 
@@ -101,6 +102,9 @@ export default function HomePage() {
             }>
               <div style={{ display: activeNav === "dashboard" ? "block" : "none", height: "100%" }}>
                 <DashboardView userId={userId} />
+              </div>
+              <div style={{ display: activeNav === "beta" ? "block" : "none", height: "100%" }}>
+                <BetaPanel userId={userId} />
               </div>
             </ErrorBoundary>
           </main>

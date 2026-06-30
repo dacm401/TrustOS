@@ -37,12 +37,31 @@ function initials(name: string): string {
 export function MessageBubble({ role, content, decision, userId = "dev-user", delegation, routingLayer }: MessageBubbleProps) {
   const isUser = role === "user";
   const [feedbackGiven, setFeedbackGiven] = useState<string | null>(null);
+  const [showReasonInput, setShowReasonInput] = useState(false);
+  const [feedbackReason, setFeedbackReason] = useState("");
 
   const handleFeedback = async (type: "thumbs_up" | "thumbs_down") => {
     if (decision?.id && !feedbackGiven) {
+      if (type === "thumbs_down") {
+        setShowReasonInput(true);
+        return;
+      }
       await sendFeedback(decision.id, type, userId);
       setFeedbackGiven(type);
     }
+  };
+
+  const submitThumbsDown = async () => {
+    if (decision?.id) {
+      await sendFeedback(decision.id, "thumbs_down", userId, feedbackReason.trim() || undefined);
+      setFeedbackGiven("thumbs_down");
+      setShowReasonInput(false);
+    }
+  };
+
+  const cancelReasonInput = () => {
+    setShowReasonInput(false);
+    setFeedbackReason("");
   };
 
   return (
@@ -106,12 +125,22 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
         )}
 
         {/* S93P: AI 消息操作按钮（复制/重新生成/继续修改） */}
-        {!isUser && content && !isUser && (
-          <ActionBar
-            content={content}
-            isArtifact={content.includes("import React") || content.includes("export default") || content.includes("function ")}
-          />
-        )}
+        {/* S97P: Extract cost from decision for ActionBar display */}
+        {!isUser && content && !isUser && (() => {
+          const exec = decision && "execution" in decision ? decision.execution : undefined;
+          const cost = exec ? {
+            input_tokens: exec.input_tokens,
+            output_tokens: exec.output_tokens,
+            estimated_cost_usd: exec.total_cost_usd,
+          } : undefined;
+          return (
+            <ActionBar
+              content={content}
+              isArtifact={content.includes("import React") || content.includes("export default") || content.includes("function ")}
+              cost={cost ?? null}
+            />
+          );
+        })()}
 
         {/* AI: Decision card + metadata */}
         {!isUser && (decision || routingLayer) && (
@@ -244,6 +273,63 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
                 {feedbackGiven === "thumbs_up" ? "✓ 已记录" : "✓ 已记录，下次改进"}
               </span>
             )}
+          </div>
+        )}
+
+        {/* S97P: Thumbs-down reason input */}
+        {showReasonInput && (
+          <div className="ml-1 mt-2 p-3 rounded-lg border" style={{
+            borderColor: "var(--border-color)",
+            backgroundColor: "var(--bg-secondary)",
+            maxWidth: "280px",
+          }}>
+            <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
+              方便告诉我们哪里可以改进吗？（可选）
+            </p>
+            <textarea
+              className="w-full text-sm p-2 rounded border resize-none focus:outline-none"
+              style={{
+                borderColor: "var(--border-color)",
+                backgroundColor: "var(--bg-primary)",
+                color: "var(--text-primary)",
+                minHeight: "48px",
+              }}
+              placeholder="例如：回答不准确、格式不对..."
+              maxLength={200}
+              value={feedbackReason}
+              onChange={(e) => setFeedbackReason(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submitThumbsDown();
+                }
+              }}
+              autoFocus
+            />
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                {feedbackReason.length}/200
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={cancelReasonInput}
+                  className="text-xs px-2 py-1 rounded transition-colors"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  跳过
+                </button>
+                <button
+                  onClick={submitThumbsDown}
+                  className="text-xs px-3 py-1 rounded transition-colors"
+                  style={{
+                    backgroundColor: "var(--accent-red)",
+                    color: "white",
+                  }}
+                >
+                  提交
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

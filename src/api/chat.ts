@@ -361,7 +361,17 @@ chatRouter.post("/chat", async (c) => {
       }
       // S92P-HF2: 防御 null decision — llmNativeResult 存在但 decision 为 null 时
       // 真实 API 401、mock parse fail、协议异常都可能导致此情况
+      // S95P fix: null decision 但 message 有内容时，作为正常的 direct_answer 降级返回
       if (!llmNativeResult.decision) {
+        if (llmNativeResult.message) {
+          console.warn("[chat] SSE routeWithManagerDecision returned null decision with message — returning as direct_answer fallback");
+          return c.json({
+            reply: llmNativeResult.message,
+            routing_layer: llmNativeResult.routing_layer ?? "L0",
+            decision_type: llmNativeResult.decision_type ?? "direct_answer",
+            mode: "fast",
+          });
+        }
         console.warn("[chat] SSE routeWithManagerDecision returned null decision — returning safe fallback");
         return c.json({ error: lang === "zh" ? "抱歉，我暂时无法完成这个请求。请稍后重试。" : "Sorry, I couldn't complete this request. Please try again later." }, 500);
       }
@@ -858,7 +868,17 @@ chatRouter.post("/chat", async (c) => {
       return c.json({ error: nonSseLang === "zh" ? "抱歉，我暂时无法完成这个请求。请稍后重试。" : "Sorry, I couldn't complete this request. Please try again later." }, 500);
     }
     // S92P-HF2: 防御 null decision
+    // S95P fix: null decision 但 message 有内容时，作为正常的 direct_answer 降级返回
     if (!llmNativeResult.decision) {
+      if (llmNativeResult.message) {
+        console.warn("[chat] routeWithManagerDecision returned null decision with message — returning as direct_answer fallback");
+        return c.json({
+          reply: llmNativeResult.message,
+          routing_layer: llmNativeResult.routing_layer ?? "L0",
+          decision_type: llmNativeResult.decision_type ?? "direct_answer",
+          mode: "fast",
+        });
+      }
       console.warn("[chat] routeWithManagerDecision returned null decision — returning safe fallback");
       return c.json({ error: nonSseLang === "zh" ? "抱歉，我暂时无法完成这个请求。请稍后重试。" : "Sorry, I couldn't complete this request. Please try again later." }, 500);
     }
@@ -970,6 +990,7 @@ chatRouter.post("/chat", async (c) => {
 chatRouter.post("/feedback", async (c) => {
   let decision_id: string;
   let feedback_type: string;
+  let feedback_reason: string | undefined;
   let body: Record<string, unknown>;
 
   try {
@@ -978,6 +999,9 @@ chatRouter.post("/feedback", async (c) => {
     body = JSON.parse(rawBody) as Record<string, unknown>;
     decision_id = body.decision_id as string;
     feedback_type = body.feedback_type as string;
+    feedback_reason = typeof body.reason === "string" && body.reason.length > 0
+      ? (body.reason as string).slice(0, 200)
+      : undefined;
   } catch {
     return c.json({ error: "invalid JSON body" }, 400);
   }
@@ -1004,7 +1028,9 @@ chatRouter.post("/feedback", async (c) => {
 
   const { recordFeedback } = await import("../features/feedback-collector.js");
   // P3: also write to feedback_events (userId confirmed via ownership check above)
-  await recordFeedback(decision_id, feedback_type as FeedbackType, user_id);
+  // S97P: pass feedback_reason as rawData for thumbs_down detail collection
+  await recordFeedback(decision_id, feedback_type as FeedbackType, user_id,
+    feedback_reason ? { reason: feedback_reason } : undefined);
 
   // S2: Fire-and-forget auto_learn on positive-signal feedback
   // Fetches the full decision record and passes it to autoLearnFromDecision
