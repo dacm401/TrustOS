@@ -824,33 +824,35 @@ adminRouter.get("/users", async (c) => {
   const status = c.req.query("status"); // active | paused | blocked
 
   try {
-    // We don't have a dedicated users table; aggregate from sessions/feedback_events/decision_logs
+    // Aggregate from sessions/feedback_events/decision_logs
+    // Use a CTE to avoid PostgreSQL GROUP BY complaints about LATERAL references
     const res = await query(
-      `SELECT
-        u.user_id,
-        MAX(u.last_seen) AS last_seen,
-        COALESCE(s.session_count, 0)::int AS total_sessions,
-        COALESCE(t.task_count, 0)::int AS total_tasks,
-        COALESCE(fb.feedback_count, 0)::int AS total_feedback,
-        COALESCE(dl.total_cost, 0)::float AS total_cost_usd
-       FROM (
+      `WITH user_base AS (
          SELECT user_id, MAX(created_at) AS last_seen
          FROM sessions
          GROUP BY user_id
-       ) u
+       )
+       SELECT
+         ub.user_id,
+         ub.last_seen,
+         COALESCE(s.cnt, 0)::int AS total_sessions,
+         COALESCE(t.cnt, 0)::int AS total_tasks,
+         COALESCE(fb.cnt, 0)::int AS total_feedback,
+         COALESCE(dl.total_cost, 0)::float AS total_cost_usd
+       FROM user_base ub
        LEFT JOIN LATERAL (
-         SELECT COUNT(*) AS session_count FROM sessions WHERE user_id = u.user_id
+         SELECT COUNT(*) AS cnt FROM sessions WHERE user_id = ub.user_id
        ) s ON true
        LEFT JOIN LATERAL (
-         SELECT COUNT(*) AS task_count FROM tasks WHERE user_id = u.user_id
+         SELECT COUNT(*) AS cnt FROM tasks WHERE user_id = ub.user_id
        ) t ON true
        LEFT JOIN LATERAL (
-         SELECT COUNT(*) AS feedback_count FROM feedback_events WHERE user_id = u.user_id
+         SELECT COUNT(*) AS cnt FROM feedback_events WHERE user_id = ub.user_id
        ) fb ON true
        LEFT JOIN LATERAL (
-         SELECT COALESCE(SUM(total_cost_usd), 0) AS total_cost FROM decision_logs WHERE user_id = u.user_id
+         SELECT COALESCE(SUM(total_cost_usd), 0) AS total_cost FROM decision_logs WHERE user_id = ub.user_id
        ) dl ON true
-       ORDER BY u.last_seen DESC
+       ORDER BY ub.last_seen DESC
        LIMIT $1`,
       [limit]
     );
@@ -991,19 +993,20 @@ adminRouter.get("/export", async (c) => {
       filename = `feedback-export-${new Date().toISOString().slice(0, 10)}.csv`;
     } else if (exportType === "users") {
       const res = await query(
-        `SELECT u.user_id, MAX(u.last_seen) AS last_seen,
-           COALESCE(s.session_count, 0)::int AS total_sessions,
-           COALESCE(t.task_count, 0)::int AS total_tasks,
-           COALESCE(fb.feedback_count, 0)::int AS total_feedback,
-           COALESCE(dl.total_cost, 0)::float AS total_cost_usd
-         FROM (
+        `WITH user_base AS (
            SELECT user_id, MAX(created_at) AS last_seen FROM sessions GROUP BY user_id
-         ) u
-         LEFT JOIN LATERAL (SELECT COUNT(*) AS session_count FROM sessions WHERE user_id = u.user_id) s ON true
-         LEFT JOIN LATERAL (SELECT COUNT(*) AS task_count FROM tasks WHERE user_id = u.user_id) t ON true
-         LEFT JOIN LATERAL (SELECT COUNT(*) AS feedback_count FROM feedback_events WHERE user_id = u.user_id) fb ON true
-         LEFT JOIN LATERAL (SELECT COALESCE(SUM(total_cost_usd), 0) AS total_cost FROM decision_logs WHERE user_id = u.user_id) dl ON true
-         ORDER BY u.last_seen DESC`
+         )
+         SELECT ub.user_id, ub.last_seen,
+           COALESCE(s.cnt, 0)::int AS total_sessions,
+           COALESCE(t.cnt, 0)::int AS total_tasks,
+           COALESCE(fb.cnt, 0)::int AS total_feedback,
+           COALESCE(dl.total_cost, 0)::float AS total_cost_usd
+         FROM user_base ub
+         LEFT JOIN LATERAL (SELECT COUNT(*) AS cnt FROM sessions WHERE user_id = ub.user_id) s ON true
+         LEFT JOIN LATERAL (SELECT COUNT(*) AS cnt FROM tasks WHERE user_id = ub.user_id) t ON true
+         LEFT JOIN LATERAL (SELECT COUNT(*) AS cnt FROM feedback_events WHERE user_id = ub.user_id) fb ON true
+         LEFT JOIN LATERAL (SELECT COALESCE(SUM(total_cost_usd), 0) AS total_cost FROM decision_logs WHERE user_id = ub.user_id) dl ON true
+         ORDER BY ub.last_seen DESC`
       );
 
       csv = [
