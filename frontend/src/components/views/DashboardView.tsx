@@ -51,7 +51,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
   const reload = () => refetch();
 
   // 从 dashboard.today 计算成本节省
-  const todayCost = dashboard?.today.total_cost ?? 0;
+  const todayCost = dashboard?.today?.total_cost ?? 0;
   const baselineCost = todayCost * 2.5; // 假设直打慢模型是实际的2.5x
   const savedUsd = Math.max(0, baselineCost - todayCost);
   const savedPct = baselineCost > 0 ? Math.round((savedUsd / baselineCost) * 100) : 0;
@@ -94,10 +94,10 @@ export default function DashboardView({ userId }: DashboardViewProps) {
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-3 mb-3">
-            <KpiCard label="今日对话" value={dashboard?.today.total_requests ?? 0} color="var(--accent-blue)" />
-            <KpiCard label="满意率" value={dashboard?.today.satisfaction_proxy ?? 0} unit="%" color="var(--accent-green)" />
+            <KpiCard label="今日对话" value={dashboard?.today?.total_requests ?? 0} color="var(--accent-blue)" />
+            <KpiCard label="满意率" value={dashboard?.today?.satisfaction_proxy ?? 0} unit="%" color="var(--accent-green)" />
             <KpiCard label="快速路由" value={
-              dashboard?.today.total_requests
+              dashboard?.today?.total_requests
                 ? Math.round((dashboard.today.fast_count / dashboard.today.total_requests) * 100)
                 : 0
             } unit="%" color="var(--accent-purple)" />
@@ -154,7 +154,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
                   </div>
                   <div className="ml-auto">
                     <div className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-                      {dashboard?.today.total_requests ?? 0} 次对话
+                      {dashboard?.today?.total_requests ?? 0} 次对话
                     </div>
                   </div>
                 </div>

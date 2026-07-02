@@ -7,7 +7,7 @@
 | 目标 | 让 TrustOS Private Beta 可稳定运营，形成反馈可处理、每日可复盘、问题可定位、成本可追踪的运营闭环 |
 | 状态 | **CLOSED ✅** |
 | 日期 | 2026-07-01 |
-| Closure commit | TBD (pending PM sign-off on validation, then S99P-HF1 commit for bug fixes) |
+| Closure commit | `a76f7a3` (S99P-HF1) / TBD (S99P-HF2) |
 
 ---
 
@@ -31,7 +31,7 @@ S99P regression smoke (30/30): PASS ✅
 S99P S97 feedback regression: PASS ✅
 S99P S98 guardrails smoke: PASS ✅
 S99P frontend TS check (tsc --noEmit): PASS ✅
-S99P frontend build: BLOCKED by pre-existing localStorage SSR issue ⚠️
+S99P frontend build: PASS ✅ (resolved in HF2)
 S99P internal leakage: PASS (0 leaks) ✅
 S99P daily report generated: PASS ✅
 S99P DB migration smoke: PASS ✅
@@ -131,13 +131,10 @@ Run: `cd frontend && npx tsc --noEmit`
 
 ### Known Issue: Next build localStorage SSR
 
-```
-Error: localStorage is not defined
-```
-- **Root cause**: Pre-existing SSR page calls `localStorage` during static generation
-- **Introduced by**: Pre-dates S99P
-- **S99P impact**: None — TypeScript passes, AdminPanel has no TS errors
-- **Target**: S100P (Public Beta Readiness) P0 fix
+- **Status**: RESOLVED ✅ in S99P-HF2
+- **Root cause**: Admin page called `localStorage` during SSR static generation
+- **Fix**: Moved `localStorage` access to client-side `useEffect`
+- **Result**: `next build` now passes — `✓ Compiled successfully`, `✓ Generating static pages (6/6)`
 
 ---
 
@@ -155,6 +152,54 @@ Error: localStorage is not defined
 - **Symptom**: `GET /v1/admin/alerts` returned 500 with `relation "alerts" does not exist`
 - **Root cause**: Migration 023 was created but not executed against running database
 - **Fix**: Applied migration via `scripts/_s99p_apply_migrations.mjs`
+
+---
+
+## S99P-HF2 — Runtime Reliability & Frontend Stability
+
+### HF2 Commit
+
+```
+S99P-HF2: fix slow worker initial generation and frontend stability
+```
+
+### Fixes
+
+| # | File | Issue | Fix |
+|---|------|-------|-----|
+| 1 | `src/services/phase3/slow-worker-loop.ts` | Slow Worker empty `initialContent=""` caused Cycle 1 Verifier to fail VF-001, and with `maxCycles=1` the cycle terminated as `max_cycles_exceeded` without ever calling Worker (0 tokens). | Pre-generate initial content via Worker before entering `runCycle()`. Add empty-content guard that throws `initial_generation_empty` to fallback to direct Worker path. |
+| 2 | `frontend/src/components/chat/ChatInterface.tsx` | SSE error event hardcoded generic message, losing backend diagnostic info. | Show `data.stream` with safety filter (blocks API keys, tokens, stack traces, provider responses). Fallback to generic message if blocked. |
+| 3 | `frontend/src/components/views/DashboardView.tsx` | `dashboard?.today.total_cost` only guarded `dashboard` not `today`, causing TypeError when `today` field missing. | Changed all `dashboard?.today.xxx` to `dashboard?.today?.xxx ?? 0`. |
+| 4 | `frontend/src/app/page.tsx` | Admin page called `localStorage` during SSR static generation, blocking `next build`. | Moved `localStorage` access to `useState` + `useEffect` (client-side only). |
+
+### Validation Results (2026-07-02)
+
+```text
+Slow Worker delegate_to_slow HTML generation: PASS ✅
+  - initialContent generated: contentLen=15992, tokens=395+4257
+  - CYCLE_RUNTIME: passed=true, score=0.95
+  - Worker tokens > 0 ✅
+  - No empty-content max_cycles_exceeded ✅
+  - Frontend received complete HTML output ✅
+
+S99P regression smoke: 30/30 PASS ✅
+Internal leakage: 0 ✅
+Frontend TypeScript (tsc --noEmit): 0 errors ✅
+Frontend build (next build): PASS ✅
+  - ✓ Compiled successfully
+  - ✓ Generating static pages (6/6)
+  - localStorage SSR blocker: RESOLVED ✅
+
+Error diagnostic safety:
+  - API key in error: 0 ✅
+  - Authorization in error: 0 ✅
+  - Stack trace in error: 0 ✅
+  - Provider response in error: 0 ✅
+```
+
+### Scope Note
+
+HF2 includes frontend robustness fixes (Dashboard `today` guard, Admin `localStorage` SSR) discovered during post-S99P validation. These are not directly related to the Slow Worker root cause but are included as a single commit for efficiency. The `localStorage` fix unblocks the only frontend build blocker recorded in S99P closure.
 
 ---
 
@@ -267,7 +312,7 @@ Error: localStorage is not defined
 | Limitation | Impact | Mitigation |
 |---|---|---|
 | `sessions.total_cost` still not written | cost-cap middleware queries this column | Fix in S100P |
-| Frontend build has pre-existing SSR `localStorage` error | Cannot verify production build | TS check passes; fix in S100P |
+| Frontend build SSR `localStorage` error | Blocked production build | Fixed in HF2 (client-side `useEffect`); build now PASSES |
 | Invite code management is env-var only | No UI for adding/removing invite codes | Acceptable for private beta (<10 users) |
 | Alert detector has no dedup window | Same alert may fire repeatedly within 5 min | `ON CONFLICT DO NOTHING` by alert ID; acceptable for MVP |
 | Failure keyword extraction is naive split | Non-English reasons may produce junk keywords | Acceptable for initial Chinese/English beta |

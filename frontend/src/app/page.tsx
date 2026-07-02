@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/query-client';
 import { ChatInterface } from "@/components/chat/ChatInterface";
@@ -31,6 +31,11 @@ export default function HomePage() {
   const [workbenchTab, setWorkbenchTab] = useState<WorkbenchTab>("evidence");
   const [userId, setUserId] = useState(DEFAULT_USER_ID);
   const [activeNav, setActiveNav] = useState<NavView>("chat");
+  const [adminKey, setAdminKey] = useState("admin-changeme");
+
+  useEffect(() => {
+    setAdminKey(localStorage?.getItem("trustos_admin_key") ?? "admin-changeme");
+  }, []);
 
   const tabs: { id: WorkbenchTab; icon: string; label: string }[] = [
     { id: "evidence", icon: "🔍", label: "证据" },
@@ -108,7 +113,7 @@ export default function HomePage() {
                 <BetaPanel userId={userId} />
               </div>
               <div style={{ display: activeNav === "admin" ? "block" : "none", height: "100%" }}>
-                <AdminPanel adminKey={localStorage?.getItem("trustos_admin_key") ?? "admin-changeme"} />
+                <AdminPanel adminKey={adminKey} />
               </div>
             </ErrorBoundary>
           </main>

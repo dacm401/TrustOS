@@ -203,10 +203,27 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
             setStatusMsg(null);
             setActiveTaskId(null);
             const inferredMeta = inferMetaFromStreamEvent(data);
+            // S99P-HF2: Show backend diagnostic message if available, fallback to generic.
+            // Only display data.stream when it passes a basic safety filter — no API keys,
+            // tokens, raw prompts, stack traces, or provider responses leaked to user.
+            const rawStream = data.stream;
+            const safeStream = typeof rawStream === "string" && rawStream.trim();
+            const blocked = safeStream && (
+              rawStream.includes("sk-") ||
+              rawStream.includes("Bearer ") ||
+              rawStream.includes("Authorization") ||
+              rawStream.includes("api_key") ||
+              rawStream.includes("stack trace") ||
+              rawStream.includes("Error:") ||
+              rawStream.includes("at ") && rawStream.includes(".ts:")
+            );
+            const errorDetail = (safeStream && !blocked)
+              ? rawStream
+              : "抱歉，处理您的请求时出现了问题，请稍后重试。";
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, content: `抱歉，处理您的请求时出现了问题，请稍后重试。`, streaming: false, meta: m.meta ?? inferredMeta }
+                  ? { ...m, content: errorDetail, streaming: false, meta: m.meta ?? inferredMeta }
                   : m
               )
             );

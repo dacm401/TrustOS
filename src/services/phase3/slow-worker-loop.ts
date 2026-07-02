@@ -588,13 +588,46 @@ async function executeDelegateCommand(
     if (taskContract && (taskContract.verificationCriteria?.length ?? 0) > 0) {
       // ── Cycle Runtime 路径 ──────────────────────────────────────────────────
       try {
+        // S99P-HF2: Pre-generate initial content before entering cycle runtime.
+        // Previously initialContent="" caused Cycle 1 Verifier to fail VF-001
+        // (empty content), and with maxCycles=1 (low-risk tasks), the cycle
+        // terminated as max_cycles_exceeded without ever calling the Worker.
+        let initialContent = "";
+        if (!isRevisionTask) {
+          // S90P: Check cancellation before Worker call
+          await checkCancellation(archive_id, task_id);
+          // S91P: Check timeout before Worker call
+          await checkTimeout(archive_id, task_id, startTime, TASK_SOFT_TIMEOUT_MS, TASK_HARD_TIMEOUT_MS);
+          const preGenResp = await callModelFull(slowModel, messages, undefined, "worker");
+          initialContent = (preGenResp.content ?? "").trim();
+          inputTokens = preGenResp.input_tokens ?? 0;
+          outputTokens = preGenResp.output_tokens ?? 0;
+
+          // S99P-HF2: Guard against empty initial generation. If the Worker
+          // returns empty content, throw a specific error so the outer catch
+          // block falls back to the direct Worker call path — don't silently
+          // pass empty content into cycle runtime where it would VF-001 fail.
+          if (!initialContent) {
+            console.warn("[slow-worker] Pre-gen Worker returned empty content — throwing to trigger cycle fallback");
+            throw new Error("initial_generation_empty");
+          }
+
+          console.log(JSON.stringify({
+            msg: "[slow-worker] Initial content generated",
+            archiveId: archive_id,
+            contentLen: initialContent.length,
+            inputTokens,
+            outputTokens,
+          }));
+        }
+
         // S76P: Cycle events SSE — 写入 task_archive_events via appendCycleEvent
         const cycleResult = await runCycle({
           taskId: archive_id,
           activeArtifactId: undefined,
           revisionOfArtifactId: isRevisionTask ? archive_id : undefined,
           taskContract,
-          initialContent: "", // will be filled by first executeWorkerCall
+          initialContent,
           security: {
             artifactToManager: false,
             rawHistoryToWorker: false,
