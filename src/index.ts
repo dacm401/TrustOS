@@ -35,6 +35,8 @@ import { adminRouter } from "./api/admin.js";
 import { agentSessionsRouter } from "./api/agent-sessions.js";
 import { managerMessagesRouter } from "./api/manager-messages.js";
 import { sessionEventsRouter } from "./api/session-events.js";
+// S100P Phase 2: Manager Routing API
+import { managerRouteRouter } from "./api/manager-route.js";
 // Phase 3.0: 启动后台 Worker 轮询循环
 import { startSlowWorker, stopSlowWorker } from "./services/phase3/slow-worker-loop.js";
 import { startExecuteWorker, stopExecuteWorker } from "./services/phase3/execute-worker-loop.js";
@@ -84,6 +86,8 @@ app.route("/v1/admin", adminRouter);  // S98P: Admin health/usage/errors
 app.route("/v1/agent-sessions", agentSessionsRouter);
 app.route("/v1/manager-messages", managerMessagesRouter);
 app.route("/v1/session-events", sessionEventsRouter);
+// S100P Phase 2: Manager Routing API
+app.route("/v1/manager", managerRouteRouter);
 app.route("/metrics", metricsRouter);
 
 console.log(`
