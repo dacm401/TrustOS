@@ -31,6 +31,10 @@ import { costCapMiddleware } from "./middleware/cost-cap.js";
 import { quotaMiddleware } from "./middleware/quota.js";
 import { betaInviteMiddleware } from "./middleware/beta-invite.js";
 import { adminRouter } from "./api/admin.js";
+// S100P: Agent Session & Manager Message API
+import { agentSessionsRouter } from "./api/agent-sessions.js";
+import { managerMessagesRouter } from "./api/manager-messages.js";
+import { sessionEventsRouter } from "./api/session-events.js";
 // Phase 3.0: 启动后台 Worker 轮询循环
 import { startSlowWorker, stopSlowWorker } from "./services/phase3/slow-worker-loop.js";
 import { startExecuteWorker, stopExecuteWorker } from "./services/phase3/execute-worker-loop.js";
@@ -76,6 +80,10 @@ app.route("/v1/beta", betaRouter);  // S97P
 app.route("/v1/permissions", createPermissionsRouter());
 app.route("/v1/workspaces", createWorkspacesRouter());
 app.route("/v1/admin", adminRouter);  // S98P: Admin health/usage/errors
+// S100P: Agent Session & Manager Message API
+app.route("/v1/agent-sessions", agentSessionsRouter);
+app.route("/v1/manager-messages", managerMessagesRouter);
+app.route("/v1/session-events", sessionEventsRouter);
 app.route("/metrics", metricsRouter);
 
 console.log(`

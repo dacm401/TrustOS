@@ -17,6 +17,20 @@ export { HumanReviewRequestRepo } from "../human-review-repo.js";
 export { HumanReviewResumeDecisionRepo } from "../human-review-decision-repo.js";
 export { HumanReviewResumeExecutionRepo } from "../human-review-execution-repo.js";
 
+// S100P: Phase 1 new repositories
+export { AgentSessionRepo } from "./agent-session.js";
+export type { AgentSessionInput, AgentSessionRecord, SessionStatus } from "./agent-session.js";
+export { ManagerMessageRepo } from "./manager-message.js";
+export type { ManagerMessageInput, ManagerMessageRecord, ManagerMessageRole } from "./manager-message.js";
+export { SessionEventRepo } from "./session-event.js";
+export type {
+  SessionEventInput,
+  SessionEventRecord,
+  SessionEventType,
+  SessionEventVisibility,
+  SessionEventSeverity,
+} from "./session-event.js";
+
 // Re-export interfaces for convenience
 export type { DelegationArchiveEntry } from "./delegation.js";
 export type { TaskArchiveEntry } from "./task-archive.js";
