@@ -234,6 +234,17 @@ npx tsc --noEmit
 - No modification to routing logic
 - No schema changes
 
+**Reliable Polling Behavior Fixes**: Deferred to **S101R** (`docs/sprints/S101R-reliable-polling-hardening-plan.md`). The following are explicitly excluded from S101T:
+- SSE `done` event `stream` protocol changes (C1)
+- Watchdog/Poller timeout field unification (C4)
+- Poller timeout `task_commands` state updates (C3)
+- Worker lifecycle restart fixes (C5)
+- Execute worker cancellation/timeout protection (C6)
+- `estimateCost` pricing logic (H1)
+- Poller timeout config, adaptive polling, dead code cleanup, `markDelivered` behavior
+
+For `sse-poller.ts` specifically: S101T touches are limited to type casts, union extensions, and the `"timed_out"` → `"timeout"` typo fix. No protocol/behavior changes.
+
 **`@ts-expect-error` rule**: Only if absolutely unavoidable (e.g., Phase 4 module doesn't exist yet). Must document why.
 
 ---
