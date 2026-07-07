@@ -10,8 +10,8 @@
 import { TaskArchiveRepo } from "../../db/task-archive-repo.js";
 import { DelegationLogRepo } from "../../db/repositories.js";
 
-const WATCHDOG_INTERVAL_MS = 30_000; // 30s 扫描一次
-const STUCK_THRESHOLD_MS = 5 * 60_000; // 5 分钟无进展视为 stuck
+const WATCHDOG_INTERVAL_MS = parseInt(process.env.TASK_WATCHDOG_SCAN_MS || "", 10) || 30_000; // 30s 扫描一次
+const STUCK_THRESHOLD_MS = parseInt(process.env.TASK_WATCHDOG_STUCK_MS || "", 10) || 5 * 60_000; // 5 分钟无进展视为 stuck
 
 let watchdogTimer: NodeJS.Timeout | null = null;
 let watchdogStopped = false;
@@ -77,8 +77,12 @@ async function scanStuckTasks(): Promise<void> {
       // Mark archive as timed_out
       await TaskArchiveRepo.updateState(row.id, "timed_out");
 
-      // Write timeout metadata
+      // Write timeout metadata with unified payload shape (C4)
+      const watchdogElapsedMs = Date.now() - new Date(row.updated_at).getTime();
       await TaskArchiveRepo.setSlowExecution(row.id, {
+        timeoutKind: "watchdog",
+        elapsedMs: watchdogElapsedMs,
+        thresholdMs: STUCK_THRESHOLD_MS,
         timedOutAt: new Date().toISOString(),
         previousState: row.state,
         stuckSince: row.updated_at,

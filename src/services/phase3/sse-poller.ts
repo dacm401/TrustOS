@@ -7,6 +7,8 @@ import { callModelFull, callModelStream } from "../../models/model-gateway";
 import { config } from "../../config";
 // S88P: Progress visibility
 import { getCurrentProgress, refreshProgressElapsed } from "../runtime-trace.js";
+// S91P / S101R: Timeout constants
+import { TASK_HARD_TIMEOUT_MS } from "../../types/runtime-trace.js";
 // S89P: Partial result types
 import { PARTIAL_RESULT_MAX_LENGTH } from "../../types/runtime-trace.js";
 // S92P: Terminal state observability
@@ -836,21 +838,46 @@ export async function* pollArchiveAndYield(
       failedChecked = true;
     }
 
-    // G4: 超时检测（超过 180s 未完成，标记为 timeout）
-    if (elapsed > 180_000 && (currentState === "executing" || currentState === "delegated" || currentState === "waiting_result" || currentState === "synthesizing")) {
+    // S101R-H3: Poller timeout using system constant instead of hardcoded 180s
+    // S101R-C3: Poller timeout now updates task_commands terminal status
+    const pollerTimeoutSec = Math.round(TASK_HARD_TIMEOUT_MS / 1000);
+    if (elapsed > TASK_HARD_TIMEOUT_MS && (currentState === "executing" || currentState === "delegated" || currentState === "waiting_result" || currentState === "synthesizing")) {
+      // C3: Update task_archives state to timed_out with unified timeout metadata
+      try {
+        await TaskArchiveRepo.markTimedOut(taskId, {
+          timeoutKind: "poller",
+          thresholdMs: TASK_HARD_TIMEOUT_MS,
+          elapsedMs: elapsed,
+        });
+      } catch (e: any) {
+        console.warn("[pollArchiveAndYield] markTimedOut failed:", e.message);
+      }
+
+      // C3: Update task_commands status to timed_out
+      try {
+        const pool = getPool();
+        await pool.query(
+          `UPDATE task_commands SET status = 'timed_out'
+           WHERE archive_id = $1 AND status IN ('queued', 'running')`,
+          [taskId]
+        );
+      } catch (e: any) {
+        console.warn("[pollArchiveAndYield] task_commands timeout update failed:", e.message);
+      }
+
       if (delegation_log_id) {
         DelegationLogRepo.updateExecution(delegation_log_id, {
           execution_status: "timeout",
-          execution_correct: false, // G4: Worker 超时，标记 execution_correct
-          error_message: "Task execution exceeded 180s timeout",
+          execution_correct: false,
+          error_message: `Task execution exceeded ${pollerTimeoutSec}s poller timeout`,
         }).catch((e) => console.warn("[delegation-log] updateExecution timeout failed:", e.message));
       }
       if (!sentResult) {
         yield {
           type: "error",
           stream: lang === "zh"
-            ? "⏱ 任务执行超时（180s），请稍后重试或简化问题"
-            : "⏱ Task execution timed out (180s), please retry or simplify your request",
+            ? `⏱ 任务执行超时（${pollerTimeoutSec}s），请稍后重试或简化问题`
+            : `⏱ Task execution timed out (${pollerTimeoutSec}s), please retry or simplify your request`,
           routing_layer: "L2",
         };
       }
