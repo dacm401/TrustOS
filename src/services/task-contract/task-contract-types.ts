@@ -250,6 +250,9 @@ export interface VerificationCriteriaAudit {
  */
 export type CriteriaSource = "none" | "human_acceptance_criteria" | "structured_criteria";
 
+/** V0 验证模式 */
+export type VerificationMode = "none" | "llm" | "heuristic";
+
 export interface VerificationPolicy {
   /** 是否必须验证 */
   required: boolean;

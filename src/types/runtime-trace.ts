@@ -136,6 +136,7 @@ export type LlmCallKind =
   | "execution_loop"
   | "planner"
   | "compressor"
+  | "fast"
   | "unknown";
 
 /**

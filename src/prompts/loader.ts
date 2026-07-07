@@ -40,7 +40,9 @@ export interface LoadedPrompt {
  * 模块级缓存：避免每次请求都执行 await import()
  * 失效条件：MANAGER_PROMPT_VERSION 环境变量变更（服务重启即刷新，合理）
  */
-let cachedModule: { buildManagerSystemPrompt: (...args: Parameters<typeof buildManagerSystemPrompt>) => string; MANAGER_PROMPT_VERSION: string } | null = null;
+type BuildManagerPromptFn = (lang: "zh" | "en", crossSessionContext?: string, userMemories?: string) => string;
+
+let cachedModule: { buildManagerSystemPrompt: BuildManagerPromptFn; MANAGER_PROMPT_VERSION: string } | null = null;
 let cachedVersion: string | null = null;
 
 async function getPromptModule() {

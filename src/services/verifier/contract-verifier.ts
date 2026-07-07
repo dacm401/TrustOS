@@ -19,10 +19,8 @@ import type {
   TaskContractV0,
 } from "../task-contract/task-contract-types.js";
 
-import type {
-  ArtifactVerifierInput,
-  VerificationResult,
-} from "./artifact-verifier.js";
+import type { ArtifactVerifierInput } from "./artifact-verifier.js";
+import type { VerificationResult } from "./verifier-types.js";
 
 import { verifyArtifact } from "./artifact-verifier.js";
 
