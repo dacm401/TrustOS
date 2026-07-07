@@ -525,8 +525,8 @@ export async function* pollArchiveAndYield(
       const failedExec: Record<string, unknown> = task.slow_execution ?? {};
       // S92P: Build terminal summary for failed state
       const failedTerminalSummary = buildTerminalSummary({ status: "failed", execution: failedExec });
-      yield { type: "error", stream: "⚠️ 任务执行失败（请求超时或模型错误）", routing_layer: "L2", terminalSummary: failedTerminalSummary as Record<string, unknown> };
-      yield { type: "done", stream: lang === "zh" ? "执行失败" : "Execution failed", routing_layer: "L2", terminalSummary: failedTerminalSummary as Record<string, unknown> };
+      yield { type: "error", stream: "⚠️ 任务执行失败（请求超时或模型错误）", routing_layer: "L2", terminalSummary: failedTerminalSummary as unknown as Record<string, unknown> };
+      yield { type: "done", stream: lang === "zh" ? "执行失败" : "Execution failed", routing_layer: "L2", terminalSummary: failedTerminalSummary as unknown as Record<string, unknown> };
       if (delegation_log_id) {
         DelegationLogRepo.updateExecution(delegation_log_id, {
           execution_status: "failed",
@@ -560,9 +560,9 @@ export async function* pollArchiveAndYield(
             ? `⏹ 任务已取消: ${cancelReason}`
             : `⏹ Task cancelled: ${cancelReason}`,
           routing_layer: "L2",
-          terminalSummary: cancelledTerminalSummary as Record<string, unknown>,
+          terminalSummary: cancelledTerminalSummary as unknown as Record<string, unknown>,
         };
-        yield { type: "done", stream: lang === "zh" ? "已取消" : "Cancelled", routing_layer: "L2", terminalSummary: cancelledTerminalSummary as Record<string, unknown> };
+        yield { type: "done", stream: lang === "zh" ? "已取消" : "Cancelled", routing_layer: "L2", terminalSummary: cancelledTerminalSummary as unknown as Record<string, unknown> };
 
         // G4: Mark execution as cancelled in delegation logs
         if (delegation_log_id) {
@@ -604,14 +604,14 @@ export async function* pollArchiveAndYield(
             ? `⏰ 任务超时 (${timeoutKind === "hard" ? "硬" : "软"}超时, ${elapsedSec}s / ${thresholdSec}s)`
             : `⏰ Task timed out (${timeoutKind} timeout, ${elapsedSec}s / ${thresholdSec}s)`,
           routing_layer: "L2",
-          terminalSummary: timedOutTerminalSummary as Record<string, unknown>,
+          terminalSummary: timedOutTerminalSummary as unknown as Record<string, unknown>,
         };
-        yield { type: "done", stream: lang === "zh" ? "已超时" : "Timed out", routing_layer: "L2", terminalSummary: timedOutTerminalSummary as Record<string, unknown> };
+        yield { type: "done", stream: lang === "zh" ? "已超时" : "Timed out", routing_layer: "L2", terminalSummary: timedOutTerminalSummary as unknown as Record<string, unknown> };
 
         // G4: Mark execution as timed_out in delegation logs
         if (delegation_log_id) {
           DelegationLogRepo.updateExecution(delegation_log_id, {
-            execution_status: "timed_out",
+            execution_status: "timeout",
             execution_correct: false,
             error_message: `Task timed out (${timeoutKind}, ${elapsedMs}ms / ${thresholdMs}ms)`,
           }).catch(() => {});
@@ -662,7 +662,7 @@ export async function* pollArchiveAndYield(
                     DelegationLogRepo.updateExecution(delegation_log_id, {
                         execution_status: "failed",
                         execution_correct: false,
-                        error_message: safeDiag?.safeErrorMessage ?? "Worker returned empty result",
+                        error_message: String(safeDiag?.safeErrorMessage ?? "Worker returned empty result"),
                     }).catch(() => {});
                 }
                 // S95P-HF4: Include safe diagnostics in done event
@@ -674,7 +674,7 @@ export async function* pollArchiveAndYield(
                 if (safeDiag) {
                   donePayload.workerDiagnostics = safeDiag;
                 }
-                yield donePayload;
+                yield donePayload as unknown as SSEEvent;
                 await TaskArchiveRepo.markDelivered(taskId).catch(() => {});
                 break;
             }
@@ -789,7 +789,7 @@ export async function* pollArchiveAndYield(
           model: (execution.model_used as string) ?? "unknown",
         },
       };
-      yield { type: "done", stream: lang === "zh" ? "分析完成" : "Analysis complete", routing_layer: "L2", terminalSummary: completedTerminalSummary as Record<string, unknown>, usage };
+      yield { type: "done", stream: lang === "zh" ? "分析完成" : "Analysis complete", routing_layer: "L2", terminalSummary: completedTerminalSummary as unknown as Record<string, unknown>, usage };
 
         await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
           console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
@@ -799,7 +799,7 @@ export async function* pollArchiveAndYield(
     }
 
     // Phase 3.1: "failed" is now a terminal TaskState (extracted from the old combined block)
-    if (currentState === "failed") {
+    if ((currentState as string) === "failed") {
       // G4: 回写 delegation_logs execution 结果（failed）
       if (delegation_log_id) {
         const exec = task.slow_execution as Record<string, unknown> | null;

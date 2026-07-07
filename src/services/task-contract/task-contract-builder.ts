@@ -17,6 +17,7 @@ import type {
   TaskIntent,
   ExpectedOutputKind,
   RiskLevel,
+  MemoryScope,
   VerificationCriterion,
   CriterionType,
   CriterionTarget,
@@ -175,7 +176,7 @@ function deriveAllowedContext(
     canReadHistory,
     canReadArtifactSource,
     artifactIds,
-    memoryScope: lm?.security?.allowRawMemoryToWorker ? "retrieved" : "none" as const,
+    memoryScope: (lm?.security?.allowRawMemoryToWorker ? "retrieved" : "none") as MemoryScope,
   };
 }
 
@@ -490,7 +491,7 @@ export function buildTaskContract(input: TaskContractBuilderInput): TaskContract
   const allowedContext = deriveAllowedContext(lm, targetArtifactId);
 
   // 8. Risk Level
-  const riskLevel = deriveRiskLevel(qr, lm);
+  const riskLevel = lm ? deriveRiskLevel(qr, lm) : "low";
 
   // 9. Verification Policy
   const verificationPolicy = deriveVerificationPolicy(riskLevel, qr);

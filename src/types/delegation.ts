@@ -539,7 +539,7 @@ export interface DelegationLogInput {
 
 /** DelegationLog 执行结果回写 */
 export interface DelegationLogExecutionUpdate {
-  execution_status: "success" | "failed" | "timeout";
+  execution_status: "success" | "failed" | "timeout" | "cancelled";
   execution_correct?: boolean;
   error_message?: string;
   model_used?: string;
