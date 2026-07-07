@@ -338,13 +338,14 @@ chatRouter.post("/chat", async (c) => {
         }
 
         // Sprint 61P: ContextPackage V1 — trace from llm-native-router
-        if (llmNativeResult.contextPackage) {
+        const contextPackage = llmNativeResult?.contextPackage;
+        if (contextPackage) {
           console.log("[context-package] V1 trace", {
-            packageId: llmNativeResult.contextPackage.packageId,
-            kind: llmNativeResult.contextPackage.kind,
-            policyRoute: llmNativeResult.contextPackage.policyRoute,
-            securityScope: llmNativeResult.contextPackage.securityScope,
-            metrics: llmNativeResult.contextPackage.metrics,
+            packageId: contextPackage.packageId,
+            kind: contextPackage.kind,
+            policyRoute: contextPackage.policyRoute,
+            securityScope: contextPackage.securityScope,
+            metrics: contextPackage.metrics,
           });
         }
       } catch (e: any) {
@@ -364,12 +365,24 @@ chatRouter.post("/chat", async (c) => {
       // S95P fix: null decision 但 message 有内容时，作为正常的 direct_answer 降级返回
       if (!llmNativeResult.decision) {
         if (llmNativeResult.message) {
-          console.warn("[chat] SSE routeWithManagerDecision returned null decision with message — returning as direct_answer fallback");
-          return c.json({
-            reply: llmNativeResult.message,
-            routing_layer: llmNativeResult.routing_layer ?? "L0",
-            decision_type: llmNativeResult.decision_type ?? "direct_answer",
-            mode: "fast",
+          console.warn("[chat] SSE routeWithManagerDecision returned null decision with message — sending as SSE fast_reply");
+          c.header("Content-Type", "text/event-stream");
+          c.header("Cache-Control", "no-cache");
+          c.header("Connection", "keep-alive");
+          c.header("X-Accel-Buffering", "no");
+          return stream(c, async (s) => {
+            await s.write(`data: ${JSON.stringify({
+              type: "fast_reply",
+              stream: llmNativeResult.message,
+              routing_layer: llmNativeResult.routing_layer ?? "L0",
+              meta: { origin: "manager", contentKind: "chat" },
+            })}\n\n`);
+            await s.write(`data: ${JSON.stringify({
+              type: "done",
+              stream: lang === "zh" ? "已返回答案" : "Answer ready",
+              routing_layer: llmNativeResult.routing_layer ?? "L0",
+              meta: { origin: "system", contentKind: "status" },
+            })}\n\n`);
           });
         }
         console.warn("[chat] SSE routeWithManagerDecision returned null decision — returning safe fallback");
@@ -541,7 +554,7 @@ chatRouter.post("/chat", async (c) => {
                   revisionOfArtifactId: isLineageRevision ? activeArtifact!.artifactId : undefined,
                   revisionOfTaskId: isLineageRevision ? activeArtifact!.taskId : undefined,
                 });
-                normalizedEvent.meta = {
+                (normalizedEvent as any).meta = {
                   ...envelope.meta,
                   summaryForManager: envelope.brief.summaryForManager,
                 };
@@ -748,7 +761,7 @@ chatRouter.post("/chat", async (c) => {
             input_tokens: llmNativeResult.requestSummary.totalInputTokens ?? 0,
             output_tokens: llmNativeResult.requestSummary.totalOutputTokens ?? 0,
             estimated_cost_usd: llmNativeResult.requestSummary.estimatedTotalCost ?? null,
-            model: llmNativeResult.requestSummary.modelUsed ?? config.fastModel,
+            model: (llmNativeResult.requestSummary as any).modelUsed ?? config.fastModel,
             manager_calls: llmNativeResult.requestSummary.managerModelCalls ?? 0,
             worker_calls: llmNativeResult.requestSummary.slowModelCalls ?? 0,
           } : null;
@@ -792,7 +805,7 @@ chatRouter.post("/chat", async (c) => {
 
           // Sprint 66P: 把 verification 写入 artifact store（供下一轮 quality routing 读取）
           if (verificationPayload && artifactMetaFromSSE?.artifactId) {
-            setArtifactVerification(artifactMetaFromSSE.artifactId, verificationPayload as any);
+            setArtifactVerification(artifactMetaFromSSE.artifactId as string, verificationPayload as any);
           }
         } catch (sseErr: any) {
           console.error("[chat] SSE stream error:", sseErr.message);
