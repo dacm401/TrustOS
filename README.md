@@ -20,21 +20,53 @@
 **少规则 + 强学习 + 必要时请示用户**
 
 ```
-┌─────────────────────────────────────────────┐
-│  Hard Policy（极简红线）                     │
-│  密码/账号/密钥/私人数据 → 直接拒绝          │
-└─────────────────────────────────────────────┘
-                      ↓
-┌─────────────────────────────────────────────┐
-│  Learning Layer（学习层）                    │
-│  用户反馈 → 记住 → 下次复用                  │
-└─────────────────────────────────────────────┘
-                      ↓
-┌─────────────────────────────────────────────┐
-│  Human-in-the-Loop（用户兜底）              │
-│  模糊地带 → 请示用户 → 记入学习层            │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Hard Policy（极简红线）                                  │
+│  密码/账号/密钥/私人数据 → 直接拒绝                        │
+└──────────────────────────────────────────────────────────┘
+                          ↓
+┌──────────────────────────────────────────────────────────┐
+│  Learning Layer（学习层）                                  │
+│  用户反馈 → 记住 → 下次复用                                │
+└──────────────────────────────────────────────────────────┘
+                          ↓
+┌──────────────────────────────────────────────────────────┐
+│  Human-in-the-Loop（用户兜底）                             │
+│  模糊地带 → 请示用户 → 记入学习层                          │
+└──────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 当前架构：Manager Workspace
+
+S100P 引入 **Loop Separation in UX**，将单体聊天拆分为三栏工作区：
+
+```
+┌──────────────┬────────────────────────┬─────────────────────┐
+│              │                        │                     │
+│  Session     │  Manager Conversation  │  Session Detail     │
+│  List        │  (Manager 层摘要)       │  (Delegation        │
+│              │                        │   Contract /        │
+│  ┌────────┐  │  ┌──────────────────┐  │   Timeline /        │
+│  │ Task 1 │  │  │ Manager: 任务完成 │  │   Approval /        │
+│  │ ●active│  │  │ Trust Report 已生成│  │   Trust Report)    │
+│  └────────┘  │  └──────────────────┘  │                     │
+│  ┌────────┐  │                        │  ┌───────────────┐  │
+│  │ Task 2 │  │                        │  │ Worker Events │  │
+│  │ ✓ done │  │                        │  │ • progress    │  │
+│  └────────┘  │                        │  │ • action      │  │
+│              │                        │  │ • approval    │  │
+│              │                        │  │ • artifact    │  │
+│              │                        │  └───────────────┘  │
+└──────────────┴────────────────────────┴─────────────────────┘
+```
+
+**核心原则：**
+- 每个委托任务 = 独立 Session
+- Worker 事件归属对应 Session，不进主对话
+- Manager Conversation 只显示 Manager 层摘要
+- 审批和 Trust Report 绑定具体 Session
 
 ---
 
@@ -44,7 +76,9 @@
 |:---|:---|
 | **LLM-Native Routing** | Gated Delegation 四层（Score → Policy → Rerank → Learn），benchmark 72B 路由准确率 80-83% |
 | **Manager-Worker 架构** | Fast/Manager 做分层决策，Slow/Worker 做执行，Fast 模型用户可选（默认 `Qwen2.5-72B-Instruct`） |
-| **Phase 4 安全层** | Data Classification → SmallModelGuard → Redaction Engine，PII/凭证不过 Worker |
+| **Manager Routing** | 5 级优先路由（explicit target → delegation → reference match → ambiguous → normal），中文 n-gram 语义匹配 |
+| **Visibility Routing** | 6 级事件可见性（silent_audit / session_timeline / approval_required / manager_chat_summary / trust_report_only / critical_alert），控制事件展示位置 |
+| **Session 隔离** | 每任务独立 Session，Worker 事件不混流，多任务并行互不干扰 |
 | **TrustPolicy Engine** | 7条默认规则（fail-closed），支持 allow/deny/transform/ask_user 决策 |
 | **Sanitizer Engine** | email/phone/name/bank-card 等内置脱敏器，支持自定义 transform |
 | **权限授权流** | Worker 访问敏感数据前，需 Fast 审批（`permission_requests` 表 + 实时面板） |
@@ -59,9 +93,10 @@
 
 | 组件 | 角色 | 职责 |
 |:---|:---|:---|
-| **Fast Manager（本地层）** | 判断与分发 | 做判断、分发指令、控制信息流 |
-| **Slow Worker（云端层）** | 任务执行 | 执行任务、返回结果 |
-| **Task Archive** | 共享工作台 | 跨层传递结构化信息 |
+| **Fast Manager（本地层）** | 判断与分发 | 做判断、分发指令、控制信息流、Manager 路由 |
+| **Slow Worker（云端层）** | 任务执行 | 执行任务、产出事件、上报进度 |
+| **Session Layer** | 任务隔离 | 每委托任务为独立 Session，Worker 事件按 Session 隔离 |
+| **Task Archive** | 共享工作台 | 跨层传递结构化信息、Persist Artifacts |
 
 ### 四种标准动作
 
@@ -69,8 +104,17 @@
 |:---|:---|
 | `direct_answer` | Fast 模型直接回复 |
 | `ask_clarification` | 请求澄清后再执行 |
-| `delegate_to_slow` | 委托 Slow Worker 执行 |
+| `delegate_to_slow` | 委托 Slow Worker 执行，创建独立 Session |
 | `execute_task` | 触发执行模式（多步骤） |
+
+### Manager 路由决策
+
+| 路由 | 触发条件 | 行为 |
+|:---|:---|:---|
+| `new_task` | 用户请求新任务 | 创建 Session + Delegation Contract |
+| `update_session` | 指代已有 Session | 更新对应 Session 指令/约束 |
+| `direct_reply` | 普通对话 | Manager 直接回复 |
+| `ask_clarification` | 指代不清 | 只问一个澄清问题 |
 
 ### 数据分级
 
@@ -93,6 +137,10 @@
 | Phase 3 | Local Trust Gateway + 数据分级 | ✅ 完成 |
 | Phase 4 | Permission Layer + Hard Policy | ✅ 完成 |
 | Phase 5 | 审计归档 + Learning Layer | ✅ 完成 |
+| S100P P1 | Schema Foundation (agent_sessions, manager_messages, session_events) | ✅ 完成 |
+| S100P P2 | Backend Routing (Manager Router + Visibility Router) | ✅ 完成 |
+| S100P P3 | Manager Workspace Layout (三栏前端) | 🚧 开发中 |
+| S100P P4 | Session Detail (Timeline / Approval / Trust Report) | 📋 待开始 |
 
 ---
 
@@ -101,11 +149,11 @@
 ```bash
 git clone https://github.com/dacm401/TrustOS.git
 cd TrustOS
-cp .env.example .env   # 配置 OPENAI_API_KEY
+cp .env.example .env   # 配置 API keys
 docker-compose up -d   # 启动 PostgreSQL
 npm install
 npm run dev            # 端口 3001
-npm run test:run       # 94 tests
+npm run test           # Vitest
 ```
 
 > ⚠️ DeepSeek-V3/R1 在 SiliconFlow 不支持 function calling（会 hang），统一使用 Qwen 系列。
@@ -116,7 +164,12 @@ npm run test:run       # 94 tests
 
 ```
 src/
-├── api/                    # HTTP 接口（chat/auth/dashboard/tasks/memory/permissions...）
+├── api/                    # HTTP 接口
+│   ├── chat.ts / auth.ts / dashboard.ts / tasks.ts ...
+│   ├── agent-sessions.ts        # S100P: Session CRUD API
+│   ├── manager-messages.ts      # S100P: Manager 消息 API
+│   ├── manager-route.ts         # S100P: Manager 路由 API
+│   └── session-events.ts        # S100P: Session 事件 API
 ├── services/               # 业务逻辑
 │   ├── llm-native-router.ts     # Phase D Gated Delegation 核心
 │   ├── execution-loop.ts         # Fast 同步执行循环
@@ -124,6 +177,12 @@ src/
 │   ├── prompt-template-service.ts# Prompt 模板渲染
 │   ├── cross-session-context.ts  # 跨会话上下文
 │   ├── task-workspace.ts         # 共享工作区
+│   ├── manager-routing/          # S100P: Manager 路由逻辑
+│   │   ├── manager-router.ts     #   5 级优先路由引擎
+│   │   └── manager-routing-types.ts
+│   ├── visibility-routing/       # S100P: 事件可见性路由
+│   │   ├── visibility-router.ts  #   6 级 visibility 映射
+│   │   └── visibility-types.ts
 │   ├── gating/                   # G1-G3 门控子模块
 │   ├── phase3/                   # Worker 后台轮询
 │   ├── phase4/                   # Data Classification / Redaction
@@ -132,7 +191,10 @@ src/
 ├── models/                 # 模型网关（OpenAI/Anthropic）
 ├── tools/                  # 工具注册 + 执行器
 ├── context/                # Token Budget / Context Compressor
-├── db/                     # Repositories + ArchiveRepo + Connection
+├── db/                     # Repositories + Migrations
+│   ├── repositories/            # agent-session / manager-message / session-event ...
+│   ├── migrations/              # 024_s100p_schema_foundation.sql ...
+│   └── schema.sql               # Full DDL
 ├── logging/                # Decision Logger / Metrics Calculator
 ├── middleware/             # Identity / JWT / Rate Limit
 ├── config/                 # Config + Model Capability Matrix
@@ -148,6 +210,8 @@ src/
 - `docs/lean-agent-runtime-spec.md` — 完整规范
 - `docs/MANAGER-DECISION-SCHEMA.md` — 决策 Schema
 - `docs/dev-rules.md` — 开发规范
+- `docs/sprints/S100P-development-plan.md` — S100P 开发计划
+- `docs/sprints/S100P-phase2-report.md` — S100P Phase 2 报告
 
 ---
 
@@ -159,7 +223,7 @@ src/
 | Database | PostgreSQL 16 + pgvector（Docker，端口 5432） |
 | Models | SiliconFlow / OpenRouter — Fast 层默认 `Qwen2.5-72B-Instruct`，Slow 层用户可选 |
 | Frontend | React + TypeScript（Next.js） |
-| Testing | Vitest（94 tests） |
+| Testing | Vitest（200+ tests，含 S100P 56 路由测试） |
 
 ---
 
@@ -171,4 +235,5 @@ src/
 | 全本地 | 模型能力受限 | 云端只做执行，不持有上下文 |
 | Prompt 写死规则 | 脆弱，无法学习 | Learning Layer 从用户反馈中进化 |
 | 靠模型自觉 | 不可靠 | Hard Policy + TrustPolicy Engine 守住红线 |
+| 单体聊天 | Worker 事件泛滥，多任务混流 | Session 隔离 + Visibility 路由，每个任务独立 |
 
