@@ -1,9 +1,9 @@
 # S100P Development Plan — Manager Workspace v1: Loop Separation in UX
 
-Version: v0.2
+Version: v1.0
 Stage: S100P
-Date: 2026-07-03
-Status: Accepted — Ready for controlled kickoff
+Date: 2026-07-07
+Status: Acceptance Candidate — Awaiting PM Final Sign-off
 
 ---
 
@@ -426,3 +426,76 @@ Each PR must include:
 - [ ] Key files list
 - [ ] Test results
 - [ ] No scope creep beyond assigned tasks
+
+---
+
+## 8. S100P Current Status
+
+**Status: Acceptance Candidate**
+
+### Completed Phases
+
+| Phase | Title | Status | Smoke/Unit |
+|---|---|---|---|
+| Phase 1 | Schema Foundation | ✅ PASS | 35/35 PASS |
+| Phase 1.5 | Schema/API Smoke | ✅ PASS | 35/35 PASS |
+| Phase 2 | Backend Routing | ✅ PASS | 56 unit + 13 API PASS |
+| Phase 3 | Frontend Layout | ✅ PASS | 21/21 PASS |
+
+**Cumulative: 125/125 smoke + unit tests pass.**
+
+### Exit Criteria
+
+8/10 criteria met. 2 deferred (Approval Card, Trust Report) have schema foundation, UI pending Phase 4.
+
+### Not Started
+
+- Phase 4: Session Detail deep components (Worker Timeline, Approval Card, Trust Report)
+- Phase 5: Trust Report / Approval UI / Integration hardening
+- P1 Tasks: Artifact Panel, View Audit, Session search/filter, Cross-session summary, Rollback entry
+
+### Commit Chain
+
+```
+74aa64f s100p phase3 manager workspace layout
+aa9040f docs: update README for S100P Manager Workspace architecture
+99fbb11 s100p phase2: update report with confirmed smoke results + dev plan
+02adcfb s100p phase2 backend manager routing
+565fa89 s100p phase1.5 smoke verification assets
+216eb74 s100p phase1 schema foundation
+```
+
+### Sync Status
+
+| Endpoint | Status |
+|---|---|
+| WorkBuddy | ✅ |
+| Desktop | ✅ |
+| origin/GitHub | ❌ Network blocked |
+
+---
+
+## 9. Acceptance Freeze Rules
+
+S100P is in **acceptance freeze**. The following rules apply:
+
+### Allowed
+- Documentation updates (reports, plans, demo scripts)
+- Smoke test additions or fixes
+- Minor comment/code-doc corrections
+- README or plan status updates
+
+### Prohibited
+- New product features
+- New UI panels or components
+- Worker Timeline expansion
+- Approval Card implementation
+- Trust Report Panel implementation
+- Schema changes or migrations
+- Routing rule modifications
+- Session field extensions
+- Agent Engine / Sandbox / MCP scope additions
+- Floating window or desktop system work
+
+### Lift Condition
+Freeze lifts when PM grants Phase 4 authorization or declares S100P closed.
