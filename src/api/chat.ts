@@ -230,7 +230,6 @@ chatRouter.post("/chat", async (c) => {
             })}\n\n`);
             await s.write(`data: ${JSON.stringify({
               type: "done",
-              stream: quickLang === "zh" ? "已返回答案" : "Answer ready",
               routing_layer: "L0",
               meta: { origin: "system", contentKind: "status" },
               budget: null,
@@ -264,7 +263,6 @@ chatRouter.post("/chat", async (c) => {
               })}\n\n`);
               await s.write(`data: ${JSON.stringify({
                 type: "done",
-                stream: quickLang === "zh" ? "已返回答案" : "Answer ready",
                 routing_layer: "L0",
                 meta: { origin: "system", contentKind: "status" },
                 // Sprint 64P: Budget Manager（快速意图路径，预算检查不可用）
@@ -379,7 +377,6 @@ chatRouter.post("/chat", async (c) => {
             })}\n\n`);
             await s.write(`data: ${JSON.stringify({
               type: "done",
-              stream: lang === "zh" ? "已返回答案" : "Answer ready",
               routing_layer: llmNativeResult.routing_layer ?? "L0",
               meta: { origin: "system", contentKind: "status" },
             })}\n\n`);
@@ -497,7 +494,6 @@ chatRouter.post("/chat", async (c) => {
               })}\n\n`);
               await s.write(`data: ${JSON.stringify({
                 type: "done",
-                stream: lang === "zh" ? "任务失败" : "Task failed",
                 routing_layer: llmNativeResult.routing_layer,
                 meta: { origin: "system", contentKind: "status" },
               })}\n\n`);
@@ -768,7 +764,6 @@ chatRouter.post("/chat", async (c) => {
 
           const doneObj: Record<string, unknown> = {
             type: "done",
-            stream: doneMsg,
             routing_layer: llmNativeResult.routing_layer,
             task_id: archiveId,
             ledger: ledgerPayload,

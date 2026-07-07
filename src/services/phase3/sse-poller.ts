@@ -393,7 +393,7 @@ export async function* pollArchiveAndYield(
         if (result.rows.length > 0) {
           const errMsg = result.rows[0].error_message ?? "Unknown error";
           yield { type: "error", stream: `任务执行失败: ${errMsg}`, routing_layer: "L2" };
-          yield { type: "done", stream: lang === "zh" ? "执行失败" : "Execution failed", routing_layer: "L2" };
+          yield { type: "done", routing_layer: "L2" };
           await TaskArchiveRepo.markDelivered(taskId).catch(() => {});
           if (delegation_log_id) {
             DelegationLogRepo.updateExecution(delegation_log_id, {
@@ -526,7 +526,7 @@ export async function* pollArchiveAndYield(
       // S92P: Build terminal summary for failed state
       const failedTerminalSummary = buildTerminalSummary({ status: "failed", execution: failedExec });
       yield { type: "error", stream: "⚠️ 任务执行失败（请求超时或模型错误）", routing_layer: "L2", terminalSummary: failedTerminalSummary as unknown as Record<string, unknown> };
-      yield { type: "done", stream: lang === "zh" ? "执行失败" : "Execution failed", routing_layer: "L2", terminalSummary: failedTerminalSummary as unknown as Record<string, unknown> };
+      yield { type: "done", routing_layer: "L2", terminalSummary: failedTerminalSummary as unknown as Record<string, unknown> };
       if (delegation_log_id) {
         DelegationLogRepo.updateExecution(delegation_log_id, {
           execution_status: "failed",
@@ -562,7 +562,7 @@ export async function* pollArchiveAndYield(
           routing_layer: "L2",
           terminalSummary: cancelledTerminalSummary as unknown as Record<string, unknown>,
         };
-        yield { type: "done", stream: lang === "zh" ? "已取消" : "Cancelled", routing_layer: "L2", terminalSummary: cancelledTerminalSummary as unknown as Record<string, unknown> };
+        yield { type: "done", routing_layer: "L2", terminalSummary: cancelledTerminalSummary as unknown as Record<string, unknown> };
 
         // G4: Mark execution as cancelled in delegation logs
         if (delegation_log_id) {
@@ -606,7 +606,7 @@ export async function* pollArchiveAndYield(
           routing_layer: "L2",
           terminalSummary: timedOutTerminalSummary as unknown as Record<string, unknown>,
         };
-        yield { type: "done", stream: lang === "zh" ? "已超时" : "Timed out", routing_layer: "L2", terminalSummary: timedOutTerminalSummary as unknown as Record<string, unknown> };
+        yield { type: "done", routing_layer: "L2", terminalSummary: timedOutTerminalSummary as unknown as Record<string, unknown> };
 
         // G4: Mark execution as timed_out in delegation logs
         if (delegation_log_id) {
@@ -789,7 +789,7 @@ export async function* pollArchiveAndYield(
           model: (execution.model_used as string) ?? "unknown",
         },
       };
-      yield { type: "done", stream: lang === "zh" ? "分析完成" : "Analysis complete", routing_layer: "L2", terminalSummary: completedTerminalSummary as unknown as Record<string, unknown>, usage };
+      yield { type: "done", routing_layer: "L2", terminalSummary: completedTerminalSummary as unknown as Record<string, unknown>, usage };
 
         await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
           console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
@@ -815,7 +815,7 @@ export async function* pollArchiveAndYield(
       if (!sentResult) {
         yield { type: "error", stream: `任务执行失败: ${errors[0] ?? "Unknown error"}`, routing_layer: "L2" };
       }
-      yield { type: "done", stream: lang === "zh" ? "执行失败" : "Execution failed", routing_layer: "L2" };
+      yield { type: "done", routing_layer: "L2" };
       await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
         console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
       );
@@ -854,7 +854,7 @@ export async function* pollArchiveAndYield(
           routing_layer: "L2",
         };
       }
-      yield { type: "done", stream: lang === "zh" ? "任务超时" : "Task timed out", routing_layer: "L2" };
+      yield { type: "done", routing_layer: "L2" };
       await TaskArchiveRepo.markDelivered(taskId).catch((e) =>
         console.warn("[pollArchiveAndYield] markDelivered failed:", e?.message)
       );
