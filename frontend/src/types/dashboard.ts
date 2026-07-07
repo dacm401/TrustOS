@@ -139,3 +139,91 @@ export interface StreamEvent {
   /** Context Boundary V0.1: provenance meta */
   meta?: ProvenanceMeta;
 }
+
+// ── S100P: Manager Workspace types ─────────────────────────────────────────────
+
+export type SessionStatus =
+  | "planning" | "delegated" | "running" | "waiting_approval"
+  | "paused" | "completed" | "failed" | "cancelled" | "rolled_back";
+
+export interface AgentSession {
+  id: string;
+  user_id: string;
+  title: string;
+  goal?: string;
+  status: SessionStatus;
+  worker_id?: string;
+  delegation_contract?: Record<string, unknown>;
+  risk_level?: string;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string;
+}
+
+export type MessageRole = "user" | "manager" | "system";
+
+export interface ManagerMessage {
+  id: string;
+  user_id: string;
+  conversation_id: string;
+  role: MessageRole;
+  content: string;
+  related_session_id?: string;
+  created_at: string;
+}
+
+export type RouteType =
+  | "normal_conversation"
+  | "new_delegated_task"
+  | "update_existing_session"
+  | "ambiguous_session_reference"
+  | "explicit_target_session";
+
+export interface RouteMessageRequest {
+  conversationId: string;
+  message: string;
+  targetSessionId?: string;
+}
+
+export interface RouteMessageResponse {
+  routeType: RouteType;
+  targetSessionId: string | null;
+  clarificationRequired: boolean;
+  reason: string;
+  managerMessage: ManagerMessage;
+  createdSession: AgentSession | null;
+  sessionEvent: SessionEvent | null;
+}
+
+export type SessionEventType =
+  | "session_created" | "session_started" | "session_completed"
+  | "session_failed" | "session_cancelled" | "session_paused"
+  | "session_resumed" | "delegation_created" | "delegation_accepted"
+  | "delegation_rejected" | "delegation_failed" | "worker_assigned"
+  | "worker_started" | "worker_completed" | "worker_failed"
+  | "worker_paused" | "worker_resumed" | "tool_execution_started"
+  | "tool_execution_completed" | "tool_execution_failed"
+  | "permission_requested" | "permission_granted" | "permission_denied"
+  | "permission_expired" | "message_received" | "message_sent"
+  | "user_input_required" | "user_input_received" | "plan_created"
+  | "plan_updated" | "plan_executed" | "plan_failed"
+  | "decision_made" | "decision_reviewed" | "decision_reversed"
+  | "risk_assessment" | "risk_mitigated" | "error_occurred"
+  | "warning_raised" | "info_logged";
+
+export type SessionEventVisibility =
+  | "silent_audit" | "session_timeline" | "approval_required"
+  | "manager_chat_summary" | "trust_report_only" | "critical_alert";
+
+export type SessionEventSeverity = "debug" | "info" | "warn" | "error" | "critical";
+
+export interface SessionEvent {
+  id: string;
+  session_id: string;
+  type: SessionEventType;
+  summary: string;
+  severity: SessionEventSeverity;
+  visibility: SessionEventVisibility;
+  raw_ref?: string;
+  created_at: string;
+}

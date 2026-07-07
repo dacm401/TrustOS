@@ -16,6 +16,7 @@ import DashboardView from "@/components/views/DashboardView";
 import BetaPanel from "@/components/dashboard/BetaPanel";
 import AdminPanel from "@/components/dashboard/AdminPanel";
 import TasksView from "@/components/views/TasksView";
+import { ManagerWorkspace } from "@/components/manager-workspace/ManagerWorkspace";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 type NavView = "chat" | "tasks" | "memory" | "dashboard" | "beta" | "admin";
@@ -74,10 +75,7 @@ export default function HomePage() {
               </div>
             }>
               <div style={{ display: activeNav === "chat" ? "block" : "none", height: "100%" }}>
-                <ChatInterface
-                  onTaskIdChange={setSelectedTaskId}
-                  userId={userId}
-                />
+                <ManagerWorkspace userId={userId} />
               </div>
             </ErrorBoundary>
 
@@ -118,8 +116,8 @@ export default function HomePage() {
             </ErrorBoundary>
           </main>
 
-          {/* Right: Workbench Sidebar */}
-          {sidebarOpen && (
+          {/* Right: Workbench Sidebar — hidden when ManagerWorkspace (chat) is active */}
+          {sidebarOpen && activeNav !== "chat" && (
             <aside
               className="w-96 flex-shrink-0 flex flex-col overflow-hidden"
               style={{

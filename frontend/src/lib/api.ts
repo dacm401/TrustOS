@@ -326,3 +326,77 @@ export async function fetchTaskResult(taskId: string, userId: string) {
   if (!res.ok) throw new Error(`加载任务结果失败 (${res.status})`);
   return res.json();
 }
+
+// ── S100P: Manager Workspace APIs ─────────────────────────────────────────────
+
+export async function fetchAgentSessions(userId: string, options?: { status?: string; limit?: number }) {
+  const { apiBase } = await getApiConfig();
+  const params = new URLSearchParams();
+  if (options?.status) params.set("status", options.status);
+  if (options?.limit) params.set("limit", String(options.limit));
+  const qs = params.toString();
+  const url = `${apiBase}/v1/agent-sessions${qs ? `?${qs}` : ""}`;
+  const res = await fetch(url, { headers: { "X-User-Id": userId } });
+  if (!res.ok) throw new Error(`加载 Session 列表失败 (${res.status})`);
+  return res.json();
+}
+
+export async function fetchAgentSessionDetail(sessionId: string, userId: string) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(`${apiBase}/v1/agent-sessions/${encodeURIComponent(sessionId)}`, {
+    headers: { "X-User-Id": userId },
+  });
+  if (!res.ok) throw new Error(`加载 Session 详情失败 (${res.status})`);
+  return res.json();
+}
+
+export async function routeManagerMessage(
+  userId: string,
+  body: { conversationId: string; message: string; targetSessionId?: string }
+) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(`${apiBase}/v1/manager/route-message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-User-Id": userId },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `路由消息失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function fetchManagerMessages(userId: string, conversationId: string, limit = 100) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-messages?conversationId=${encodeURIComponent(conversationId)}&limit=${limit}`,
+    { headers: { "X-User-Id": userId } }
+  );
+  if (!res.ok) throw new Error(`加载对话消息失败 (${res.status})`);
+  return res.json();
+}
+
+export async function createManagerMessage(
+  userId: string,
+  body: { conversationId: string; role: string; content: string; relatedSessionId?: string }
+) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(`${apiBase}/v1/manager-messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-User-Id": userId },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`创建消息失败 (${res.status})`);
+  return res.json();
+}
+
+export async function fetchSessionEvents(userId: string, sessionId: string, limit = 200) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/session-events?sessionId=${encodeURIComponent(sessionId)}&limit=${limit}`,
+    { headers: { "X-User-Id": userId } }
+  );
+  if (!res.ok) throw new Error(`加载 Session 事件失败 (${res.status})`);
+  return res.json();
+}
