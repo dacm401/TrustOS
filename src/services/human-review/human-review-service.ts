@@ -422,7 +422,7 @@ export function buildHumanReviewResumeExecutionResult(
 // ── S81P: Resume Execution Service ────────────────────────────────────────
 
 export interface ExecutionError extends Error {
-  code: "NOT_FOUND" | "REVIEW_MISMATCH" | "REQUIRES_CONFIRMATION" | "UNSUPPORTED";
+  code: "NOT_FOUND" | "REVIEW_MISMATCH" | "REQUIRES_CONFIRMATION" | "UNSUPPORTED" | "INVALID_STATUS" | "UNSUPPORTED_ACTION";
 }
 
 /**

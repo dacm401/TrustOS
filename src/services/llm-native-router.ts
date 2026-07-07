@@ -547,7 +547,7 @@ export async function routeWithManagerDecision(
       policyRoute: policyCtx.route,
       userInstruction: message,
       activeArtifact: effectiveActiveArtifact ? {
-        artifactId: effectiveActiveArtifact.artifactId,
+        artifactId: effectiveActiveArtifact.artifactId as string,
         taskId: effectiveActiveArtifact.taskId,
         summaryForManager: effectiveActiveArtifact.summaryForManager,
         revisionOfArtifactId: effectiveActiveArtifact.revisionOfArtifactId,
@@ -1055,7 +1055,7 @@ export async function routeWithManagerDecision(
       policyRoute: policyCtx.route,
       userInstruction: message,
       activeArtifact: effectiveActiveArtifact ? {
-        artifactId: effectiveActiveArtifact.artifactId,
+        artifactId: effectiveActiveArtifact.artifactId as string,
         taskId: effectiveActiveArtifact.taskId,
         summaryForManager: effectiveActiveArtifact.summaryForManager,
         revisionOfArtifactId: effectiveActiveArtifact.revisionOfArtifactId,
@@ -1261,12 +1261,9 @@ function buildRequestLedger(
       managerLlmBypassed: localManagerExtract.managerLlmBypassed as boolean,
       nextAction: localManagerExtract.nextAction as string,
       patchFirstEligible: localManagerExtract.patchFirstEligible as boolean | undefined,
-      effectivePatchFirstEligible: localManagerExtract.effectivePatchFirstEligible as boolean | undefined,
       patchFirstBefore: localManagerExtract.patchFirstBefore as boolean | undefined,
       patchFirstDegradedByWarning: localManagerExtract.patchFirstDegradedByWarning as boolean | undefined,
-      patchFirstWarningAdvisory: localManagerExtract.patchFirstWarningAdvisory as boolean | undefined,
       patchFirstDowngradedByQuality: localManagerExtract.patchFirstDowngradedByQuality as boolean | undefined,
-      patchFirstHardDowngrade: localManagerExtract.patchFirstHardDowngrade as boolean | undefined,
       decisionMs: localManagerExtract.decisionMs as number,
     } : undefined,
     // Sprint 64P: Budget Manager 字段（可选）
@@ -1395,7 +1392,7 @@ async function _callFastModel(
     const resp = await callOpenAIWithOptionsTraced(
       effectiveFastModel,
       messages,
-      reqApiKey || config.openaiApiKey || undefined,
+      (reqApiKey || config.openaiApiKey) as string,
       effectiveBaseUrl,
       undefined,
       "manager"
@@ -2141,7 +2138,7 @@ async function routeByDecision(
           goal: command?.goal ?? message,
           userId: user_id,
           sessionId: session_id,
-          model: slowModel || config.slowModel,
+          model: config.slowModel,
         });
         console.log("[llm-native-router] execute_task: ExecutionPlan generated:", {
           taskId,
