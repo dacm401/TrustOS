@@ -3,7 +3,7 @@
 Version: v1.0
 Stage: S100P
 Date: 2026-07-07
-Status: Acceptance Candidate — Awaiting PM Final Sign-off
+Status: ACCEPTED — PM Final Sign-off 2026-07-07
 
 ---
 
@@ -431,7 +431,7 @@ Each PR must include:
 
 ## 8. S100P Current Status
 
-**Status: Acceptance Candidate**
+**Status: ACCEPTED**
 
 ### Completed Phases
 
@@ -441,8 +441,11 @@ Each PR must include:
 | Phase 1.5 | Schema/API Smoke | ✅ PASS | 35/35 PASS |
 | Phase 2 | Backend Routing | ✅ PASS | 56 unit + 13 API PASS |
 | Phase 3 | Frontend Layout | ✅ PASS | 21/21 PASS |
+| Acceptance Freeze | Docs + Demo + Freeze | ✅ PASS | 4e64752 |
 
 **Cumulative: 125/125 smoke + unit tests pass.**
+**Acceptance Snapshot: `4e64752`**
+**PM Final Sign-off: 2026-07-07**
 
 ### Exit Criteria
 
@@ -498,4 +501,5 @@ S100P is in **acceptance freeze**. The following rules apply:
 - Floating window or desktop system work
 
 ### Lift Condition
-Freeze lifts when PM grants Phase 4 authorization or declares S100P closed.
+S100P acceptance freeze lifted 2026-07-07 — PM declared S100P ACCEPTED.
+Phase 4 requires separate authorization. See `docs/sprints/Post-S100P-planning-brief.md` for next sprint candidates.

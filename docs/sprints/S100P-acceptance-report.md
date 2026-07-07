@@ -2,7 +2,7 @@
 
 Sprint: S100P — Manager Workspace v1: Loop Separation in UX
 Date: 2026-07-07
-Status: Acceptance Candidate — Awaiting PM Final Sign-off
+Status: ACCEPTED — PM Final Sign-off 2026-07-07
 
 ---
 
@@ -189,6 +189,9 @@ Minimum demo:
 | `99fbb11` | s100p phase2: update report with confirmed smoke results + dev plan |
 | `aa9040f` | docs: update README for S100P Manager Workspace architecture |
 | `74aa64f` | s100p phase3 manager workspace layout |
+| `4e64752` | s100p acceptance freeze docs |
+
+**S100P Acceptance Snapshot: `4e64752`**
 
 ---
 
@@ -205,14 +208,21 @@ Minimum demo:
 ## 11. Final PM Status
 
 ```text
-S100P Phase 1:     PASS
-S100P Phase 1.5:   PASS
-S100P Phase 2:     PASS
-S100P Phase 3:     PASS
-S100P Overall:     ACCEPTANCE CANDIDATE
-Phase 4:           NOT STARTED
+S100P Phase 1:     PASS ✅
+S100P Phase 1.5:   PASS ✅
+S100P Phase 2:     PASS ✅
+S100P Phase 3:     PASS ✅
+Acceptance Freeze: PASS ✅
+S100P Overall:     ACCEPTED
+Phase 4:           NOT APPROVED
 ```
+
+**Acceptance Snapshot: `4e64752`**
 
 **125/125 cumulative smoke + unit tests pass. 8/10 exit criteria met (2 deferred to Phase 4).**
 
-S100P MVP — Loop Separation in UX — is functionally complete. The architecture boundaries (Manager Loop ↔ Session Loop) are enforced at schema, API, and UI levels.
+S100P — Manager Workspace v1 / Loop Separation in UX — is formally accepted. The architecture boundaries (Manager Loop ↔ Session Loop) are enforced at schema, API, and UI levels.
+
+### Next Step
+
+Post-S100P Planning — see `docs/sprints/Post-S100P-planning-brief.md` for candidate directions (S101T TypeScript cleanup / S101I Worker execution / S101P Session deepening).
