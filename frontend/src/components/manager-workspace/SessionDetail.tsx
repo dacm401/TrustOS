@@ -221,6 +221,74 @@ export function SessionDetail({ userId, sessionId, refreshKey }: SessionDetailPr
         )}
       </div>
 
+        {/* S101P Phase B: Execution summary card — derived from existing session events */}
+      {events.length > 0 && (
+        <div
+          className="flex-shrink-0 px-4 py-2.5"
+          style={{ borderBottom: "1px solid var(--border-subtle)" }}
+        >
+          <div className="text-[10px] font-semibold tracking-wide mb-1.5" style={{ color: "var(--text-secondary)" }}>
+            📊 执行摘要
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
+            <span>事件总数</span>
+            <span style={{ color: "var(--text-primary)" }}>{events.length}</span>
+
+            <span>状态</span>
+            <span style={{ color: session.status === "completed" ? "var(--accent-green)" :
+              session.status === "failed" ? "var(--accent-red)" :
+              "var(--text-primary)" }}>
+              {STATUS_LABELS[session.status] ?? session.status}
+            </span>
+
+            {(() => {
+              const times = events.map(e => new Date(e.created_at).getTime());
+              const first = new Date(Math.min(...times));
+              const last = new Date(Math.max(...times));
+              const durationMs = Math.max(...times) - Math.min(...times);
+              return (
+                <>
+                  <span>开始</span>
+                  <span style={{ color: "var(--text-primary)" }}>{first.toLocaleTimeString()}</span>
+                  <span>结束</span>
+                  <span style={{ color: "var(--text-primary)" }}>{last.toLocaleTimeString()}</span>
+                  <span>耗时</span>
+                  <span style={{ color: "var(--text-primary)" }}>
+                    {durationMs >= 60000
+                      ? `${Math.floor(durationMs / 60000)}m ${Math.floor((durationMs % 60000) / 1000)}s`
+                      : `${(durationMs / 1000).toFixed(1)}s`}
+                  </span>
+                </>
+              );
+            })()}
+
+            {(() => {
+              const workerStarted = events.some(e => e.type === "worker_started");
+              const workerCompleted = events.some(e => e.type === "worker_completed");
+              const workerFailed = events.some(e => e.type === "worker_failed");
+              const errorCount = events.filter(e => e.type === "error_occurred").length;
+              const workerStatus = workerFailed ? "失败" : workerCompleted ? "已完成" : workerStarted ? "执行中" : "未启动";
+              return (
+                <>
+                  <span>Worker</span>
+                  <span style={{ color: workerFailed ? "var(--accent-red)" :
+                    workerCompleted ? "var(--accent-green)" :
+                    "var(--text-primary)" }}>
+                    {workerStatus}
+                  </span>
+                  {errorCount > 0 && (
+                    <>
+                      <span>错误</span>
+                      <span style={{ color: "var(--accent-red)" }}>{errorCount} 次</span>
+                    </>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* Events timeline */}
       <div className="flex-1 overflow-y-auto">
         <div

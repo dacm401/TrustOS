@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { routeManagerMessage, fetchManagerMessages, createManagerMessage } from "@/lib/api";
-import type { ManagerMessage, RouteMessageResponse } from "@/types/dashboard";
+import { ExecutionMetadata } from "@/components/chat/ExecutionMetadata";
+import type { ManagerMessage, RouteMessageResponse, UsageInfo, ExecutionProgress } from "@/types/dashboard";
 
 interface DisplayMessage {
   id: string;
@@ -10,6 +11,10 @@ interface DisplayMessage {
   content: string;
   relatedSessionId?: string;
   createdAt: string;
+  /** S101P Phase B: execution metadata — gracefully hidden when absent */
+  usage?: UsageInfo;
+  terminalSummary?: unknown;
+  executionProgress?: ExecutionProgress;
 }
 
 interface ManagerConversationProps {
@@ -200,6 +205,14 @@ export function ManagerConversation({
                 {new Date(msg.createdAt).toLocaleTimeString()}
               </div>
             </div>
+            {/* S101P Phase B: Execution metadata — conditionally rendered for manager messages */}
+            {msg.role === "manager" && (
+              <ExecutionMetadata
+                usage={msg.usage}
+                terminalSummary={msg.terminalSummary}
+                executionProgress={msg.executionProgress}
+              />
+            )}
           </div>
         ))}
 
