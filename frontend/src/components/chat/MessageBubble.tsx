@@ -5,7 +5,7 @@ import { CodeBlock } from "./CodeBlock";
 import { PreviewPane } from "./PreviewPane";
 import { ActionBar } from "./ActionBar";
 import { sendFeedback } from "@/lib/api";
-import type { Decision } from "@/types/dashboard";
+import type { Decision, UsageInfo } from "@/types/dashboard";
 
 interface MessageBubbleProps {
   role: "user" | "assistant";
@@ -20,6 +20,10 @@ interface MessageBubbleProps {
   };
   /** Phase 2.0: 路由分层标识 */
   routingLayer?: "L0" | "L1" | "L2" | "L3";
+  /** S101I: token/cost usage from worker execution */
+  usage?: UsageInfo;
+  /** S101I: terminal summary from worker execution */
+  terminalSummary?: string;
 }
 
 // S93P: 路由分层标签产品化 — 隐藏 L0/L1/L2/L3 内部术语，改用进度描述
@@ -34,7 +38,7 @@ function initials(name: string): string {
   return name.substring(0, 2).toUpperCase();
 }
 
-export function MessageBubble({ role, content, decision, userId = "dev-user", delegation, routingLayer }: MessageBubbleProps) {
+export function MessageBubble({ role, content, decision, userId = "dev-user", delegation, routingLayer, usage, terminalSummary }: MessageBubbleProps) {
   const isUser = role === "user";
   const [feedbackGiven, setFeedbackGiven] = useState<string | null>(null);
   const [showReasonInput, setShowReasonInput] = useState(false);
@@ -143,11 +147,11 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
         })()}
 
         {/* AI: Decision card + metadata */}
-        {!isUser && (decision || routingLayer) && (
+        {!isUser && (decision || routingLayer || usage || terminalSummary) && (
           <>
             {decision && <DecisionCard decision={decision} />}
             {/* AI metadata: model + tokens + latency + routing layer */}
-            {(decision?.execution || routingLayer) && (
+            {(decision?.execution || routingLayer || usage || terminalSummary) && (
               <div
                 className="flex items-center gap-3 mt-1 px-1 flex-wrap"
                 style={{ color: "var(--text-muted)" }}
@@ -184,6 +188,39 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
                     )}
                   </>
                 )}
+                {/* S101I: Worker execution usage — shown when decision.execution is absent */}
+                {!decision?.execution && usage && (
+                  <>
+                    <span className="text-[10px] font-mono">
+                      {usage.cost.model}
+                    </span>
+                    <span className="text-[10px]">
+                      {usage.tokens.total} tokens
+                    </span>
+                    {usage.cost.estimated_usd !== undefined && (
+                      <span className="text-[10px]" style={{ color: "var(--accent-green)" }}>
+                        ${usage.cost.estimated_usd.toFixed(4)}
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+            {/* S101I: Terminal summary — short completion note */}
+            {terminalSummary && (
+              <div
+                className="mt-1 px-2 py-1 rounded text-[10px]"
+                style={{
+                  backgroundColor: "rgba(139,92,246,0.06)",
+                  color: "var(--text-muted)",
+                  maxWidth: "300px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={terminalSummary}
+              >
+                📋 {terminalSummary}
               </div>
             )}
           </>

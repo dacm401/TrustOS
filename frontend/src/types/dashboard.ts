@@ -120,6 +120,12 @@ export interface ProvenanceMeta {
   revisionOfTaskId?: string;
 }
 
+/** S101I: Usage info from worker execution — token/cost metadata */
+export interface UsageInfo {
+  tokens: { input: number; output: number; total: number };
+  cost: { estimated_usd: number; provider: string; model: string };
+}
+
 /** SSE stream event — union of all event types emitted by /api/chat */
 export interface StreamEvent {
   type?: string;
@@ -138,6 +144,14 @@ export interface StreamEvent {
   message?: string;
   /** Context Boundary V0.1: provenance meta */
   meta?: ProvenanceMeta;
+  /** S88P: progress event payload */
+  progress?: Record<string, unknown>;
+  /** S89P: partial result payload */
+  partialResult?: Record<string, unknown>;
+  /** S92P: terminal summary payload */
+  terminalSummary?: Record<string, unknown>;
+  /** S97P: token/cost usage */
+  usage?: UsageInfo;
 }
 
 // ── S100P: Manager Workspace types ─────────────────────────────────────────────

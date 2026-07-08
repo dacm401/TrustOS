@@ -5,7 +5,7 @@ import { MessageBubble } from "./MessageBubble";
 import { ModelSwitchAnim } from "./ModelSwitchAnim";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { getApiConfig } from "@/lib/api";
-import type { Decision, StreamEvent, ProvenanceMeta } from "@/types/dashboard";
+import type { Decision, StreamEvent, ProvenanceMeta, UsageInfo } from "@/types/dashboard";
 
 interface Message {
   id: string;
@@ -30,6 +30,10 @@ interface Message {
   routing_layer?: "L0" | "L1" | "L2" | "L3";
   /** Context Boundary V0.2: provenance 来源元信息 */
   meta?: ProvenanceMeta;
+  /** S101I: token/cost usage from worker execution */
+  usage?: UsageInfo;
+  /** S101I: terminal summary from worker execution */
+  terminalSummary?: string;
 }
 
 interface ChatInterfaceProps {
@@ -69,6 +73,8 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
     if (event.type === "fast_reply" || event.type === "clarifying") return { origin: "manager", contentKind: "chat" };
     if (event.type === "result" || event.type === "worker_result") return { origin: "worker", contentKind: "artifact", taskId: event.task_id, artifactId: event.task_id };
     if (event.type === "thinking") return { origin: "system", contentKind: "thinking" };
+    // S101I: progress/partial_result are worker execution status events
+    if (event.type === "progress" || event.type === "partial_result") return { origin: "worker", contentKind: "status" };
     if (event.type === "status" || event.type === "done" || event.type === "error") return { origin: "system", contentKind: "status" };
     return undefined;
   }
@@ -163,6 +169,13 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
           } else if (data.type === "status") {
             // Phase 2.0: 慢模型处理中的安抚消息（临时状态，不写入消息列表）
             setStatusMsg(data.stream ?? null);
+          } else if (data.type === "progress") {
+            // S101I: Worker execution progress — update status/thinking indicators
+            setThinkingState("executing");
+            setStatusMsg(data.stream ?? "正在执行任务…");
+          } else if (data.type === "partial_result") {
+            // S101I: Worker partial result available — update status
+            setStatusMsg(data.stream ?? "中间结果已生成…");
           } else if (data.type === "thinking") {
             // Stream V2: thinking 状态可视化
             const state = (data.thinking_state || data.state || "thinking") as typeof thinkingState;
@@ -191,10 +204,14 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
               setActiveTaskId(data.task_id);
             }
             const inferredMeta = inferMetaFromStreamEvent(data);
+            // S101I: Extract terminal summary as readable text (truncated)
+            const terminalText = typeof data.terminalSummary === "object" && data.terminalSummary
+              ? JSON.stringify(data.terminalSummary).substring(0, 200)
+              : undefined;
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, streaming: false, decision: data.decision, routing_layer: data.routing_layer ?? m.routing_layer, meta: m.meta ?? inferredMeta }
+                  ? { ...m, streaming: false, decision: data.decision, routing_layer: data.routing_layer ?? m.routing_layer, meta: m.meta ?? inferredMeta, usage: data.usage, terminalSummary: terminalText }
                   : m
               )
             );
@@ -499,6 +516,8 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
               userId={userId}
               delegation={msg.delegation}
               routingLayer={msg.routing_layer}
+              usage={msg.usage}
+              terminalSummary={msg.terminalSummary}
             />
             {/* Streaming cursor — new design */}
             {msg.streaming && (
