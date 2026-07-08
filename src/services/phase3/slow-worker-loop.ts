@@ -35,6 +35,8 @@ import { classifySimpleTask } from "../simple-task-classifier.js";
 import { TASK_SOFT_TIMEOUT_MS, TASK_HARD_TIMEOUT_MS } from "../../types/runtime-trace.js";
 // S92P: Terminal state observability
 import { buildTerminalSummary } from "../../types/runtime-trace.js";
+// S101R-H1: Use centralized token-counter pricing instead of local hardcoded estimateCost
+import { estimateCost } from "../../models/token-counter.js";
 
 // 自适应轮询间隔
 function getPollInterval(elapsedMs: number): number {
@@ -69,7 +71,8 @@ async function loadArchiveContext(archiveId: string): Promise<{
 }
 
 // S90P: Cancellation-aware error class — thrown when task is cancelled mid-execution
-class TaskCancelledError extends Error {
+// S101R-C6: Exported for reuse by execute-worker-loop
+export class TaskCancelledError extends Error {
   public readonly archiveId: string;
   public readonly taskId: string;
   constructor(archiveId: string, taskId: string) {
@@ -81,14 +84,16 @@ class TaskCancelledError extends Error {
 }
 
 /** S90P: Check if task has been cancelled, throw TaskCancelledError if so. */
-async function checkCancellation(archiveId: string, taskId: string): Promise<void> {
+// S101R-C6: Exported for reuse by execute-worker-loop
+export async function checkCancellation(archiveId: string, taskId: string): Promise<void> {
   if (await TaskArchiveRepo.isCancelled(archiveId)) {
     throw new TaskCancelledError(archiveId, taskId);
   }
 }
 
 // S91P: Timeout-aware error class — thrown when task exceeds timeout threshold
-class TaskTimedOutError extends Error {
+// S101R-C6: Exported for reuse by execute-worker-loop
+export class TaskTimedOutError extends Error {
   public readonly archiveId: string;
   public readonly taskId: string;
   public readonly timeoutKind: "soft" | "hard";
@@ -112,7 +117,8 @@ class TaskTimedOutError extends Error {
 }
 
 /** S91P: Check if task has exceeded soft or hard timeout, throw TaskTimedOutError if so. */
-async function checkTimeout(
+// S101R-C6: Exported for reuse by execute-worker-loop
+export async function checkTimeout(
   archiveId: string,
   taskId: string,
   startedAt: number,
@@ -1258,14 +1264,6 @@ async function executeDelegateCommand(
   }
 }
 
-// 粗估费用
-function estimateCost(inputTokens: number, outputTokens: number, model: string): number {
-  // Qwen2.5-72B-Instruct pricing (approximate)
-  const priceIn = 0.001;
-  const priceOut = 0.002;
-  return (inputTokens / 1000) * priceIn + (outputTokens / 1000) * priceOut;
-}
-
 // 轮询循环
 async function pollLoop(): Promise<void> {
   const POLL_INTERVAL_MS = 1000;
@@ -1340,6 +1338,8 @@ export function startSlowWorker(): void {
 /** 优雅停止 worker，供 index.ts 关机时调用 */
 export function stopSlowWorker(): void {
   if (!workerStarted) return;
+  // S101R-C5: Reset workerStarted so restart is possible after stop
+  workerStarted = false;
   workerStopped = true;
   console.log("[slow-worker] Stopping...");
 }

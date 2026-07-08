@@ -13,6 +13,10 @@ import { taskPlanner } from "../task-planner.js";
 import { executionLoop } from "../execution-loop.js";
 import { config } from "../../config.js";
 import type { CommandPayload, TaskState, WorkerResult } from "../../types/index.js";
+// S101R-C6: Cancellation/timeout protection
+import { checkCancellation, checkTimeout, TaskCancelledError, TaskTimedOutError } from "./slow-worker-loop.js";
+// S91P / S101R: Timeout constants
+import { TASK_SOFT_TIMEOUT_MS, TASK_HARD_TIMEOUT_MS } from "../../types/runtime-trace.js";
 
 // 执行单个 execute 命令
 async function executePlanCommand(
@@ -31,6 +35,36 @@ async function executePlanCommand(
   await TaskCommandRepo.updateStatus(id, "running", { started_at: new Date() });
   await TaskArchiveRepo.updateState(archive_id, "running" as TaskState);
 
+  // S101R-C6: Check cancellation before execution — don't execute cancelled tasks
+  if (await TaskArchiveRepo.isCancelled(archive_id)) {
+    console.log(`[execute-worker] Task ${task_id} already cancelled, skipping`);
+    await TaskCommandRepo.updateStatus(id, "cancelled", {
+      finished_at: new Date(),
+      error_message: "Task cancelled by user before execution",
+    });
+    return;
+  }
+
+  // S101R-C6: Check timeout at entry — skip already-timed-out tasks
+  try {
+    await checkTimeout(archive_id, task_id, startTime, TASK_SOFT_TIMEOUT_MS, TASK_HARD_TIMEOUT_MS);
+  } catch (err: any) {
+    if (err instanceof TaskTimedOutError) {
+      console.log(`[execute-worker] Task ${task_id} timed out before execution (${err.timeoutKind})`);
+      await TaskCommandRepo.updateStatus(id, "timed_out", {
+        finished_at: new Date(),
+        error_message: `Task timed out (${err.timeoutKind}, ${err.elapsedMs}ms)`,
+      });
+      await TaskArchiveRepo.markTimedOut(archive_id, {
+        timeoutKind: err.timeoutKind,
+        thresholdMs: err.thresholdMs,
+        elapsedMs: err.elapsedMs,
+      });
+      return;
+    }
+    throw err;
+  }
+
   try {
     const goal = payload_json.goal ?? payload_json.task_brief ?? "执行任务";
     const sessionId = archive_id; // 复用 archive_id 作为 session_id
@@ -38,6 +72,9 @@ async function executePlanCommand(
     // Step 1: 生成执行计划
     let plan;
     try {
+      // S101R-C6: Check cancellation/timeout before planning
+      await checkCancellation(archive_id, task_id);
+      await checkTimeout(archive_id, task_id, startTime, TASK_SOFT_TIMEOUT_MS, TASK_HARD_TIMEOUT_MS);
       plan = await taskPlanner.plan({
         taskId: task_id,
         goal,
@@ -60,6 +97,9 @@ async function executePlanCommand(
 
     try {
       if (plan) {
+        // S101R-C6: Check cancellation/timeout before execution loop
+        await checkCancellation(archive_id, task_id);
+        await checkTimeout(archive_id, task_id, startTime, TASK_SOFT_TIMEOUT_MS, TASK_HARD_TIMEOUT_MS);
         const loopResult = await executionLoop.run(plan, {
           taskId: task_id,
           userId: user_id,
@@ -137,6 +177,45 @@ async function executePlanCommand(
 
     console.log(`[execute-worker] Completed task ${task_id} in ${totalMs}ms, ${completedSteps}/${planStepCount} steps`);
   } catch (err: any) {
+    // S101R-C6: Handle task cancellation separately from other errors
+    if (err instanceof TaskCancelledError) {
+      console.log(`[execute-worker] Task ${err.archiveId} cancelled, marking as cancelled`);
+      try {
+        await TaskCommandRepo.updateStatus(id, "cancelled", {
+          finished_at: new Date(),
+          error_message: "Task cancelled by user",
+        });
+        await TaskArchiveRepo.updateState(archive_id, "cancelled" as TaskState);
+        await TaskArchiveRepo.setSlowExecution(archive_id, {
+          cancelledAt: new Date().toISOString(),
+          cancelReason: "Task cancelled by user",
+          completed_at: new Date().toISOString(),
+        });
+      } catch (updateErr: any) {
+        console.error("[execute-worker] Failed to mark cancellation:", updateErr.message);
+      }
+      return;
+    }
+
+    // S101R-C6: Handle task timeout separately from other errors
+    if (err instanceof TaskTimedOutError) {
+      console.log(`[execute-worker] Task ${err.archiveId} timed out (${err.timeoutKind}), marking as timed_out`);
+      try {
+        await TaskCommandRepo.updateStatus(id, "timed_out", {
+          finished_at: new Date(),
+          error_message: `Task timed out (${err.timeoutKind}, ${err.elapsedMs}ms / ${err.thresholdMs}ms)`,
+        });
+        await TaskArchiveRepo.markTimedOut(archive_id, {
+          timeoutKind: err.timeoutKind,
+          thresholdMs: err.thresholdMs,
+          elapsedMs: err.elapsedMs,
+        });
+      } catch (updateErr: any) {
+        console.error("[execute-worker] Failed to mark timeout:", updateErr.message);
+      }
+      return;
+    }
+
     console.error(`[execute-worker] Failed to execute command ${id}:`, err.message);
     try {
       await TaskCommandRepo.updateStatus(id, "failed", {
@@ -226,6 +305,8 @@ export function startExecuteWorker(): void {
 /** 优雅停止 worker，供 index.ts 关机时调用 */
 export function stopExecuteWorker(): void {
   if (!workerStarted) return;
+  // S101R-C5: Reset workerStarted so restart is possible after stop
+  workerStarted = false;
   workerStopped = true;
   console.log("[execute-worker] Stopping...");
 }
