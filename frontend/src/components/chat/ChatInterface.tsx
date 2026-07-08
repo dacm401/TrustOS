@@ -5,7 +5,7 @@ import { MessageBubble } from "./MessageBubble";
 import { ModelSwitchAnim } from "./ModelSwitchAnim";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { getApiConfig } from "@/lib/api";
-import type { Decision, StreamEvent, ProvenanceMeta, UsageInfo } from "@/types/dashboard";
+import type { Decision, StreamEvent, ProvenanceMeta, UsageInfo, ExecutionProgress } from "@/types/dashboard";
 
 interface Message {
   id: string;
@@ -32,8 +32,10 @@ interface Message {
   meta?: ProvenanceMeta;
   /** S101I: token/cost usage from worker execution */
   usage?: UsageInfo;
-  /** S101I: terminal summary from worker execution */
-  terminalSummary?: string;
+  /** S101I: terminal summary from worker execution (raw, formatted by MessageBubble) */
+  terminalSummary?: unknown;
+  /** S101P: execution progress persisted on the message */
+  executionProgress?: ExecutionProgress;
 }
 
 interface ChatInterfaceProps {
@@ -171,11 +173,43 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
             setStatusMsg(data.stream ?? null);
           } else if (data.type === "progress") {
             // S101I: Worker execution progress — update status/thinking indicators
+            // S101P: Persist execution progress on the placeholder message for post-stream visibility
             setThinkingState("executing");
             setStatusMsg(data.stream ?? "正在执行任务…");
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === placeholderId
+                  ? {
+                      ...m,
+                      executionProgress: {
+                        ...m.executionProgress,
+                        stage: data.progress?.step as string | undefined,
+                        status: (data.progress as Record<string, unknown> | null)?.status as string | undefined ?? "executing",
+                        message: data.stream ?? undefined,
+                        updatedAt: new Date().toISOString(),
+                      },
+                    }
+                  : m
+              )
+            );
           } else if (data.type === "partial_result") {
             // S101I: Worker partial result available — update status
+            // S101P: Record that a partial result was generated (no body persistence)
             setStatusMsg(data.stream ?? "中间结果已生成…");
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === placeholderId
+                  ? {
+                      ...m,
+                      executionProgress: {
+                        ...m.executionProgress,
+                        message: data.stream ?? "中间结果已生成",
+                        updatedAt: new Date().toISOString(),
+                      },
+                    }
+                  : m
+              )
+            );
           } else if (data.type === "thinking") {
             // Stream V2: thinking 状态可视化
             const state = (data.thinking_state || data.state || "thinking") as typeof thinkingState;
@@ -204,14 +238,22 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
               setActiveTaskId(data.task_id);
             }
             const inferredMeta = inferMetaFromStreamEvent(data);
-            // S101I: Extract terminal summary as readable text (truncated)
-            const terminalText = typeof data.terminalSummary === "object" && data.terminalSummary
-              ? JSON.stringify(data.terminalSummary).substring(0, 200)
-              : undefined;
+            // S101P: Pass terminalSummary raw — MessageBubble handles humanization
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === placeholderId
-                  ? { ...m, streaming: false, decision: data.decision, routing_layer: data.routing_layer ?? m.routing_layer, meta: m.meta ?? inferredMeta, usage: data.usage, terminalSummary: terminalText }
+                  ? {
+                      ...m,
+                      streaming: false,
+                      decision: data.decision,
+                      routing_layer: data.routing_layer ?? m.routing_layer,
+                      meta: m.meta ?? inferredMeta,
+                      usage: data.usage,
+                      terminalSummary: data.terminalSummary,
+                      executionProgress: m.executionProgress
+                        ? { ...m.executionProgress, status: "completed", updatedAt: new Date().toISOString() }
+                        : undefined,
+                    }
                   : m
               )
             );
@@ -518,6 +560,7 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
               routingLayer={msg.routing_layer}
               usage={msg.usage}
               terminalSummary={msg.terminalSummary}
+              executionProgress={msg.executionProgress}
             />
             {/* Streaming cursor — new design */}
             {msg.streaming && (

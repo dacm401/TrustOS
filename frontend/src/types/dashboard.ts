@@ -126,6 +126,15 @@ export interface UsageInfo {
   cost: { estimated_usd: number; provider: string; model: string };
 }
 
+/** S101P: Execution progress persisted on the assistant message */
+export interface ExecutionProgress {
+  stage?: string;
+  status?: string;
+  message?: string;
+  elapsedMs?: number;
+  updatedAt?: string;
+}
+
 /** SSE stream event — union of all event types emitted by /api/chat */
 export interface StreamEvent {
   type?: string;

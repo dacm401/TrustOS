@@ -5,7 +5,7 @@ import { CodeBlock } from "./CodeBlock";
 import { PreviewPane } from "./PreviewPane";
 import { ActionBar } from "./ActionBar";
 import { sendFeedback } from "@/lib/api";
-import type { Decision, UsageInfo } from "@/types/dashboard";
+import type { Decision, UsageInfo, ExecutionProgress } from "@/types/dashboard";
 
 interface MessageBubbleProps {
   role: "user" | "assistant";
@@ -22,8 +22,10 @@ interface MessageBubbleProps {
   routingLayer?: "L0" | "L1" | "L2" | "L3";
   /** S101I: token/cost usage from worker execution */
   usage?: UsageInfo;
-  /** S101I: terminal summary from worker execution */
-  terminalSummary?: string;
+  /** S101I/S101P: terminal summary from worker execution (raw, formatted inline) */
+  terminalSummary?: unknown;
+  /** S101P: execution progress persisted on the message */
+  executionProgress?: ExecutionProgress;
 }
 
 // S93P: 路由分层标签产品化 — 隐藏 L0/L1/L2/L3 内部术语，改用进度描述
@@ -38,11 +40,48 @@ function initials(name: string): string {
   return name.substring(0, 2).toUpperCase();
 }
 
-export function MessageBubble({ role, content, decision, userId = "dev-user", delegation, routingLayer, usage, terminalSummary }: MessageBubbleProps) {
+/**
+ * S101P: Format terminalSummary for human-readable display.
+ *
+ * Priority:
+ *   1. string → use directly
+ *   2. object → extract summary/message/status/outcome/result fields
+ *   3. object → compact key-value pairs
+ *   4. fallback → JSON (should rarely happen)
+ */
+function formatTerminalSummary(raw: unknown): { title: string; detail?: string } {
+  if (!raw) return { title: "" };
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    return { title: trimmed.length > 80 ? trimmed.substring(0, 77) + "…" : trimmed, detail: trimmed.length > 80 ? trimmed : undefined };
+  }
+  if (typeof raw === "object" && raw !== null) {
+    const obj = raw as Record<string, unknown>;
+    // Priority extraction
+    const extracted = obj.summary || obj.message || obj.status || obj.outcome || obj.result;
+    if (typeof extracted === "string" && extracted.trim()) {
+      const s = extracted.trim();
+      return { title: s.length > 80 ? s.substring(0, 77) + "…" : s, detail: s.length > 80 ? s : undefined };
+    }
+    // Fallback: compact key-value
+    const pairs = Object.entries(obj)
+      .filter(([, v]) => v !== null && v !== undefined)
+      .slice(0, 3)
+      .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
+      .join(" · ");
+    const full = JSON.stringify(obj, null, 2);
+    return { title: pairs || full.substring(0, 80), detail: full };
+  }
+  return { title: String(raw).substring(0, 80) };
+}
+
+export function MessageBubble({ role, content, decision, userId = "dev-user", delegation, routingLayer, usage, terminalSummary, executionProgress }: MessageBubbleProps) {
   const isUser = role === "user";
   const [feedbackGiven, setFeedbackGiven] = useState<string | null>(null);
   const [showReasonInput, setShowReasonInput] = useState(false);
   const [feedbackReason, setFeedbackReason] = useState("");
+  // S101P: terminalSummary expand/collapse
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
 
   const handleFeedback = async (type: "thumbs_up" | "thumbs_down") => {
     if (decision?.id && !feedbackGiven) {
@@ -147,7 +186,7 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
         })()}
 
         {/* AI: Decision card + metadata */}
-        {!isUser && (decision || routingLayer || usage || terminalSummary) && (
+        {!isUser && (decision || routingLayer || usage || terminalSummary || executionProgress) && (
           <>
             {decision && <DecisionCard decision={decision} />}
             {/* AI metadata: model + tokens + latency + routing layer */}
@@ -188,14 +227,14 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
                     )}
                   </>
                 )}
-                {/* S101I: Worker execution usage — shown when decision.execution is absent */}
-                {!decision?.execution && usage && (
+                {/* S101P: Worker execution usage — always visible when present */}
+                {usage && (
                   <>
                     <span className="text-[10px] font-mono">
                       {usage.cost.model}
                     </span>
                     <span className="text-[10px]">
-                      {usage.tokens.total} tokens
+                      {usage.tokens.input}↑ {usage.tokens.output}↓ {usage.tokens.total}Σ
                     </span>
                     {usage.cost.estimated_usd !== undefined && (
                       <span className="text-[10px]" style={{ color: "var(--accent-green)" }}>
@@ -206,21 +245,64 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
                 )}
               </div>
             )}
-            {/* S101I: Terminal summary — short completion note */}
-            {terminalSummary && (
-              <div
-                className="mt-1 px-2 py-1 rounded text-[10px]"
+            {/* S101P: Terminal summary — humanized display with expand/collapse */}
+            {terminalSummary && (() => {
+              const formatted = formatTerminalSummary(terminalSummary);
+              if (!formatted.title) return null;
+              const hasDetail = !!formatted.detail;
+              return (
+                <div className="mt-1">
+                  <div
+                    className={`px-2 py-1 rounded text-[10px] inline-flex items-center gap-1 ${hasDetail ? "cursor-pointer hover:opacity-80" : ""}`}
+                    style={{
+                      backgroundColor: "rgba(139,92,246,0.06)",
+                      color: "var(--text-muted)",
+                      maxWidth: summaryExpanded ? "100%" : "320px",
+                    }}
+                    onClick={hasDetail ? () => setSummaryExpanded(!summaryExpanded) : undefined}
+                    title={hasDetail ? undefined : formatted.title}
+                  >
+                    <span className="flex-shrink-0">📋</span>
+                    <span
+                      style={{
+                        overflow: summaryExpanded ? "visible" : "hidden",
+                        textOverflow: summaryExpanded ? "clip" : "ellipsis",
+                        whiteSpace: summaryExpanded ? "normal" : "nowrap",
+                      }}
+                    >
+                      {summaryExpanded && formatted.detail ? formatted.detail : formatted.title}
+                    </span>
+                    {hasDetail && (
+                      <span className="flex-shrink-0 opacity-50">{summaryExpanded ? "▲" : "▼"}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+            {/* S101P: Execution progress — compact status line persisted on the message */}
+            {executionProgress && (
+              <div className="mt-1 px-2 py-0.5 rounded text-[10px] flex items-center gap-1.5"
                 style={{
-                  backgroundColor: "rgba(139,92,246,0.06)",
+                  backgroundColor: executionProgress.status === "completed"
+                    ? "rgba(16,185,129,0.06)"
+                    : "rgba(59,130,246,0.06)",
                   color: "var(--text-muted)",
-                  maxWidth: "300px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
                 }}
-                title={terminalSummary}
               >
-                📋 {terminalSummary}
+                <span>{executionProgress.status === "completed" ? "✅" : "⚙️"}</span>
+                <span>{executionProgress.status === "completed" ? "已完成" : "执行中"}</span>
+                {executionProgress.stage && (
+                  <>
+                    <span>·</span>
+                    <span>{executionProgress.stage}</span>
+                  </>
+                )}
+                {executionProgress.message && !executionProgress.stage && (
+                  <>
+                    <span>·</span>
+                    <span>{executionProgress.message}</span>
+                  </>
+                )}
               </div>
             )}
           </>
