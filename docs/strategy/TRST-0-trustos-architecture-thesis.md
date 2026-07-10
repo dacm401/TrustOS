@@ -1,15 +1,15 @@
 # TRST-0 TrustOS Architecture Thesis
 
-Version: v0.1
-Stage: TRST-0 — Strategic Architecture Thesis
+Version: v0.2
+Stage: TRST-0 — Strategic Architecture Thesis (PM Reviewed)
 Date: 2026-07-10
-Status: PM Review
+Status: Directionally Strong — Revised per PM Review
 
 ---
 
 ## 1. Executive Thesis
 
-**TrustOS is not an agent management platform. TrustOS is an AI-native operating system that manages model compute, context, memory, communication, and trust boundaries.**
+**TrustOS is not an agent management platform. TrustOS is an AI-native operating system that manages model compute, context, memory, agent/tool communication, and trust boundaries for reliable AI work.**
 
 Short form:
 
@@ -22,8 +22,9 @@ The key distinction is not "agent orchestration" — it is **resource governance
 - Abstract underlying AI resources (models, context, memory, tools)
 - Schedule and allocate those resources per task
 - Isolate permissions, data, and context boundaries
-- Audit every significant action
-- Provide a stable runtime for AI work that users can trust
+- Mediate all access through controlled interfaces
+- Observe and account for resource usage
+- Provide a stable runtime contract to applications
 
 ### Why not an agent platform
 
@@ -38,11 +39,49 @@ TrustOS does not compete with Claude Code on coding quality. TrustOS competes by
 
 ---
 
-## 2. Historical OS Analogy
+## 2. OS First Principles
+
+An operating system exists because raw resources cannot be used directly by applications — safely, efficiently, or stably. Every OS, from Linux to iOS to Kubernetes, performs six fundamental responsibilities:
+
+```text
+1. ABSTRACT       — Hide resource complexity behind stable interfaces
+2. SCHEDULE        — Allocate resources across competing demands
+3. ISOLATE         — Prevent execution and data boundary violations
+4. MEDIATE         — Control all access through authorized interfaces
+5. OBSERVE         — Make resource usage transparent and measurable
+6. ACCOUNT         — Meter consumption for cost, quota, and audit
+```
+
+These six responsibilities define what an OS *is*, regardless of whether it manages CPU cycles, cloud VMs, mobile app sandboxes — or AI model inference, context windows, and tool calls.
+
+TrustOS applies these same OS responsibilities to AI-native resources. This is not an analogy; it is the definition. TrustOS is an OS because it abstracts, schedules, isolates, mediates, observes, and accounts for the resources that AI work consumes.
+
+### Resource / Kernel / Surface: Conceptual Hierarchy
+
+Before defining resources, we must distinguish three conceptual layers that appear throughout this document:
+
+```text
+RESOURCE       — What is managed
+                 (Model Compute, Context, Memory, Agent Process, Tool Access)
+
+KERNEL         — How it is managed
+SUBSYSTEM      (Model Scheduler, Context Manager, Memory Manager,
+                 Tool Broker, Agent Runtime, Policy Engine, Evidence Log)
+
+SURFACE /      — How users and applications interact with it
+SERVICE        (Context Inspector, Memory Browser, Policy Console,
+                 Trust Card, Model Dashboard)
+```
+
+This three-layer distinction prevents conceptual overlap and ensures the document can separately discuss *what TrustOS manages*, *how it manages it*, and *how that management is exposed*.
+
+---
+
+## 3. Historical OS Analogy
 
 To understand what an AI-native OS must do, we examine three generations of operating systems: PC OS, Cloud OS, and Mini-app/Browser Platform OS. Each reveals a pattern: **an OS manages a specific class of resources, provides isolation, and offers a stable interface to applications.**
 
-### 2.1 PC OS
+### 3.1 PC OS
 
 | PC OS Resource | Management Responsibility | TrustOS Mapping |
 |---|---|---|
@@ -53,11 +92,9 @@ To understand what an AI-native OS must do, we examine three generations of oper
 | IPC / Network | Inter-process communication, sockets | **Agent / Tool Communication** — messaging, tool call routing |
 | User / Permission | Identity, access control, groups | **Identity / Policy / Capability** — who can do what |
 
-**PC OS performance core:** CPU utilization, memory management, I/O throughput, process scheduling.
+**PC OS synthesis:** Resources are local, fixed-quantity, and performance-critical. The OS abstracts hardware for deterministic programs. TrustOS inherits the process isolation and memory protection model but must extend it for probabilistic, context-driven AI computation.
 
-**TrustOS performance core:** Model call efficiency, context utilization, memory retrieval quality, tool call latency, trust check cost.
-
-### 2.2 Cloud OS
+### 3.2 Cloud OS
 
 | Cloud OS Capability | Management Responsibility | TrustOS Mapping |
 |---|---|---|
@@ -69,11 +106,9 @@ To understand what an AI-native OS must do, we examine three generations of oper
 | Observability | Metrics, tracing, logs | Reasoning/action/evidence trace |
 | Billing | Cost accounting, quotas | Token, latency, tool cost accounting |
 
-**Cloud OS essence:** Let enterprises use compute resources safely, elastically, and observably.
+**Cloud OS synthesis:** Resources are elastic, multi-tenant, and IAM-gated. The OS is a control plane for organizational resource consumption. TrustOS inherits the IAM, observability, and billing model — AI cognitive resources must be safely, controllably, and observably consumed.
 
-**TrustOS essence:** Let individuals and organizations use AI cognitive resources safely, controllably, and observably.
-
-### 2.3 Mini-app / Browser Platform OS
+### 3.3 Mini-app / Browser Platform OS
 
 | Platform OS Capability | Management Responsibility | TrustOS Mapping |
 |---|---|---|
@@ -85,9 +120,22 @@ To understand what an AI-native OS must do, we examine three generations of oper
 | User consent | Sensitive permission dialogs | Human approval gates |
 | Platform account | Identity system | Human/agent identity |
 
-**Key insight:** A platform OS does not need to be a kernel. It can start as a runtime platform — but it must have unified runtime, permission system, capability interface, and audit mechanism. Without these, it is a SaaS app, not an OS.
+**Platform OS synthesis:** An OS need not be a kernel — it can start as a runtime platform. But it must provide unified runtime, permission system, capability interface, and audit mechanism. Without these, it is a SaaS app, not an OS.
 
-### 2.4 What Changes in the AI Era
+### 3.4 Synthesis: TrustOS Inherits All Three
+
+| OS Generation | Key Principle | TrustOS Inheritance |
+|---|---|---|
+| PC OS | Resource abstraction, process isolation, memory protection | Process model for agents, memory model for context |
+| Cloud OS | Elastic scheduling, IAM, observability, billing | Multi-tenant resource governance, cost accounting |
+| Platform OS | Runtime sandbox, API permissions, app lifecycle | Agent sandbox, tool permission, capability certification |
+
+```text
+TrustOS = Resource OS + Cloud Control Plane + Platform Runtime,
+applied to AI-native resources with trust as the cross-cutting control plane.
+```
+
+### 3.5 What Changes in the AI Era
 
 | Traditional Program | AI / LLM Agent |
 |---|---|
@@ -103,11 +151,56 @@ These differences mean TrustOS must manage resources that traditional OSes never
 
 ---
 
-## 3. TrustOS Six-Resource Model
+## 4. TrustOS Resource Model: Five Resources + Trust Control Plane
 
-Building on the OS Primitives defined in T100 (`docs/architecture/TrustOS-OS-Primitives.md`), TrustOS manages six categories of AI-era resources:
+TrustOS manages **five AI-native resources**, governed by a **cross-cutting Trust Control Plane**. This replaces the earlier six-resource model: Trust/Security is not a consumable resource but a control plane that constrains all resource access.
 
-### 3.1 Model Compute
+### The Five Resources
+
+```text
+1. Model Compute          — The CPU of AI OS
+2. Context                — The RAM of AI OS
+3. Memory                 — The Disk/Storage of AI OS
+4. Agent Runtime          — The Process/Container of AI OS
+5. Tool & Communication Access — The I/O and Network of AI OS
+```
+
+### The Trust Control Plane
+
+```text
+Trust / Security is a cross-cutting control plane over all five resources.
+It enforces: identity → capability → policy → approval → audit → verification.
+Trust is not listed as a sixth resource because it is not consumed — it constrains consumption.
+```
+
+**Key principle:** In TrustOS, *trust* does not mean subjective confidence in a model's output. Trust means:
+
+```text
+policy-enforced access + evidence-backed execution + verification-supported outcome
+```
+
+That is:
+
+```text
+Trust = controlled access × observable execution × verifiable outcome × auditable history
+```
+
+This definition is critical. Without it, "TrustOS" becomes a brand claim rather than a system property. The Trust Control Plane is what converts "the AI seems right" into "we can prove what happened and why."
+
+### Resource → Kernel Mapping
+
+| Resource | Kernel Subsystem | Surface |
+|---|---|---|
+| Model Compute | Model Scheduler | Model Dashboard, Cost Service |
+| Context | Context Manager | Context Inspector |
+| Memory | Memory Manager | Memory Browser |
+| Agent Runtime | Agent Runtime | Manager Workspace |
+| Tool & Comm Access | Tool Broker + Policy Engine | Action Approval, Tool Console |
+| (Control Plane) | Policy Engine + Evidence Log | Trust Card, Policy Console, Evidence Viewer |
+
+---
+
+### 4.1 Model Compute
 
 The CPU of AI OS.
 
@@ -128,7 +221,7 @@ The CPU of AI OS.
 - When should a local model be used?
 - When should a reviewer model verify output?
 
-### 3.2 Context
+### 4.2 Context
 
 The RAM of AI OS. **This is the most critical performance resource.**
 
@@ -150,9 +243,9 @@ The RAM of AI OS. **This is the most critical performance resource.**
 - How much? In what order?
 - Is it trusted? Is it fresh? Is it within permission scope?
 
-**Context is the bottleneck.** Every quality, cost, and security problem in LLM systems converges on context management. This is why Context Efficiency is the primary performance thesis (see Section 6).
+**Context is the bottleneck.** Every quality, cost, and security problem in LLM systems converges on context management. This is why Context Efficiency is the primary performance thesis (see Section 7).
 
-### 3.3 Memory
+### 4.3 Memory
 
 The disk/storage of AI OS.
 
@@ -177,7 +270,7 @@ The disk/storage of AI OS.
 - When does it expire?
 - Is it trusted enough to enter future context?
 
-### 3.4 Agent Runtime
+### 4.4 Agent Runtime
 
 The process/container of AI OS.
 
@@ -200,9 +293,11 @@ The process/container of AI OS.
 - How does it recover from failure?
 - How do multiple agents divide work?
 
-### 3.5 Communication
+### 4.5 Tool & Communication Access
 
-The network/IPC of AI OS.
+The I/O and network of AI OS.
+
+**This is a critical OS boundary.** Model output is text — it is not action. Only brokered and policy-checked tool calls become system actions. This is the AI-era equivalent of the syscall boundary.
 
 **Managed objects:** agent messages, tool calls, model calls, event streams, worker queues, external API calls.
 
@@ -223,9 +318,9 @@ The network/IPC of AI OS.
 - How does it recover from failure?
 - Are results captured as evidence?
 
-### 3.6 Trust / Security
+### 4.6 Trust Control Plane
 
-The security kernel of AI OS.
+The cross-cutting security architecture of AI OS. Trust is not a sixth resource — it is the control plane that constrains access to all five resources.
 
 **Managed objects:** identity, policy, capability, approval, risk, audit, evidence, verification, secrets.
 
@@ -248,7 +343,45 @@ The security kernel of AI OS.
 
 ---
 
-## 4. AI Kernel Architecture
+## 5. Action Boundary: Tool Broker as AI Syscall Layer
+
+A fundamental invariant in TrustOS:
+
+```text
+Model output is NOT action.
+Only brokered and policy-checked tool calls become system actions.
+```
+
+This is the AI-era equivalent of the syscall boundary in traditional OSes. In Linux, user programs cannot directly access hardware — they must go through the kernel's syscall interface. In TrustOS, agents cannot directly invoke tools — they must go through the Tool Broker, which applies Policy Engine evaluation.
+
+### The flow
+
+```
+Worker requests tool call
+    ↓
+Tool Broker receives request
+    ↓
+Policy Engine evaluates: ALLOW / DENY / ASK / REDACT / SANDBOX
+    ↓
+If ASK: Approval gate → human decision
+If ALLOW: Execute with injected secrets, capture result
+If DENY: Block with audit record
+    ↓
+Evidence Log records: request, decision, result
+```
+
+### Why this matters
+
+- **Deterministic enforcement:** Hard-deny rules must not be overridden by LLM judgment. The Policy Engine is the single source of truth for access decisions — not the model's reasoning.
+- **Unified audit:** Every tool call passes through one mediation point, producing a complete audit trail. Without this, tool audit is scattered across agent code.
+- **Secrets isolation:** Agents never see raw API keys or credentials. The Tool Broker injects secrets at execution time.
+- **Side-effect classification:** Read-only tools (search, query) vs. side-effect tools (write, delete, deploy, send) can be treated differently by policy.
+
+**The Tool Broker + Policy Engine combination is the enforcement point for trust.** Without it, trust is advisory; with it, trust is architectural.
+
+---
+
+## 6. AI Kernel Architecture
 
 The AI Kernel is the core control plane of TrustOS. It is not a monolithic kernel in the Linux sense, but a set of seven coordinated subsystems that together provide OS-level resource governance.
 
@@ -263,7 +396,28 @@ TrustOS AI Kernel
 └── Evidence Log         — What happened? Can we prove it?
 ```
 
-### 4.1 Model Scheduler
+### Resource → Kernel Subsystem Mapping
+
+| Resource / Domain | Kernel Subsystem | Kernel's Role |
+|---|---|---|
+| Model Compute | Model Scheduler | Selects, routes, and falls back across models |
+| Context | Context Manager | Assembles, compresses, filters, and tags context |
+| Memory | Memory Manager | Organizes, retrieves, and governs memory |
+| Tool & Comm Access | Tool Broker | Mediates all tool calls; enforces action boundary |
+| Agent Process | Agent Runtime | Manages agent lifecycle and isolation |
+| Trust Boundary | Policy Engine | Evaluates and enforces access rules |
+| Audit / Observability | Evidence Log | Records resource access and execution events |
+
+**Kernel design invariant:**
+
+```text
+The AI Kernel mediates access to all TrustOS resources.
+Applications and agents must not bypass Kernel subsystems for critical operations.
+```
+
+That is: no direct model calls, no direct tool calls, no direct memory writes, no unlogged context assembly. Every significant resource access passes through its corresponding Kernel subsystem. This is what distinguishes an OS from a collection of libraries.
+
+### 6.1 Model Scheduler
 
 ```text
 model.invoke(task, context, policy) → response
@@ -276,7 +430,7 @@ model.invoke(task, context, policy) → response
 - Cost cap enforcement per session
 - Latency budget per call
 
-### 4.2 Context Manager
+### 6.2 Context Manager
 
 ```text
 context.assemble(task, budget, policy) → assembledContext
@@ -293,9 +447,9 @@ context.redact(privateFields) → safeContext
 - Freshness check (is this memory stale?)
 - Trust scoring (how reliable is this source?)
 
-**This is the performance core of TrustOS.** More detail in Section 6.
+**This is the performance core of TrustOS.** More detail in Section 7.
 
-### 4.3 Memory Manager
+### 6.3 Memory Manager
 
 ```text
 memory.read(namespace, query, policy) → results
@@ -312,7 +466,7 @@ memory.revoke(memoryId) → void
 - Retrieval policy
 - Trust score assignment
 
-### 4.4 Tool Broker
+### 6.4 Tool Broker
 
 ```text
 tool.call(name, args, capabilityToken) → result
@@ -327,9 +481,9 @@ All Worker tool calls pass through the Tool Broker — never directly to the too
 5. If allowed: execute with injected secrets, capture result
 6. Write evidence event
 
-**This is the AI-era equivalent of syscall mediation.**
+**This is the AI-era equivalent of syscall mediation.** See Section 5 for the full Action Boundary design.
 
-### 4.5 Agent Runtime
+### 6.5 Agent Runtime
 
 ```text
 agent.spawn(role, task, capabilities) → agentId
@@ -347,7 +501,7 @@ agent.message(id, payload) → void
 - Handoff between workers
 - Isolation per agent
 
-### 4.6 Policy Engine
+### 6.6 Policy Engine
 
 ```text
 policy.check(actor, action, resource, context) → decision
@@ -362,13 +516,15 @@ policy.check(actor, action, resource, context) → decision
 - Model privacy rules
 - Approval escalation rules
 
-**Hard deny rules must not be overridden by LLM judgment.** This is a design invariant.
+**Hard deny rules must not be overridden by LLM judgment.** This is a design invariant. The Policy Engine is the single source of truth for access decisions.
 
-### 4.7 Evidence Log
+### 6.7 Evidence Log
 
 ```text
 evidence.record(event) → eventId
 ```
+
+**Evidence Log is kernel-level because audit evidence must be generated at the point of resource mediation, not reconstructed afterwards from scattered logs.** This distinguishes it from a generic logging system.
 
 Append-only, tamper-resistant event log capturing:
 - Model call metadata (model, tokens, cost, latency)
@@ -383,11 +539,16 @@ Append-only, tamper-resistant event log capturing:
 
 ---
 
-## 5. TrustOS Architecture Sketch
+## 7. TrustOS Architecture Sketch
+
+The architecture can be viewed from two perspectives:
+
+1. **Control-plane view:** AI Kernel subsystems — the active management mechanisms
+2. **System-layer view:** Resource, Communication, Trust, Runtime, and Surface layers — the system composition
 
 ```text
 TrustOS
-├── AI Kernel
+├── AI Kernel (Control Plane)
 │   ├── Model Scheduler
 │   ├── Context Manager
 │   ├── Memory Manager
@@ -412,7 +573,7 @@ TrustOS
 │   ├── SSE / Streaming
 │   └── External Connectors
 │
-├── Trust Layer
+├── Trust Layer (Cross-cutting)
 │   ├── Identity
 │   ├── Capability Tokens
 │   ├── Policy Rules
@@ -443,12 +604,29 @@ TrustOS
 
 ---
 
-## 6. Performance Thesis: Context Efficiency
+## 8. Performance Thesis: Context Efficiency
 
-### 6.1 The Core Claim
+### 8.1 The Performance Objective
+
+TrustOS's performance objective is not "faster responses" — it is **Effective Intelligence Throughput**.
 
 ```text
-TrustOS optimizes for Context Efficiency before raw speed.
+Effective Intelligence Throughput =
+  trusted outcomes per unit cost, time, risk, and human review burden.
+```
+
+Or more concretely:
+
+```text
+Completing trusted work within cost, time, risk, and context budgets.
+```
+
+### 8.2 The Primary Lever: Context Efficiency
+
+```text
+Context Efficiency =
+  Assembling the minimum sufficient, most relevant, most trusted,
+  lowest-risk context for a model call.
 ```
 
 Traditional systems optimize for QPS, latency, CPU utilization, memory bandwidth, I/O throughput.
@@ -465,25 +643,21 @@ In AI work systems, the biggest waste is not slow computation — it is:
 - Unverifiable results requiring human rework
 - Historical work not reusable
 
-**TrustOS performance = Effective Intelligence Throughput.**
+**TrustOS optimizes for Context Efficiency before raw speed.**
 
-### 6.2 Definition
-
-```text
-Effective Intelligence Throughput =
-  The system's ability to complete trusted work
-  within given cost, time, risk, and context budgets.
-```
-
-Or more concretely:
+### 8.3 Performance Hierarchy
 
 ```text
-With the fewest tokens, lowest privacy exposure,
-highest relevance and trustworthiness,
-assemble enough context for the model to succeed.
+Performance Objective:   Effective Intelligence Throughput
+Primary Lever:           Context Efficiency
+First Measurement:       Context Trace
+Supporting Levers:       Model routing, memory retrieval quality,
+                         tool call latency, verification efficiency
 ```
 
-### 6.3 Why Context Is the Bottleneck
+Context Efficiency is the primary lever — it is not the only factor, but it is the one that TrustOS is uniquely positioned to optimize as an OS-level concern.
+
+### 8.4 Why Context Is the Bottleneck
 
 Nearly every quality, cost, and security problem in LLM systems converges on context:
 
@@ -498,22 +672,49 @@ Nearly every quality, cost, and security problem in LLM systems converges on con
 | Unreusable work | Historical output not structured as retrievable context |
 | Poor multi-agent collaboration | Inconsistent context across agents |
 
-### 6.4 Context Efficiency Metrics
+### 8.5 Context Efficiency Metrics (Categorized)
+
+#### Context Quality
 
 | Metric | Definition |
 |---|---|
-| **Context Relevance Ratio** | Proportion of injected context actually needed for the task |
-| **Context Waste Ratio** | Irrelevant or redundant token proportion |
-| **Context Freshness** | Whether context is up-to-date or stale |
-| **Context Trust Score** | Source reliability and verification status |
-| **Private Exposure Rate** | Proportion of private data sent to external models |
-| **Retrieval Hit Quality** | Whether retrieved content actually helped complete the task |
-| **Token-to-Outcome Efficiency** | Effective result per unit token consumed |
-| **Verification Pass per Cost** | Probability of passing verification at a given cost |
-| **Human Review Load** | Time spent on human review per task |
-| **Rework Rate** | Proportion of tasks requiring re-execution due to context errors |
+| Context Relevance Ratio | Proportion of injected context actually needed for the task |
+| Context Waste Ratio | Irrelevant or redundant token proportion |
+| Context Freshness | Whether context is up-to-date or stale |
+| Context Trust Score | Source reliability and verification status |
 
-### 6.5 Context Efficiency Implementation Path
+#### Retrieval Quality
+
+| Metric | Definition |
+|---|---|
+| Retrieval Hit Quality | Whether retrieved content actually helped complete the task |
+
+#### Cost Efficiency
+
+| Metric | Definition |
+|---|---|
+| Token-to-Outcome Efficiency | Effective result per unit token consumed |
+| Verification Pass per Cost | Probability of passing verification at a given cost |
+
+#### Privacy & Risk
+
+| Metric | Definition |
+|---|---|
+| Private Exposure Rate | Proportion of private data sent to external models |
+
+#### Outcome Quality
+
+| Metric | Definition |
+|---|---|
+| Rework Rate | Proportion of tasks requiring re-execution due to context errors |
+
+#### Human Load
+
+| Metric | Definition |
+|---|---|
+| Human Review Load | Time spent on human review per task |
+
+### 8.6 Context Efficiency Implementation Path
 
 | Layer | Capability | Description |
 |---|---|---|
@@ -526,7 +727,7 @@ Nearly every quality, cost, and security problem in LLM systems converges on con
 
 **L1 (Context Trace) is the critical first step.** Without trace data, all optimization is speculation.
 
-### 6.6 OS Analogy for Context Optimization
+### 8.7 OS Analogy for Context Optimization
 
 | Traditional OS Optimization | TrustOS Context Manager Equivalent |
 |---|---|
@@ -546,9 +747,9 @@ Fewer tokens, lower cost, lower leak risk, higher task success rate, less human 
 
 ---
 
-## 7. Competitive Positioning
+## 9. Competitive Positioning
 
-### 7.1 The Landscape
+### 9.1 The Landscape
 
 | Category | Examples | Strength | TrustOS Position |
 |---|---|---|---|
@@ -557,7 +758,29 @@ Fewer tokens, lower cost, lower leak risk, higher task success rate, less human 
 | Cloud AI Platforms | AWS Bedrock, Azure AI, GCP Vertex | Infrastructure scale, IAM, enterprise integration | TrustOS is lighter, product-led, model-neutral, focused on work experience not cloud infra |
 | Model Providers | OpenAI, Anthropic, Google | Model intelligence, API access | Not competing — TrustOS routes and manages model usage, doesn't replace models |
 
-### 7.2 TrustOS's Competitive Moat
+### 9.2 The Strategic Bet: Governance Scarcity
+
+The core competitive bet of TrustOS is not that it will build smarter agents. It is:
+
+```text
+As AI agent capability becomes abundant,
+the scarce layer shifts from intelligence to governance:
+context control, memory permission, tool mediation,
+audit, and verification.
+```
+
+When Claude Code, Cursor, OpenClaw, and dozens of other agents are all capable — the bottleneck is no longer "can the agent do it." It becomes:
+
+- Can the agent do it with the right data?
+- Can the agent do it without exceeding its permissions?
+- Can we prove what it did?
+- Can we control costs?
+- Can we trust the result without redoing it?
+- Can we reuse the work in future tasks?
+
+These are OS-layer questions, not agent-prompt questions. TrustOS competes on this shift.
+
+### 9.3 TrustOS's Competitive Moat
 
 TrustOS's defensibility comes from four system-level capabilities, not from single-agent intelligence:
 
@@ -568,7 +791,7 @@ TrustOS's defensibility comes from four system-level capabilities, not from sing
 | **Tool Syscall Layer** | Workers cannot call tools directly. All calls go through Tool Broker → Policy Engine → Approval Gate → Evidence Log. This is the OS security model. |
 | **Evidence-Backed Execution** | Every AI work unit has a verifiable chain: context used, model invoked, tools called, artifacts produced, verification passed, approval granted, cost incurred, acceptance status. |
 
-### 7.3 The Strategic Position
+### 9.4 The Strategic Position
 
 ```text
 TrustOS is not a better agent — it's the operating layer
@@ -579,11 +802,13 @@ Claude Code, Cursor, and OpenClaw can all be Workers within TrustOS. The competi
 
 ---
 
-## 8. Current Codebase → Primitive Mapping
+## 10. Current Codebase → Primitive Mapping
 
-Based on the S101 series (S101T, S101R, S101I, S101P), the current codebase has initial implementations for several TrustOS primitives:
+Based on the S101 series (S101T, S101R, S101I, S101P), the current codebase has initial implementations for several TrustOS primitives.
 
-### 8.1 What We Have
+**Important qualification:** This mapping is based on S101 accepted summaries and current code references. The current codebase proves runtime feasibility, not yet OS completeness.
+
+### 10.1 What We Have
 
 | S101 Capability | Files | TrustOS Primitive | Maturity |
 |---|---|---|---|
@@ -596,7 +821,7 @@ Based on the S101 series (S101T, S101R, S101I, S101P), the current codebase has 
 | Session events | `src/types/delegation.ts` (40 event types) | Evidence Log (partial) | **Operational** — event stream, but no structured evidence object model |
 | Smoke verification | `scripts/smoke/s101i-*.mjs` | Verification Service (partial) | **Operational** — SSE contract + Worker execution smoke |
 
-### 8.2 What We Have in Primitive Terms
+### 10.2 What We Have in Primitive Terms
 
 | Primitive (from T100) | S101 Status | Notes |
 |---|---|---|
@@ -616,20 +841,24 @@ Based on the S101 series (S101T, S101R, S101I, S101P), the current codebase has 
 | Trust Report | ⚠️ Partial | `terminalSummary` in UI, not structured Trust Report |
 | Checkpoint | ❌ Not implemented | No state snapshot or rollback |
 
-### 8.3 Summary
+### 10.3 Summary
 
 ```text
 Current state: S101 delivered a working Agent Runtime + Event Stream + Artifact Store.
 TrustOS has operational proof of Worker execution, SSE visibility, and Archive.
 But it lacks the OS-level primitives: Context Manager, Memory Manager, Tool Broker,
 Policy Engine, and Evidence Object Model.
+
+The current codebase proves runtime feasibility, not yet OS completeness.
+S101 demonstrated the Agent Runtime and Event Bus are viable.
+The next step is to add OS-level resource governance on top of that runtime.
 ```
 
 ---
 
-## 9. Strategic Gaps
+## 11. Strategic Gaps
 
-The following gaps are ordered by strategic importance — not by implementation effort:
+The following gaps are ordered by strategic importance — not by implementation effort. Dependency relationships are noted where a gap cannot be fully addressed without another.
 
 ### Priority 1: Context Manager
 
@@ -652,15 +881,16 @@ The following gaps are ordered by strategic importance — not by implementation
 - Memory without governance is dangerous
 - Enterprise/professional users need memory permission boundaries
 - Memory quality directly affects context quality
+- Depends on Context Manager for retrieval trace and freshness
 
 ### Priority 3: Tool Broker
 
 **Gap:** Worker tool calls are direct, not mediated. No centralized permission check, no approval gate, no dry-run.
 
 **Why this is #3:**
-- This is the AI-era syscall layer
+- This is the AI-era syscall layer (see Section 5)
 - Without it, tool security is per-agent, not system-wide
-- Combined with Policy Engine, enables enterprise trust
+- Must be designed together with Policy Engine — Tool Broker is the enforcement point, Policy Engine is the decision mechanism
 
 ### Priority 4: Policy Engine
 
@@ -669,7 +899,8 @@ The following gaps are ordered by strategic importance — not by implementation
 **Why this is #4:**
 - Hard policies must be deterministic, not LLM-dependent
 - Needed for enterprise compliance
-- Complements Tool Broker for complete security
+- Co-designed with Tool Broker (P3); can be implemented in phases together
+- **Dependency:** Tool Broker is the enforcement point; Policy Engine is the decision mechanism. They should be designed together even if implemented in phases.
 
 ### Priority 5: Evidence Object Model
 
@@ -679,6 +910,7 @@ The following gaps are ordered by strategic importance — not by implementation
 - Current events are chronological, not relational
 - Audit requires linked evidence, not scattered events
 - Trust Card / Context Inspector UI depends on structured evidence
+- **Not a later independent feature:** Evidence structure begins with Context Trace (P1), which necessarily generates structured context-attribution events
 
 ### Priority 6: Model Scheduler
 
@@ -699,84 +931,73 @@ The following gaps are ordered by strategic importance — not by implementation
 
 ---
 
-## 10. TRST-1 Recommendation: Context Trace & Context Manager
+## 12. Recommended First Strategic Milestone Candidate: Context Trace
 
-### 10.1 Why TRST-1 Should Be Context Manager
+TRST-0 does not finalize TRST-1 implementation scope. It identifies **Context Trace as the most likely first strategic milestone** because it makes the core performance resource observable.
 
-| Criterion | Context Manager |
+### 12.1 Why Context Trace Is the Strongest Candidate
+
+| Criterion | Context Trace |
 |---|---|
-| **Performance impact** | Directly reduces token waste, cost, and latency |
+| **Performance impact** | Directly enables Context Efficiency measurement and optimization |
 | **Quality impact** | Better context → better model output |
-| **Privacy impact** | Controls what data enters which model |
+| **Privacy impact** | Visibility into what data enters which model |
 | **Strategic differentiation** | Competitors treat context as a string, not a managed resource |
-| **Feeds other primitives** | Context Manager data feeds Memory quality, Policy decisions, Evidence trace |
-| **Measurable** | Context Efficiency metrics are quantifiable |
-| **Builds on S101** | SSE events provide the stream; Context Manager adds structure and policy |
+| **Feeds other primitives** | Context trace data feeds Memory quality, Policy decisions, Evidence structure |
+| **Measurable** | Context Efficiency metrics are quantifiable once traced |
+| **Builds on S101** | SSE events provide the stream; Context Trace adds structure and policy |
 
-### 10.2 TRST-1 MVP Scope (L1: Context Trace)
+### 12.2 A Likely Staged Path (Not Committed Scope)
+
+The following is a likely progression for the Context Manager milestone, not a committed implementation plan:
 
 **Phase 1 — Context Trace (observability first):**
-
-Record per model call:
-- Model, provider, task/session
-- Context blocks (source type, token count, privacy level, trust level)
-- Inclusion/exclusion reason
-- Retrieval query (for memory-sourced context)
-- Final prompt hash
-- Cost, latency, outcome
+Record per model call: model, provider, task/session, context blocks (source type, token count, privacy level, trust level), inclusion/exclusion reason, retrieval query, final prompt hash, cost, latency, outcome.
 
 **Phase 2 — Context Blocks:**
-
-Structure context into typed blocks:
-```text
-system_instruction, user_intent, session_summary, recent_messages,
-memory_ref, artifact_ref, tool_result, policy_rule, approval_state, worker_state
-```
-
-Each block has metadata: source, owner, namespace, tokens, trustScore, privacyLevel, freshness, priority.
+Structure context into typed blocks (`system_instruction`, `user_intent`, `session_summary`, `recent_messages`, `memory_ref`, `artifact_ref`, `tool_result`, `policy_rule`, `approval_state`, `worker_state`). Each block with metadata: source, owner, namespace, tokens, trustScore, privacyLevel, freshness, priority.
 
 **Phase 3 — Context Budgeting:**
-
 Per-task budget: maxTokens, maxCost, maxPrivateExposure, requiredEvidence, preferredModel, riskLevel.
 
 **Phase 4 — Context Selection:**
-
 Task-aware assembly: must_include, should_include, exclude, compress, redact, retrieve.
 
 **Phase 5 — Context Inspector (UI):**
-
 User-facing panel: "What context did the AI use? Why? What was excluded? What's the privacy risk? What did it cost?"
 
-### 10.3 What TRST-1 Explicitly Does NOT Do
+The phases above describe a coherent direction. Actual scope, phasing, and boundaries will be determined in TRST-1 planning, not here.
 
-- No full Context Manager with compression/selection (that's TRST-2+)
-- No Memory namespace redesign (separate milestone)
-- No Policy Engine (separate milestone)
-- No Tool Broker (separate milestone)
-- No model scheduler (separate milestone)
+### 12.3 What This Direction Explicitly Excludes
 
-**TRST-1 = make context observable first. Optimization follows from visibility.**
+- Full Context Manager with compression/selection (that comes later in the path)
+- Memory namespace redesign (separate milestone)
+- Policy Engine (separate milestone)
+- Tool Broker (separate milestone)
+- Model scheduler (separate milestone)
+
+**Core principle: make context observable first. Optimization follows from visibility.**
 
 ---
 
-## 11. Product Surface Strategy
+## 13. Product Surface Strategy
 
-TrustOS product surfaces should mirror OS resource management, not chat features:
+TrustOS product surfaces should expose OS primitives, not drive them. Each surface incrementally makes TrustOS feel like an OS, not a chatbot.
 
 | Stage | Product Surface | OS Primitive Exposed |
 |---|---|---|
 | **Current (S101P)** | Chat Shell, Manager Workspace, Session Detail | Agent Runtime visibility, Artifact Store, basic Execution Summary |
-| **TRST-1** | Context Inspector | Context Manager — "What does the AI know right now and why?" |
-| **TRST-2** | Memory Browser | Memory Manager — "What does TrustOS remember about me, my projects, my preferences?" |
-| **TRST-3** | Policy Console | Policy Engine — "What are my AI allowed to do?" |
-| **TRST-4** | Trust Card / Evidence Viewer | Evidence Log — "Prove the AI did what I asked, within bounds." |
-| **TRST-5** | Model Dashboard | Model Scheduler — "Which model is doing what, at what cost?" |
+| **TRST-1 candidate** | Context Inspector | Context Manager — "What does the AI know right now and why?" |
+| **TRST-2 candidate** | Memory Browser | Memory Manager — "What does TrustOS remember about me, my projects, my preferences?" |
+| **TRST-3 candidate** | Policy Console | Policy Engine — "What is my AI allowed to do?" |
+| **TRST-4 candidate** | Trust Card / Evidence Viewer | Evidence Log — "Prove the AI did what I asked, within bounds." |
+| **TRST-5 candidate** | Model Dashboard | Model Scheduler — "Which model is doing what, at what cost?" |
 
-Each surface incrementally makes TrustOS feel like an OS, not a chatbot.
+**Important:** Product surfaces expose OS primitives. They should not prematurely drive architecture decisions. The primitives are designed for correctness and performance; the surfaces are designed for usability. This is the standard OS design discipline — the kernel does not exist to serve a specific UI.
 
 ---
 
-## 12. Non-Goals
+## 14. Non-Goals
 
 TRST-0 is a strategic architecture thesis. It does not include:
 
@@ -793,37 +1014,51 @@ These belong in subsequent TRST-1+ planning documents.
 
 ---
 
-## 13. Relationship to Existing T100 Documents
+## 15. Relationship to Existing T100 Documents
 
-TRST-0 builds on, but does not replace:
+TRST-0 builds on, but does not replace, the T100 document family:
 
 | T100 Document | Relationship |
 |---|---|
-| `TrustOS-OS-Manifesto.md` | TRST-0 accepts the Manifesto's core thesis and extends it with historical OS analogy, Context Efficiency performance model, and competitive positioning |
+| `TrustOS-OS-Manifesto.md` | TRST-0 accepts the Manifesto's core thesis and extends it with OS First Principles, historical OS analogy, Context Efficiency performance model, and competitive positioning |
 | `TrustOS-OS-Primitives.md` | TRST-0 references Primitives and maps current S101 code to them |
-| `TrustOS-Performance-Model.md` | TRST-0 extends the path-based performance model with Context Efficiency as the primary optimization target |
+| `TrustOS-Performance-Model.md` | TRST-0 extends the path-based performance model with Context Efficiency as the primary optimization target and a categorized metrics framework |
 | `Loop-Separation-RFC.md` | TRST-0's AI Kernel architecture is consistent with Loop Separation; Context Manager operates across all loops |
+| `Trust-Kernel-RFC.md` | TRST-0's Tool Broker + Policy Engine + Evidence Log design aligns with Trust Kernel enforcement |
+| `T100-DOCS-INDEX.md` | T100 document index and cross-reference |
 
-**TRST-0 is a thesis document — it argues for a specific performance and architecture direction, grounded in OS principles and competitive analysis.** It does not duplicate existing T100 design detail.
+**Document relationship:**
+```text
+TRST-0    = Strategic architecture thesis (this document)
+T100 docs = Prior architectural materials and detailed RFCs
+TRST-1+   = Milestone planning documents (future)
+```
+
+TRST-0 is a thesis document — it argues for a specific performance and architecture direction, grounded in OS principles and competitive analysis. It does not duplicate existing T100 design detail.
 
 ---
 
-## 14. Final Statement
+## 16. Final Statement
 
 ```text
 PC OS manages compute, memory, storage, network, and security.
 Cloud OS manages services, infrastructure, IAM, and billing.
-TrustOS manages model compute, context, memory, agent communication, and trust boundaries.
+Platform OS manages sandboxes, app permissions, and runtime contracts.
+
+TrustOS manages five AI-native resources —
+model compute, context, memory, agent runtime, and tool/communication access —
+through a Trust Control Plane that enforces identity, policy, approval, audit, and verification.
 
 The primary performance lever is Context Efficiency —
 optimizing what enters the model's working memory
 for relevance, trust, freshness, privacy, and cost.
 
-The first strategic milestone is Context Trace —
+The first strategic milestone candidate is Context Trace —
 making context observable before making it optimizable.
-```
 
-TrustOS is not a better agent. TrustOS is the operating layer that makes all agents trustworthy.
+TrustOS is not a better agent.
+TrustOS is the operating layer that makes all agents trustworthy.
+```
 
 ---
 
