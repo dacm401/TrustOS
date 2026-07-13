@@ -1,15 +1,24 @@
 # TRST-0 TrustOS Architecture Thesis
 
-Version: v0.2
-Stage: TRST-0 — Strategic Architecture Thesis (PM Reviewed)
-Date: 2026-07-10
-Status: Directionally Strong — Revised per PM Review
+Version: v0.3
+Stage: TRST-0 — Strategic Architecture Thesis
+Date: 2026-07-13
+Status: PM Review
 
 ---
 
 ## 1. Executive Thesis
 
-**TrustOS is not an agent management platform. TrustOS is an AI-native operating system that manages model compute, context, memory, agent/tool communication, and trust boundaries for reliable AI work.**
+**TrustOS is an AI-native operating system for trusted AI work.**
+
+Its first product surface is an **AI Execution Gateway** that mediates agent model calls and tool calls, generates evidence by default, and grows governance from real execution data.
+
+```text
+TrustOS is not an agent management platform.
+TrustOS is the operating layer for trusted AI work.
+
+Gateway is the entry product, not the final definition of TrustOS.
+```
 
 Short form:
 
@@ -36,6 +45,44 @@ The key distinction is not "agent orchestration" — it is **resource governance
 | Same layer as Claude Code, OpenClaw, Dify | Layer below — the OS that those agents run on |
 
 TrustOS does not compete with Claude Code on coding quality. TrustOS competes by providing the trustworthy runtime that lets Claude Code, Cursor, local models, and human workers operate within defined boundaries.
+
+### 1.2 Entry Strategy: AI Execution Gateway
+
+TrustOS does not begin by replacing agents or building a complete OS kernel. It begins by mediating the model calls and tool calls agents already make.
+
+```text
+TrustOS v1 is an AI Execution Gateway deployed in the user's environment.
+It intercepts agent-to-model and agent-to-tool calls,
+generates structured evidence at the point of mediation,
+and grows into a full OS as governance data accumulates.
+```
+
+**Gateway is the entry product, not the final definition.** The Gateway addresses the immediate problem — unobservable, untrusted agent execution — while building the data foundation for TrustOS's long-term OS capabilities.
+
+#### v1 Interception Points
+
+| Interception Point | Responsibility |
+|---|---|
+| **LLM Gateway** | Mediates model calls; generates Context Trace; records cost, latency, token counts |
+| **MCP / Tool Broker** | Mediates tool calls; records tool trace; reserves path for future policy enforcement |
+
+These two interception points are the first practical enforcement hooks. They exist today — agents already call model APIs and MCP servers. A proxy in front of these calls requires no agent code changes.
+
+```text
+LLM Gateway and MCP Broker are the first practical enforcement hooks,
+not the complete enforcement surface.
+Full enforcement will expand to capability tokens, secrets injection,
+environment sandbox, and network egress control in later milestones.
+```
+
+#### Key Design Principle
+
+```text
+From day one, Gateway data objects use OS primitive schemas.
+Product surfaces can start small; schema must not paint us into a corner.
+```
+
+This means: even though the Gateway v1 only observes (Shadow Mode), every event it captures is structured with fields reserved for future enforcement — session attribution, capability references, policy decision slots, evidence chain linkages.
 
 ---
 
@@ -381,7 +428,144 @@ Evidence Log records: request, decision, result
 
 ---
 
-## 6. AI Kernel Architecture
+## 6. Three Planes: Enforcement, Observation, Governance
+
+TrustOS is organized into three architectural planes, ordered by **enforcement priority** — what must be built first to achieve non-bypassability:
+
+```text
+┌─────────────────────────────────────────────────┐
+│  ENFORCEMENT PLANE — Cannot be bypassed          │
+│  LLM Gateway + MCP/Tool Broker + Policy Engine   │
+│  + Secrets Vault (future) + Capability Tokens    │
+├─────────────────────────────────────────────────┤
+│  OBSERVATION PLANE — Generated at enforcement    │
+│  Context Trace + Tool Trace + Cost Ledger        │
+│  + Evidence Graph projection                     │
+├─────────────────────────────────────────────────┤
+│  GOVERNANCE PLANE — Grows from evidence          │
+│  Memory Manager + Model Scheduler + Approval UI  │
+│  + Policy Console + Trust Card                   │
+└─────────────────────────────────────────────────┘
+```
+
+### 6.1 Enforcement Plane
+
+The Enforcement Plane is the architectural backbone. Every agent model call and tool call must pass through it. Without this plane, observation is voluntary and governance is advisory.
+
+**Current scope (v1 Gateway):**
+
+| Component | Status | Description |
+|---|---|---|
+| LLM Gateway | TRST-1 | OpenAI-compatible proxy; capture model, tokens, cost, latency |
+| MCP / Tool Broker | TRST-1 | MCP protocol proxy; capture tool name, args hash, result hash |
+| Policy Engine | Future | Rule evaluation (allow/deny/ask/redact/sandbox) |
+| Secrets Vault | Future | Centralized credential storage; injected at execution time |
+| Capability Tokens | Future | Per-session tokens constraining allowed tools, params, budget |
+
+**Key invariant:**
+
+```text
+Observation is generated at enforcement time, not reconstructed afterward.
+```
+
+Every mediation event synchronously produces an evidence record. If the enforcement point cannot record evidence, it must generate a telemetry failure event — silent loss is not permitted.
+
+### 6.2 Observation Plane
+
+The Observation Plane is the automatic byproduct of enforcement. It answers: what happened, at what cost, with what data, producing what result?
+
+**Components:**
+
+| Component | Description |
+|---|---|
+| Context Trace | Record context block sources, token counts, privacy flags per model call |
+| Tool Trace | Record tool name, args hash, result hash, latency per tool call |
+| Cost Ledger | Record model, token count, estimated cost per call/session |
+| Evidence Graph | Causal projection over append-only raw events (see §7.7) |
+
+**Key principle:**
+
+```text
+Observation is a byproduct of enforcement, not an independent collection layer.
+If enforcement is bypassed, observation does not occur.
+```
+
+### 6.3 Governance Plane
+
+The Governance Plane grows from evidence data, not from upfront design. Its components are built as real execution data accumulates:
+
+| Component | Trigger | Phase |
+|---|---|---|
+| Memory Manager | Evidence Graph shows which memories improve task outcomes | M4+ |
+| Model Scheduler | Cost Ledger shows per-model verification pass rates | M4+ |
+| Policy Console | ASK/DENY records from Shadow Mode inform default templates | M2+ |
+| Approval Flow | Policy decisions that require human input | M2+ |
+| Trust Card | Structured evidence export from Evidence Graph | M3+ |
+
+**Data flywheel:**
+
+```text
+Enforcement produces evidence →
+Evidence trains governance strategies →
+Governance increases enforcement automation (less human review) →
+More users adopt →
+More evidence accumulated.
+```
+
+This flywheel is the long-term competitive moat — not any single feature, but the compounding advantage of evidence-driven governance.
+
+---
+
+## 7. Design Invariants
+
+The following invariants are non-negotiable architecture constraints. They are the "constitution" of TrustOS — any implementation decision that violates an invariant is a design regression.
+
+```text
+1. Gateway is the v1 product surface,
+   but its data model must use OS primitives from day one.
+   Product can start small; schema must not paint us into a corner.
+
+2. Agents receive capability handles, not raw secrets.
+   Secrets live in the TrustOS Vault and are injected by brokers at execution time.
+   This is Credential Vacuum — the architectural basis of non-bypassability.
+
+3. Model output is not action.
+   Only brokered and policy-checked tool calls become system actions.
+   This is the Action Boundary — the AI-era syscall layer.
+
+4. No enforcement without evidence.
+   Every mediation event must produce an evidence record.
+   Silent event loss is not permitted — failure to record evidence
+   must generate a telemetry failure event.
+
+5. Raw events are append-only facts.
+   Evidence Graph is a causal projection over those facts.
+   The projection may evolve; raw facts must not be lost or mutated.
+
+6. Tamper-evident is not tamper-proof.
+   Merkle/hash linkage provides tamper-evidence (detectable changes).
+   Absolute tamper-proofing requires external anchoring/signing — a future enterprise enhancement.
+
+7. Shadow Mode is the default first-run experience.
+   TrustOS earns enforcement rights by first showing evidence.
+   Users start in observe-only mode; enforcement mode is opt-in.
+
+8. Context Trace begins at the Gateway.
+   Context Efficiency requires outcome feedback and evidence over time.
+   The Gateway provides trace; downstream analysis provides efficiency.
+
+9. Kernel subsystems mediate all critical resource access.
+   Applications and agents must not bypass Kernel subsystems
+   for model calls, tool calls, memory writes, or context assembly.
+
+10. Hard-deny policy rules must not be overridden by LLM judgment.
+    The Policy Engine is the single source of truth for access decisions,
+    not the model's reasoning.
+```
+
+---
+
+## 8. AI Kernel Architecture
 
 The AI Kernel is the core control plane of TrustOS. It is not a monolithic kernel in the Linux sense, but a set of seven coordinated subsystems that together provide OS-level resource governance.
 
@@ -417,7 +601,7 @@ Applications and agents must not bypass Kernel subsystems for critical operation
 
 That is: no direct model calls, no direct tool calls, no direct memory writes, no unlogged context assembly. Every significant resource access passes through its corresponding Kernel subsystem. This is what distinguishes an OS from a collection of libraries.
 
-### 6.1 Model Scheduler
+### 8.1 Model Scheduler
 
 ```text
 model.invoke(task, context, policy) → response
@@ -430,7 +614,7 @@ model.invoke(task, context, policy) → response
 - Cost cap enforcement per session
 - Latency budget per call
 
-### 6.2 Context Manager
+### 8.2 Context Manager
 
 ```text
 context.assemble(task, budget, policy) → assembledContext
@@ -449,7 +633,7 @@ context.redact(privateFields) → safeContext
 
 **This is the performance core of TrustOS.** More detail in Section 7.
 
-### 6.3 Memory Manager
+### 8.3 Memory Manager
 
 ```text
 memory.read(namespace, query, policy) → results
@@ -466,7 +650,7 @@ memory.revoke(memoryId) → void
 - Retrieval policy
 - Trust score assignment
 
-### 6.4 Tool Broker
+### 8.4 Tool Broker
 
 ```text
 tool.call(name, args, capabilityToken) → result
@@ -483,7 +667,7 @@ All Worker tool calls pass through the Tool Broker — never directly to the too
 
 **This is the AI-era equivalent of syscall mediation.** See Section 5 for the full Action Boundary design.
 
-### 6.5 Agent Runtime
+### 8.5 Agent Runtime
 
 ```text
 agent.spawn(role, task, capabilities) → agentId
@@ -501,7 +685,7 @@ agent.message(id, payload) → void
 - Handoff between workers
 - Isolation per agent
 
-### 6.6 Policy Engine
+### 8.6 Policy Engine
 
 ```text
 policy.check(actor, action, resource, context) → decision
@@ -518,15 +702,35 @@ policy.check(actor, action, resource, context) → decision
 
 **Hard deny rules must not be overridden by LLM judgment.** This is a design invariant. The Policy Engine is the single source of truth for access decisions.
 
-### 6.7 Evidence Log
+### 8.7 Evidence Graph with Append-only Event Backbone
 
 ```text
 evidence.record(event) → eventId
 ```
 
-**Evidence Log is kernel-level because audit evidence must be generated at the point of resource mediation, not reconstructed afterwards from scattered logs.** This distinguishes it from a generic logging system.
+**Evidence Graph is kernel-level because audit evidence must be generated at the point of resource mediation, not reconstructed afterwards from scattered logs.** This distinguishes it from a generic logging system.
 
-Append-only, tamper-resistant event log capturing:
+#### Data Model: Raw Events → Causal Graph
+
+```text
+Raw events are append-only facts.
+Evidence Graph is a causal projection over those facts.
+The projection may evolve; raw facts must not be lost or mutated.
+```
+
+The evidence backbone captures:
+
+```text
+Task ──spawned──> Session ──invoked──> ModelCall ──used──> ContextBlock
+                    │                                          │
+                    └──called──> ToolCall ──produced──> Artifact
+                                    │                     │
+                                    └──decided_by──> PolicyDecision
+                                                           │
+                                                   ──approved_by──> Human
+```
+
+Event types captured:
 - Model call metadata (model, tokens, cost, latency)
 - Context references (what was injected, from where, with what trust score)
 - Tool call trace (request, decision, result)
@@ -534,12 +738,23 @@ Append-only, tamper-resistant event log capturing:
 - Verification results (smoke tests, acceptance)
 - Approval records (who approved what, when)
 - Session lifecycle events
+- Telemetry failure events (when evidence recording itself fails)
+
+#### Integrity Model
+
+```text
+TrustOS v1 targets tamper-evidence, not absolute tamper-proofing.
+
+Merkle/hash linkage can detect changes.
+Append-only storage improves tamper-resistance.
+External anchoring/signing is a future enterprise enhancement.
+```
 
 **Evidence transforms AI work from "chat output" to "auditable execution record."**
 
 ---
 
-## 7. TrustOS Architecture Sketch
+## 9. TrustOS Architecture Sketch
 
 The architecture can be viewed from two perspectives:
 
@@ -604,9 +819,9 @@ TrustOS
 
 ---
 
-## 8. Performance Thesis: Context Efficiency
+## 10. Performance Thesis: Context Efficiency
 
-### 8.1 The Performance Objective
+### 10.1 The Performance Objective
 
 TrustOS's performance objective is not "faster responses" — it is **Effective Intelligence Throughput**.
 
@@ -621,7 +836,7 @@ Or more concretely:
 Completing trusted work within cost, time, risk, and context budgets.
 ```
 
-### 8.2 The Primary Lever: Context Efficiency
+### 10.2 The Primary Lever: Context Efficiency
 
 ```text
 Context Efficiency =
@@ -645,7 +860,7 @@ In AI work systems, the biggest waste is not slow computation — it is:
 
 **TrustOS optimizes for Context Efficiency before raw speed.**
 
-### 8.3 Performance Hierarchy
+### 10.3 Performance Hierarchy
 
 ```text
 Performance Objective:   Effective Intelligence Throughput
@@ -657,7 +872,7 @@ Supporting Levers:       Model routing, memory retrieval quality,
 
 Context Efficiency is the primary lever — it is not the only factor, but it is the one that TrustOS is uniquely positioned to optimize as an OS-level concern.
 
-### 8.4 Why Context Is the Bottleneck
+### 10.4 Why Context Is the Bottleneck
 
 Nearly every quality, cost, and security problem in LLM systems converges on context:
 
@@ -672,7 +887,7 @@ Nearly every quality, cost, and security problem in LLM systems converges on con
 | Unreusable work | Historical output not structured as retrievable context |
 | Poor multi-agent collaboration | Inconsistent context across agents |
 
-### 8.5 Context Efficiency Metrics (Categorized)
+### 10.5 Context Efficiency Metrics (Categorized)
 
 #### Context Quality
 
@@ -714,7 +929,28 @@ Nearly every quality, cost, and security problem in LLM systems converges on con
 |---|---|
 | Human Review Load | Time spent on human review per task |
 
-### 8.6 Context Efficiency Implementation Path
+### 10.6 Context Efficiency: Trace, X-ray, and Efficiency
+
+Context capabilities are delivered in three maturity levels. The Gateway provides the first; downstream evidence and analysis provide the rest.
+
+| Level | Capability | What It Provides | Where It Lives |
+|---|---|---|---|
+| **Context Trace** | Record | token counts, source tags, model, privacy flags per call | LLM Gateway (TRST-1) |
+| **Context X-ray** | Inspect | source attribution, staleness detection, duplication, cost breakdown | Context Inspector (post-TRST-1) |
+| **Context Efficiency** | Optimize | relevance scoring, waste reduction, trust-based selection | Context Manager (M4+) |
+
+**Key principle:**
+
+```text
+Gateway provides Context Trace.
+Context Trace enables Context X-ray.
+Context Efficiency requires downstream evidence, outcome feedback,
+verification, and rework analysis — it is not a Gateway byproduct.
+```
+
+Context Efficiency is the primary performance lever (see §10.2), but it cannot be fully achieved in TRST-1. The Gateway provides the critical foundation — structured trace data — without which efficiency optimization is speculation.
+
+### 10.7 Context Efficiency Implementation Path
 
 | Layer | Capability | Description |
 |---|---|---|
@@ -727,7 +963,7 @@ Nearly every quality, cost, and security problem in LLM systems converges on con
 
 **L1 (Context Trace) is the critical first step.** Without trace data, all optimization is speculation.
 
-### 8.7 OS Analogy for Context Optimization
+### 10.8 OS Analogy for Context Optimization
 
 | Traditional OS Optimization | TrustOS Context Manager Equivalent |
 |---|---|
@@ -747,9 +983,9 @@ Fewer tokens, lower cost, lower leak risk, higher task success rate, less human 
 
 ---
 
-## 9. Competitive Positioning
+## 11. Competitive Positioning
 
-### 9.1 The Landscape
+### 11.1 The Landscape
 
 | Category | Examples | Strength | TrustOS Position |
 |---|---|---|---|
@@ -758,7 +994,7 @@ Fewer tokens, lower cost, lower leak risk, higher task success rate, less human 
 | Cloud AI Platforms | AWS Bedrock, Azure AI, GCP Vertex | Infrastructure scale, IAM, enterprise integration | TrustOS is lighter, product-led, model-neutral, focused on work experience not cloud infra |
 | Model Providers | OpenAI, Anthropic, Google | Model intelligence, API access | Not competing — TrustOS routes and manages model usage, doesn't replace models |
 
-### 9.2 The Strategic Bet: Governance Scarcity
+### 11.2 The Strategic Bet: Governance Scarcity
 
 The core competitive bet of TrustOS is not that it will build smarter agents. It is:
 
@@ -780,7 +1016,7 @@ When Claude Code, Cursor, OpenClaw, and dozens of other agents are all capable �
 
 These are OS-layer questions, not agent-prompt questions. TrustOS competes on this shift.
 
-### 9.3 TrustOS's Competitive Moat
+### 11.3 TrustOS's Competitive Moat
 
 TrustOS's defensibility comes from four system-level capabilities, not from single-agent intelligence:
 
@@ -791,7 +1027,7 @@ TrustOS's defensibility comes from four system-level capabilities, not from sing
 | **Tool Syscall Layer** | Workers cannot call tools directly. All calls go through Tool Broker → Policy Engine → Approval Gate → Evidence Log. This is the OS security model. |
 | **Evidence-Backed Execution** | Every AI work unit has a verifiable chain: context used, model invoked, tools called, artifacts produced, verification passed, approval granted, cost incurred, acceptance status. |
 
-### 9.4 The Strategic Position
+### 11.4 The Strategic Position
 
 ```text
 TrustOS is not a better agent — it's the operating layer
@@ -802,13 +1038,13 @@ Claude Code, Cursor, and OpenClaw can all be Workers within TrustOS. The competi
 
 ---
 
-## 10. Current Codebase → Primitive Mapping
+## 12. Current Codebase → Primitive Mapping
 
 Based on the S101 series (S101T, S101R, S101I, S101P), the current codebase has initial implementations for several TrustOS primitives.
 
 **Important qualification:** This mapping is based on S101 accepted summaries and current code references. The current codebase proves runtime feasibility, not yet OS completeness.
 
-### 10.1 What We Have
+### 12.1 What We Have
 
 | S101 Capability | Files | TrustOS Primitive | Maturity |
 |---|---|---|---|
@@ -821,7 +1057,7 @@ Based on the S101 series (S101T, S101R, S101I, S101P), the current codebase has 
 | Session events | `src/types/delegation.ts` (40 event types) | Evidence Log (partial) | **Operational** — event stream, but no structured evidence object model |
 | Smoke verification | `scripts/smoke/s101i-*.mjs` | Verification Service (partial) | **Operational** — SSE contract + Worker execution smoke |
 
-### 10.2 What We Have in Primitive Terms
+### 12.2 What We Have in Primitive Terms
 
 | Primitive (from T100) | S101 Status | Notes |
 |---|---|---|
@@ -841,7 +1077,7 @@ Based on the S101 series (S101T, S101R, S101I, S101P), the current codebase has 
 | Trust Report | ⚠️ Partial | `terminalSummary` in UI, not structured Trust Report |
 | Checkpoint | ❌ Not implemented | No state snapshot or rollback |
 
-### 10.3 Summary
+### 12.3 Summary
 
 ```text
 Current state: S101 delivered a working Agent Runtime + Event Stream + Artifact Store.
@@ -856,7 +1092,7 @@ The next step is to add OS-level resource governance on top of that runtime.
 
 ---
 
-## 11. Strategic Gaps
+## 13. Strategic Gaps
 
 The following gaps are ordered by strategic importance — not by implementation effort. Dependency relationships are noted where a gap cannot be fully addressed without another.
 
@@ -931,11 +1167,11 @@ The following gaps are ordered by strategic importance — not by implementation
 
 ---
 
-## 12. Recommended First Strategic Milestone Candidate: Context Trace
+## 14. Recommended First Strategic Milestone Candidate: Context Trace
 
 TRST-0 does not finalize TRST-1 implementation scope. It identifies **Context Trace as the most likely first strategic milestone** because it makes the core performance resource observable.
 
-### 12.1 Why Context Trace Is the Strongest Candidate
+### 14.1 Why Context Trace Is the Strongest Candidate
 
 | Criterion | Context Trace |
 |---|---|
@@ -947,7 +1183,7 @@ TRST-0 does not finalize TRST-1 implementation scope. It identifies **Context Tr
 | **Measurable** | Context Efficiency metrics are quantifiable once traced |
 | **Builds on S101** | SSE events provide the stream; Context Trace adds structure and policy |
 
-### 12.2 A Likely Staged Path (Not Committed Scope)
+### 14.2 A Likely Staged Path (Not Committed Scope)
 
 The following is a likely progression for the Context Manager milestone, not a committed implementation plan:
 
@@ -968,7 +1204,7 @@ User-facing panel: "What context did the AI use? Why? What was excluded? What's 
 
 The phases above describe a coherent direction. Actual scope, phasing, and boundaries will be determined in TRST-1 planning, not here.
 
-### 12.3 What This Direction Explicitly Excludes
+### 14.3 What This Direction Explicitly Excludes
 
 - Full Context Manager with compression/selection (that comes later in the path)
 - Memory namespace redesign (separate milestone)
@@ -980,24 +1216,44 @@ The phases above describe a coherent direction. Actual scope, phasing, and bound
 
 ---
 
-## 13. Product Surface Strategy
+## 15. Product Surface Strategy
 
 TrustOS product surfaces should expose OS primitives, not drive them. Each surface incrementally makes TrustOS feel like an OS, not a chatbot.
+
+### 15.1 Shadow Mode: Default First-Run Experience
+
+```text
+Shadow Mode is the default onboarding mode.
+TrustOS earns enforcement rights by first showing evidence.
+Users start in observe-only mode; enforcement mode is opt-in.
+```
+
+In Shadow Mode, the Gateway observes and reports — it does not block, redact, or enforce policy. The first 30 minutes of user experience should surface:
+
+- **Risk visibility:** Which tool calls carry side effects? Which are read-only?
+- **Cost visibility:** How many tokens, at what estimated cost, per session?
+- **Tool/model call visibility:** What tools were called, what models were used?
+- **Potential waste detection:** Repeated or unusually large context blocks (when detectable)
+- **Shadow enforcement report:** A summary of what *would have* been blocked, denied, or flagged if enforcement were active
+
+**Key product principle:** Governance product adoption resistance must be negative — users save money and gain visibility just by connecting. If day one requires writing policy rules, the product is dead.
+
+### 15.2 Surface Roadmap
 
 | Stage | Product Surface | OS Primitive Exposed |
 |---|---|---|
 | **Current (S101P)** | Chat Shell, Manager Workspace, Session Detail | Agent Runtime visibility, Artifact Store, basic Execution Summary |
-| **TRST-1 candidate** | Context Inspector | Context Manager — "What does the AI know right now and why?" |
+| **TRST-1 candidate** | Shadow Report, Context X-ray (lite) | Gateway — "What did my agents do, at what cost?" |
 | **TRST-2 candidate** | Memory Browser | Memory Manager — "What does TrustOS remember about me, my projects, my preferences?" |
 | **TRST-3 candidate** | Policy Console | Policy Engine — "What is my AI allowed to do?" |
-| **TRST-4 candidate** | Trust Card / Evidence Viewer | Evidence Log — "Prove the AI did what I asked, within bounds." |
+| **TRST-4 candidate** | Trust Card / Evidence Viewer | Evidence Graph — "Prove the AI did what I asked, within bounds." |
 | **TRST-5 candidate** | Model Dashboard | Model Scheduler — "Which model is doing what, at what cost?" |
 
 **Important:** Product surfaces expose OS primitives. They should not prematurely drive architecture decisions. The primitives are designed for correctness and performance; the surfaces are designed for usability. This is the standard OS design discipline — the kernel does not exist to serve a specific UI.
 
 ---
 
-## 14. Non-Goals
+## 16. Non-Goals
 
 TRST-0 is a strategic architecture thesis. It does not include:
 
@@ -1014,7 +1270,7 @@ These belong in subsequent TRST-1+ planning documents.
 
 ---
 
-## 15. Relationship to Existing T100 Documents
+## 17. Relationship to Existing T100 Documents
 
 TRST-0 builds on, but does not replace, the T100 document family:
 
@@ -1038,7 +1294,7 @@ TRST-0 is a thesis document — it argues for a specific performance and archite
 
 ---
 
-## 16. Final Statement
+## 18. Final Statement
 
 ```text
 PC OS manages compute, memory, storage, network, and security.
