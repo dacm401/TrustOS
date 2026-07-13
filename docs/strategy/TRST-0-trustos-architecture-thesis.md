@@ -113,7 +113,7 @@ RESOURCE       — What is managed
 
 KERNEL         — How it is managed
 SUBSYSTEM      (Model Scheduler, Context Manager, Memory Manager,
-                 Tool Broker, Agent Runtime, Policy Engine, Evidence Log)
+                 Tool Broker, Agent Runtime, Policy Engine, Evidence Graph / Event Backbone)
 
 SURFACE /      — How users and applications interact with it
 SERVICE        (Context Inspector, Memory Browser, Policy Console,
@@ -243,7 +243,7 @@ This definition is critical. Without it, "TrustOS" becomes a brand claim rather 
 | Memory | Memory Manager | Memory Browser |
 | Agent Runtime | Agent Runtime | Manager Workspace |
 | Tool & Comm Access | Tool Broker + Policy Engine | Action Approval, Tool Console |
-| (Control Plane) | Policy Engine + Evidence Log | Trust Card, Policy Console, Evidence Viewer |
+| (Control Plane) | Policy Engine + Evidence Graph | Trust Card, Policy Console, Evidence Viewer |
 
 ---
 
@@ -290,7 +290,7 @@ The RAM of AI OS. **This is the most critical performance resource.**
 - How much? In what order?
 - Is it trusted? Is it fresh? Is it within permission scope?
 
-**Context is the bottleneck.** Every quality, cost, and security problem in LLM systems converges on context management. This is why Context Efficiency is the primary performance thesis (see Section 7).
+**Context is the bottleneck.** Every quality, cost, and security problem in LLM systems converges on context management. This is why Context Efficiency is the primary performance thesis (see Section 10).
 
 ### 4.3 Memory
 
@@ -376,11 +376,11 @@ The cross-cutting security architecture of AI OS. Trust is not a sixth resource 
 - Capability token — what an agent is allowed to do
 - Policy engine — rule evaluation (allow/deny/ask/redact/sandbox)
 - Approval gates — human-in-the-loop at critical points
-- Audit trail — tamper-resistant execution record
+- Audit trail — tamper-evident execution record
 - Secrets vault — API keys, credentials isolation
 - Risk scoring — per-action risk assessment
 - Verification evidence — proof that work was done correctly
-- Tamper-resistant logs — append-only, cryptographically verifiable
+- Tamper-evident logs — append-only, cryptographically verifiable
 
 **Key questions:**
 - What can AI do? What can't it do?
@@ -414,7 +414,7 @@ If ASK: Approval gate → human decision
 If ALLOW: Execute with injected secrets, capture result
 If DENY: Block with audit record
     ↓
-Evidence Log records: request, decision, result
+Evidence Graph records: request, decision, result
 ```
 
 ### Why this matters
@@ -481,7 +481,7 @@ The Observation Plane is the automatic byproduct of enforcement. It answers: wha
 | Context Trace | Record context block sources, token counts, privacy flags per model call |
 | Tool Trace | Record tool name, args hash, result hash, latency per tool call |
 | Cost Ledger | Record model, token count, estimated cost per call/session |
-| Evidence Graph | Causal projection over append-only raw events (see §7.7) |
+| Evidence Graph | Causal projection over append-only raw events (see §8.7) |
 
 **Key principle:**
 
@@ -577,7 +577,7 @@ TrustOS AI Kernel
 ├── Tool Broker          — All tool calls through a secure mediation layer
 ├── Agent Runtime        — Lifecycle management for agents/workers
 ├── Policy Engine        — Is this action allowed, denied, or needs approval?
-└── Evidence Log         — What happened? Can we prove it?
+└── Evidence Graph / Event Backbone  — What happened? Can we prove it?
 ```
 
 ### Resource → Kernel Subsystem Mapping
@@ -590,7 +590,7 @@ TrustOS AI Kernel
 | Tool & Comm Access | Tool Broker | Mediates all tool calls; enforces action boundary |
 | Agent Process | Agent Runtime | Manages agent lifecycle and isolation |
 | Trust Boundary | Policy Engine | Evaluates and enforces access rules |
-| Audit / Observability | Evidence Log | Records resource access and execution events |
+| Audit / Observability | Evidence Graph | Records resource access and execution events |
 
 **Kernel design invariant:**
 
@@ -631,7 +631,7 @@ context.redact(privateFields) → safeContext
 - Freshness check (is this memory stale?)
 - Trust scoring (how reliable is this source?)
 
-**This is the performance core of TrustOS.** More detail in Section 7.
+**This is the performance core of TrustOS.** More detail in Section 10.
 
 ### 8.3 Memory Manager
 
@@ -770,7 +770,7 @@ TrustOS
 │   ├── Tool Broker
 │   ├── Agent Runtime
 │   ├── Policy Engine
-│   └── Evidence Log
+│   └── Evidence Graph / Event Backbone
 │
 ├── Resource Layer
 │   ├── Model Registry
@@ -795,7 +795,7 @@ TrustOS
 │   ├── Approval Gates
 │   ├── Risk Scoring
 │   ├── Secrets Vault
-│   └── Audit Trail
+│   └── Evidence Trail
 │
 ├── Runtime Services
 │   ├── Task / Delegation Service
@@ -1024,7 +1024,7 @@ TrustOS's defensibility comes from four system-level capabilities, not from sing
 |---|---|
 | **Context Graph** | Graph of task-memory-artifact-event-tool-decision relationships, not flat chat history. Answers: why does the AI know this? Where did this come from? What influenced the result? |
 | **Policy-Aware Memory** | Memory = content + namespace + owner + permission + provenance + trust score + lifecycle. Not a generic vector DB. |
-| **Tool Syscall Layer** | Workers cannot call tools directly. All calls go through Tool Broker → Policy Engine → Approval Gate → Evidence Log. This is the OS security model. |
+| **Tool Syscall Layer** | Workers cannot call tools directly. All calls go through Tool Broker → Policy Engine → Approval Gate → Evidence Graph. This is the OS security model. |
 | **Evidence-Backed Execution** | Every AI work unit has a verifiable chain: context used, model invoked, tools called, artifacts produced, verification passed, approval granted, cost incurred, acceptance status. |
 
 ### 11.4 The Strategic Position
@@ -1054,7 +1054,7 @@ Based on the S101 series (S101T, S101R, S101I, S101P), the current codebase has 
 | Archive / artifacts | `src/api/archive.ts`, `src/db/task-archive-repo.ts` | Artifact Store | **Operational** — persistent storage, metadata |
 | Usage / cost tracking | `src/types/dashboard.ts` (UsageInfo) | Cost Service (partial) | **Operational** — token counts, model info, estimated cost |
 | Execution visibility | `frontend/src/components/chat/ExecutionMetadata.tsx` | Execution Summary / Trust Card (partial) | **Operational** — terminalSummary, usage, executionProgress in UI |
-| Session events | `src/types/delegation.ts` (40 event types) | Evidence Log (partial) | **Operational** — event stream, but no structured evidence object model |
+| Session events | `src/types/delegation.ts` (40 event types) | Evidence Graph (partial, events only) | **Operational** — event stream, but no structured evidence object model or causal projection |
 | Smoke verification | `scripts/smoke/s101i-*.mjs` | Verification Service (partial) | **Operational** — SSE contract + Worker execution smoke |
 
 ### 12.2 What We Have in Primitive Terms
@@ -1167,13 +1167,15 @@ The following gaps are ordered by strategic importance — not by implementation
 
 ---
 
-## 14. Recommended First Strategic Milestone Candidate: Context Trace
+## 14. Recommended First Strategic Milestone Candidate: Execution Trace MVP
 
-TRST-0 does not finalize TRST-1 implementation scope. It identifies **Context Trace as the most likely first strategic milestone** because it makes the core performance resource observable.
+TRST-0 does not finalize TRST-1 implementation scope. It identifies **Execution Trace MVP as the most likely first strategic milestone** because it validates the Gateway's dual-interception path — the prerequisite for all downstream governance.
 
-### 14.1 Why Context Trace Is the Strongest Candidate
+Context Trace remains the most important performance trace within Execution Trace, but TRST-1 must capture both model calls and tool calls because Gateway entry requires dual interception.
 
-| Criterion | Context Trace |
+### 14.1 Why Execution Trace Comes First
+
+| Criterion | Execution Trace MVP |
 |---|---|
 | **Performance impact** | Directly enables Context Efficiency measurement and optimization |
 | **Quality impact** | Better context → better model output |
@@ -1183,7 +1185,17 @@ TRST-0 does not finalize TRST-1 implementation scope. It identifies **Context Tr
 | **Measurable** | Context Efficiency metrics are quantifiable once traced |
 | **Builds on S101** | SSE events provide the stream; Context Trace adds structure and policy |
 
-### 14.2 A Likely Staged Path (Not Committed Scope)
+### 14.2 Context Trace as the Performance Core Inside Execution Trace
+
+Context Trace remains the most important performance trace — it makes the core performance resource (context) observable, directly enables Context Efficiency measurement and optimization, and feeds Memory quality, Policy decisions, and Evidence structure.
+
+But Context Trace alone is insufficient for Gateway validation: a dual-interception Gateway must prove it can capture both model calls (LLM Gateway → Context Trace) and tool calls (MCP Broker → Tool Trace). Execution Trace MVP validates both paths simultaneously.
+
+### 14.3 Tool Trace as the Action-Boundary Counterpart
+
+Tool Trace captures tool name, args hash, result hash, and latency — the evidence that establishes the Action Boundary (see Section 5). Without Tool Trace, the Gateway cannot distinguish between "the model reasoned about an action" and "the model executed an action." Tool Trace is the evidence backbone for the Tool Broker.
+
+### 14.4 A Likely Staged Path (Not Committed Scope)
 
 The following is a likely progression for the Context Manager milestone, not a committed implementation plan:
 
@@ -1204,15 +1216,15 @@ User-facing panel: "What context did the AI use? Why? What was excluded? What's 
 
 The phases above describe a coherent direction. Actual scope, phasing, and boundaries will be determined in TRST-1 planning, not here.
 
-### 14.3 What This Direction Explicitly Excludes
+### 14.5 What This Direction Explicitly Excludes
 
-- Full Context Manager with compression/selection (that comes later in the path)
-- Memory namespace redesign (separate milestone)
-- Policy Engine (separate milestone)
-- Tool Broker (separate milestone)
-- Model scheduler (separate milestone)
+- Full Context Manager with compression/selection (post-TRST-1)**
+- Full Tool Broker with policy enforcement (TRST-2)**
+- Memory namespace redesign (separate milestone)**
+- Policy Engine (separate milestone)**
+- Model Scheduler (separate milestone)**
 
-**Core principle: make context observable first. Optimization follows from visibility.**
+**Core principle: validate dual interception first. Context Trace + Tool Trace together prove the Gateway can observe both model and tool execution.**
 
 ---
 
@@ -1280,7 +1292,7 @@ TRST-0 builds on, but does not replace, the T100 document family:
 | `TrustOS-OS-Primitives.md` | TRST-0 references Primitives and maps current S101 code to them |
 | `TrustOS-Performance-Model.md` | TRST-0 extends the path-based performance model with Context Efficiency as the primary optimization target and a categorized metrics framework |
 | `Loop-Separation-RFC.md` | TRST-0's AI Kernel architecture is consistent with Loop Separation; Context Manager operates across all loops |
-| `Trust-Kernel-RFC.md` | TRST-0's Tool Broker + Policy Engine + Evidence Log design aligns with Trust Kernel enforcement |
+| `Trust-Kernel-RFC.md` | TRST-0's Tool Broker + Policy Engine + Evidence Graph design aligns with Trust Kernel enforcement |
 | `T100-DOCS-INDEX.md` | T100 document index and cross-reference |
 
 **Document relationship:**
@@ -1309,8 +1321,9 @@ The primary performance lever is Context Efficiency —
 optimizing what enters the model's working memory
 for relevance, trust, freshness, privacy, and cost.
 
-The first strategic milestone candidate is Context Trace —
-making context observable before making it optimizable.
+The first strategic milestone candidate is Execution Trace MVP —
+validating that the Gateway can capture both model calls and tool calls,
+with Context Trace as its performance core.
 
 TrustOS is not a better agent.
 TrustOS is the operating layer that makes all agents trustworthy.

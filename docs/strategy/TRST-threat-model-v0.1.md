@@ -58,7 +58,7 @@ This section is the most important part of the threat model. **Statements here a
 | **All prompt injection** | TrustOS can reduce injection surface (credential vacuum, tool mediation), but cannot prevent all linguistic attacks on LLM reasoning. |
 | **Intentional user bypass** | A user who deliberately routes agent traffic around the Gateway is outside coverage. The Gateway is a mediation point, not a cage. |
 | **Unintegrated agents** | Agents not configured to use the Gateway/Broker are invisible to TrustOS. |
-| **Semantic DLP perfection** | v1 Gateway does pattern-based detection (key patterns, PII regex), not semantic understanding of sensitive content. |
+| **DLP detection** | v1 Gateway reserves fields for privacy flags and data classification, but does not claim automatic DLP detection — semantic or pattern-based. Pattern-based detection may be introduced later (post-TRST-1). |
 | **Compliance certification** | TrustOS produces structured evidence that *supports* compliance (SOC2, ISO42001, EU AI Act), but does not self-certify. |
 | **Agent code integrity** | TrustOS mediates external calls; it does not verify the agent's internal logic, prompt engineering, or runtime state. |
 
@@ -80,7 +80,7 @@ The LLM Gateway and MCP Broker intercept agent-to-model and agent-to-tool calls.
 - All calls pass through the Gateway/Broker
 - Every call generates an evidence event
 - No blocking, redaction, or policy enforcement
-- Report summarizes: what was called, by whom, at what cost, with what data classification flags
+- Report summarizes: what was called, by whom, at what cost, with any available or supplied data classification flags
 
 **Why this layer matters even without enforcement:** It makes agent behavior observable. Without it, TrustOS is blind.
 

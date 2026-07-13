@@ -35,7 +35,7 @@ The hypothesis is validated when:
 1. An OpenAI-compatible client and an MCP client successfully route through the Gateway with all calls captured as events
 2. Gateway overhead is measured and confirmed to be acceptable (< 5% of upstream model latency)
 3. A complete Shadow Report is generated covering model calls, tool calls, cost, and basic context metadata
-4. Zero silent event loss — every mediated call produces either an event or a `telemetry_failure` event
+4. No silent event loss — every mediated call must produce either an evidence event or a telemetry failure event indicating what could not be recorded
 
 ### 2.2 What the hypothesis excludes
 
@@ -181,19 +181,31 @@ Coverage limitations:        [explicit gaps]
 Gateway overhead is measured as:
 
 ```text
-gateway_overhead_ms = (event_timestamp - request_received_timestamp) + (event_write_duration)
+gateway_overhead_ms measures additional latency introduced by the Gateway,
+excluding upstream model/tool execution time.
+
+For TRST-1, approximate overhead by comparing proxied calls against
+direct baseline calls under the same provider/tool path.
+
+Evidence persistence may be asynchronous and must not block
+the proxied response path.
 ```
 
 Target: **P50 < 10ms, P99 < 50-100ms** for event recording on the synchronous path.
-Evidence write is asynchronous and does not block the proxied request.
 
 ### 3.9 Failure Telemetry
 
 ```text
-Silent event loss is NOT permitted.
+TRST-1 does not claim absolute zero event loss under all failure modes.
+It requires no silent event loss:
 Every mediated call must produce either:
   - A valid event, or
-  - A telemetry_failure event recording what was lost and why
+  - A telemetry_failure event identifying the affected call,
+    failure reason, and data-loss scope when available.
+
+If full event details cannot be persisted, TRST-1 must persist or emit
+a telemetry failure event that identifies the affected call,
+failure reason, and data-loss scope when available.
 ```
 
 ---
@@ -206,7 +218,7 @@ The following are explicitly excluded from TRST-1. If they appear in implementat
 |---|---|
 | **Policy enforcement** | TRST-2. Requires Policy Engine. |
 | **Approval flow** | TRST-2. Depends on policy decisions requiring human input. |
-| **Semantic DLP** | Too heavy. Pattern-based detection only (key regex, PII patterns). |
+| **DLP detection, semantic or pattern-based** | TRST-1 does not implement DLP. `privacy_flags` and `data_classification` are reserved fields and may be manually supplied or left empty. |
 | **Capability token enforcement** | TRST-2. Schema reserves `capability_ref` field. |
 | **Secrets injection** | TRST-2. Credential Vacuum is a design invariant; implementation is later. |
 | **Formal Trust Card** | Depends on Evidence Graph maturity and structured evidence export. |
@@ -227,8 +239,8 @@ The following are explicitly excluded from TRST-1. If they appear in implementat
 |---|---|---|
 | **Setup time** | < 30 minutes for one assisted design partner environment | Manual assistance is acceptable. Measuring: real-person + real-agent setup. |
 | **Gateway overhead** | < 5% of upstream model latency | Measured as gateway_overhead_ms / (latency_ms - gateway_overhead_ms). |
-| **Event coverage** | 100% of mediated calls produce an event or telemetry failure event | Zero silent loss. Asserted by automated check. |
-| **Silent loss** | 0 events | Asserted. Any silent loss is a TRST-1 failure. |
+| **Event coverage** | 100% of mediated calls produce an event or telemetry failure event | No silent loss. Asserted by automated check. |
+| **Silent loss** | 0 silent losses | Every mediated call must produce either an evidence event or a telemetry failure event. |
 | **Shadow Report** | At least one complete report generated end-to-end | From agent setup → calls captured → report rendered. |
 | **Compatibility** | At least one OpenAI-compatible client and one MCP path validated | Gate check: if neither protocol can be proxied, TRST-1 fails. |
 | **Scope discipline** | 0 implementations of policy / approval / DLP / capability enforcement | Asserted by code review against Out of Scope list. |
@@ -268,7 +280,41 @@ Acceptance criteria:
 
 ---
 
-## 8. Version History
+## 8. Implementation Hold
+
+```text
+TRST-1 implementation remains HOLD until PM acceptance of this Charter
+and explicit PM directive: "TRST-1 Implementation Start".
+
+Charter Accepted does NOT equal Implementation Start.
+Implementation requires a separate PM command.
+
+Current status: HOLD.
+No Gateway code. No schema changes. No UI modifications. No test scripts.
+```
+
+---
+
+## 9. Review Checklist
+
+| # | Criterion | Status |
+|---|---|---|
+| 1 | Core hypothesis is singular and testable | ✅ |
+| 2 | In Scope is minimal and converged on dual-interception validation | ✅ |
+| 3 | Out of Scope is explicit — no policy, no DLP, no enforcement | ✅ |
+| 4 | Event Envelope reserves future OS primitive fields | ✅ |
+| 5 | Shadow Report definition is appropriately modest (not Trust Card) | ✅ |
+| 6 | Validation targets are measurable and gate-checkable | ✅ |
+| 7 | TRST-1 does not implement DLP — semantic or pattern-based | ✅ |
+| 8 | latency definition uses baseline comparison, not synthetic formula | ✅ |
+| 9 | Event loss language is "no silent loss" not "absolute zero loss" | ✅ |
+| 10 | TRST-0 §14 aligned as Execution Trace MVP Candidate | ✅ |
+| 11 | Evidence terminology unified to Evidence Graph / Event Backbone | ✅ |
+| 12 | Implementation: HOLD is unambiguous | ✅ |
+
+---
+
+## 10. Version History
 
 | Version | Date | Changes |
 |---|---|---|
