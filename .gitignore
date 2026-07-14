@@ -38,4 +38,6 @@ start-s*.ps1
 dev/
 # E2E result dumps
 check_*_result.txt
+# TRST-1 Event Store (local runtime data)
+.trustos/
 
