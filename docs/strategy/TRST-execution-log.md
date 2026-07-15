@@ -9,7 +9,8 @@
 ## Current Gate
 
 ```text
-TRST-1A/1B Agent-led Smoke Test — PASS_LOCAL (5/6 local, 1 PENDING_EXTERNAL_SECRET)
+TRST-1A/1B Real Upstream Validation
+Blocked by: PENDING_EXTERNAL_SECRET (real API key needed for upstream forwarding)
 ```
 
 ---
@@ -22,8 +23,8 @@ TRST-1A/1B Agent-led Smoke Test — PASS_LOCAL (5/6 local, 1 PENDING_EXTERNAL_SE
 | TRST-0 Architecture Thesis v0.3 | ACCEPTED | `1bf5a19` |
 | TRST Threat Model v0.1 | ACCEPTED | `1bf5a19` |
 | TRST-1 Charter v0.1 | ACCEPTED AS PLANNING BASELINE | `1bf5a19` |
-| TRST-1A Real LLM Gateway MVP | IMPLEMENTED / LOCAL SMOKE PASSED | `2de76cb` |
-| TRST-1B Tool Trace CLI | IMPLEMENTED / LOCAL SMOKE PASSED | `2de76cb` |
+| TRST-1A Real LLM Gateway MVP | ACCEPTED_LOCAL (PASS_LOCAL) | `2de76cb` |
+| TRST-1B Tool Trace CLI | ACCEPTED_LOCAL (PASS_LOCAL) | `2de76cb` |
 | TRST-1C MCP Broker Passthrough Spike | HOLD / NOT STARTED | — |
 
 ---
@@ -76,6 +77,9 @@ No blocking bugs found. No scope violations detected.
 
 ## Latest PM Decisions
 
+- **2026-07-14**: Agent-led Smoke Test executed (commit `af57b69`). Results: 5/5 local PASS, 1 PENDING_EXTERNAL_SECRET.
+- **2026-07-14**: PM accepted PASS_LOCAL. TRST-1A/1B → ACCEPTED_LOCAL. No blocking local bugs. No scope violation. Real upstream forwarding remains the only pending item.
+- **2026-07-14**: Current gate moved to TRST-1A/1B Real Upstream Validation, blocked by PENDING_EXTERNAL_SECRET.
 - **2026-07-14**: TRST-1A/1B Real MVP implementation accepted for PM Smoke Test (commit `2de76cb`).
   - 14 files, +1559/-2 lines. TypeScript: 0 errors.
   - No scope violation detected.
@@ -128,22 +132,26 @@ No blocking bugs found. No scope violations detected.
 ## Acceptance Criteria (Current Gate)
 
 ```text
-TRST-1A/1B PM Smoke Test — 6 acceptance points:
+TRST-1A/1B Real Upstream Validation — 1 remaining:
 
-1. Gateway starts locally → http://localhost:8787 listening, "Shadow" mode
-2. Real /v1/chat/completions passthrough → upstream response returned unmodified
-3. model_call event → appended to .trustos/events.jsonl
+1. Real /v1/chat/completions passthrough → upstream response returned unmodified
+   - model_call success event appended to .trustos/events.jsonl
    - event_hash present
    - session_id from header or UUID
    - model, provider, latency_ms, cost_estimate, status = success
-4. stream=true → HTTP 400 + error.type = unsupported_feature
-   - failure event recorded with error_code = UNSUPPORTED_STREAMING
-5. Tool Trace CLI → tool_call event written to .trustos/events.jsonl
-   - args_hash present, result_hash present, NO raw args/content stored
-6. Shadow Report → .trustos/shadow-report.md generated
-   - Includes: model calls, tool calls, total tokens, estimated cost, gateway overhead,
-     context blocks, events captured, telemetry failures, coverage limitations,
-     "MCP passthrough not implemented"
+   - raw prompt NOT stored in event log
+   - Shadow Report includes the successful model call
+```
+
+### Already Validated (PASS_LOCAL)
+
+```text
+✅ TypeScript check — 0 errors
+✅ Gateway startup — http://localhost:8787, Shadow mode
+✅ stream=true rejection — HTTP 400 + unsupported_feature + failure event
+✅ Tool Trace CLI — tool_call event, args_hash + result_hash + event_hash
+✅ Shadow Report — .trustos/shadow-report.md generated, all sections present
+✅ Event log audit — every event has event_hash, no raw content/args, privacy_flags empty
 ```
 
 ---
@@ -164,22 +172,20 @@ TRST-1A/1B PM Smoke Test — 6 acceptance points:
 ## Next Gate Outcomes
 
 ```text
-If Smoke Test PASS (6/6):
-  → TRST-1A/1B → ACCEPTED
+If Real Upstream Validation PASS:
+  → TRST-1A/1B → ACCEPTED_FULL
   → Prepare TRST-1C MCP Spike Plan (planning only, no code)
   → Agent updates execution log with results
 
-If Smoke Test MINOR FAIL (5/6, main path works):
-  → TRST-1A/1B → ACCEPTED WITH FIXUPS
-  → Agent fixes blocking issues only
-  → Commit "trst1 smoke test fixups"
-  → Re-run failed test cases
-
-If Smoke Test MAJOR FAIL (Gateway unreachable / upstream forwarding broken):
-  → TRST-1A/1B → NEEDS FIX
+If Real Upstream Validation FAIL (blocking):
   → Root cause review
-  → Fix Gateway/Event Store/Report critical path only
-  → Re-submit for PM Review
+  → Fix Gateway/forwarder critical path only
+  → Re-run real upstream validation
+
+If API key NOT available:
+  → TRST-1A/1B remains ACCEPTED_LOCAL
+  → PENDING_REAL_UPSTREAM_KEY
+  → TRST-1C remains HOLD
 ```
 
 ---
@@ -252,4 +258,4 @@ PM responsibilities:
 
 ---
 
-*Last updated: 2026-07-14 — TRST-1A/1B Agent-led Smoke Test completed: PASS_LOCAL (5/5 local), PENDING real upstream key*
+*Last updated: 2026-07-14 — PM accepted PASS_LOCAL. Current gate: TRST-1A/1B Real Upstream Validation. Blocked by PENDING_EXTERNAL_SECRET.*
