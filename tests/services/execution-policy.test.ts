@@ -212,6 +212,61 @@ describe("CallLedgerEntry: Worker entry structure", () => {
 
 // ── Bypass 路径安全字段测试 ────────────────────────────────────────────────
 
+// ── S95P: detectArtifactCreateIntent 修复测试 ──────────────────────────────
+
+describe("S95P: detectArtifactCreateIntent fix — no false-negative on '标题'/'按钮'", () => {
+  it("S95P-01: '帮我写一个 HTML 页面，包含标题和三段说明' → direct_create_artifact", () => {
+    const result = evaluateExecutionPolicy("帮我写一个 HTML 页面，包含标题和三段说明", undefined);
+    expect(result.route).toBe("direct_create_artifact");
+    expect(result.managerLlmRequired).toBe(false);
+  });
+
+  it("S95P-02: '帮我做一个登录按钮' → direct_create_artifact（按钮=新建对象）", () => {
+    const result = evaluateExecutionPolicy("帮我做一个登录按钮", undefined);
+    expect(result.route).toBe("direct_create_artifact");
+    expect(result.managerLlmRequired).toBe(false);
+  });
+
+  it("S95P-03: '帮我写一个标题文案' → direct_create_artifact（标题=新建对象）", () => {
+    const result = evaluateExecutionPolicy("帮我写一个标题文案", undefined);
+    expect(result.route).toBe("direct_create_artifact");
+    expect(result.managerLlmRequired).toBe(false);
+  });
+
+  it("S95P-04: '把按钮改成蓝色' + activeArtifact → direct_artifact_revision（修订语境）", () => {
+    const artifact = makeActiveArtifact();
+    const result = evaluateExecutionPolicy("把按钮改成蓝色", artifact);
+    expect(result.route).toBe("direct_artifact_revision");
+    expect(result.managerLlmRequired).toBe(false);
+  });
+
+  it("S95P-05: '把这个页面的标题改成 TrustOS' + activeArtifact → direct_artifact_revision", () => {
+    const artifact = makeActiveArtifact();
+    const result = evaluateExecutionPolicy("把这个页面的标题改成 TrustOS", artifact);
+    expect(result.route).toBe("direct_artifact_revision");
+    expect(result.managerLlmRequired).toBe(false);
+  });
+
+  it("S95P-06: '调整标题字体大小' + activeArtifact → direct_artifact_revision（修订动词+修订对象）", () => {
+    const artifact = makeActiveArtifact();
+    const result = evaluateExecutionPolicy("调整标题字体大小", artifact);
+    expect(result.route).toBe("direct_artifact_revision");
+    expect(result.managerLlmRequired).toBe(false);
+  });
+
+  it("S95P-07: '给我一个页面标题建议' → manager_llm_required（非创建、非修订）", () => {
+    const result = evaluateExecutionPolicy("给我一个页面标题建议", undefined);
+    // 不含创建模式，也没有 activeArtifact，应走 Manager
+    expect(result.route).toBe("manager_llm_required");
+  });
+
+  it("S95P-08: '帮我写一个带标题的科普页面' → direct_create_artifact（标题在新建语境中）", () => {
+    const result = evaluateExecutionPolicy("帮我写一个带标题的科普页面", undefined);
+    expect(result.route).toBe("direct_create_artifact");
+    expect(result.managerLlmRequired).toBe(false);
+  });
+});
+
 describe("evaluateExecutionPolicy: Security scope 标记", () => {
   it("H1-50: direct_artifact_revision → artifact_source_only", () => {
     const artifact = makeActiveArtifact();

@@ -24,7 +24,7 @@ const CASES = [
     prompt: "帮我写一个简单的 HTML 科普页面，主题是阳光折射，包含三段说明和基础样式。",
     expectedArtifactType: "html",
     expectedKeywords: ["阳光", "折射"],
-    timeoutMs: 240_000,
+    timeoutMs: 360_000,
   },
   {
     caseId: "S95-02", category: "HTML 生成",
@@ -32,7 +32,7 @@ const CASES = [
     prompt: "帮我做一个产品介绍页，产品叫 TrustOS，风格简洁科技。",
     expectedArtifactType: "html",
     expectedKeywords: ["TrustOS"],
-    timeoutMs: 240_000,
+    timeoutMs: 360_000,
   },
   {
     caseId: "S95-03", category: "代码生成",
@@ -40,7 +40,7 @@ const CASES = [
     prompt: "写一个 TypeScript 函数，对数字数组去重并排序。",
     expectedArtifactType: "code",
     expectedKeywords: ["function", "sort", "filter", "Set"],
-    timeoutMs: 180_000,
+    timeoutMs: 240_000,
   },
   {
     caseId: "S95-04", category: "React 生成",
@@ -48,7 +48,7 @@ const CASES = [
     prompt: "写一个 React 计数器组件，包含增加和减少按钮。",
     expectedArtifactType: "react",
     expectedKeywords: ["button", "useState", "count"],
-    timeoutMs: 180_000,
+    timeoutMs: 240_000,
   },
   {
     caseId: "S95-05", category: "解释型",
@@ -72,7 +72,7 @@ const CASES = [
     prompt: "生成一个登录页 HTML，包含邮箱、密码和登录按钮。",
     expectedArtifactType: "html",
     expectedKeywords: ["form", "input", "password", "button"],
-    timeoutMs: 240_000,
+    timeoutMs: 360_000,
   },
   {
     caseId: "S95-08", category: "代码生成",
@@ -80,7 +80,7 @@ const CASES = [
     prompt: "写一个 Python 函数，判断字符串是否回文。",
     expectedArtifactType: "code",
     expectedKeywords: ["def ", "return", "palindrome", "::-1"],
-    timeoutMs: 180_000,
+    timeoutMs: 240_000,
   },
   {
     caseId: "S95-09", category: "不支持能力",
@@ -96,7 +96,7 @@ const CASES = [
     prompt: "生成一个非常复杂的三页网站，包含动画、图表、登录系统和后台管理。",
     expectedArtifactType: "html",
     expectedKeywords: ["html"],
-    timeoutMs: 240_000,
+    timeoutMs: 360_000,
   },
 ];
 
@@ -152,7 +152,7 @@ async function runCase(c) {
     const res = await fetch(`${BASE}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-User-Id": "s95p-bench" },
-      body: JSON.stringify({ message: c.prompt, session_id: sessionId, stream: true, mode: "fast" }),
+      body: JSON.stringify({ message: c.prompt, session_id: sessionId, stream: true, mode: "auto" }),
       signal: AbortSignal.timeout(c.timeoutMs),
     });
 

@@ -27,6 +27,7 @@ const DELEGATION_KEYWORDS = [
   "帮我", "让Worker", "执行", "修", "生成", "整理", "分析",
   "创建任务", "委托", "跑一下", "帮我做", "帮我修", "帮我生成",
   "帮我整理", "帮我分析", "帮我执行",
+  "创建", "写一个", "做一个", "画一个", "写个", "做个",
 ];
 
 /** Keywords that indicate the user is referring to an existing task */

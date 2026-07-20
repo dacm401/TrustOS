@@ -131,6 +131,7 @@ export interface RuntimeTrace {
  */
 export type LlmCallKind =
   | "worker"
+  | "delegated_task"
   | "manager"
   | "manager_synthesis"
   | "execution_loop"

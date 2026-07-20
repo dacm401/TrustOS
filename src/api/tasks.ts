@@ -197,10 +197,23 @@ taskRouter.patch("/:task_id", async (c) => {
     return c.json({ error: `Invalid action '${action}'. Must be one of: ${validActions.join(", ")}` }, 400);
   }
 
-  // Validate task exists and belongs to user
-  const task = await TaskRepo.getById(taskId);
-  if (!task) return c.json({ error: `Task not found: ${taskId}` }, 404);
-  if (task.user_id !== userId) return c.json({ error: "Forbidden: task does not belong to this user" }, 403);
+  // Validate task exists — check tasks table first, fallback to task_archives
+  let task = await TaskRepo.getById(taskId);
+  let archiveUserId: string | undefined;
+  let taskExists = !!task;
+
+  if (!task) {
+    const archive = await TaskArchiveRepo.getById(taskId);
+    if (!archive) return c.json({ error: `Task not found: ${taskId}` }, 404);
+    archiveUserId = (archive as any).user_id;
+    if (archiveUserId && archiveUserId !== userId) {
+      return c.json({ error: "Forbidden: task does not belong to this user" }, 403);
+    }
+  } else {
+    if (task.user_id !== userId) {
+      return c.json({ error: "Forbidden: task does not belong to this user" }, 403);
+    }
+  }
 
   // Map action to status
   const statusMap: Record<string, string> = {
@@ -211,7 +224,9 @@ taskRouter.patch("/:task_id", async (c) => {
   const newStatus = statusMap[action];
 
   try {
-    await TaskRepo.setStatus(taskId, newStatus);
+    if (taskExists) {
+      await TaskRepo.setStatus(taskId, newStatus);
+    }
 
     // S90P: When cancelling, best-effort write to task_archives.state so the
     // slow-worker loop and SSE poller can detect cancellation immediately.
@@ -243,10 +258,23 @@ taskRouter.post("/:task_id/retry", async (c) => {
   const taskId = c.req.param("task_id");
   const userId = getContextUserId(c);
 
-  // Validate task exists and belongs to user
-  const task = await TaskRepo.getById(taskId);
-  if (!task) return c.json({ error: `Task not found: ${taskId}` }, 404);
-  if (task.user_id !== userId) return c.json({ error: "Forbidden: task does not belong to this user" }, 403);
+  // Validate task exists — check tasks table first, fallback to task_archives
+  let task = await TaskRepo.getById(taskId);
+  let archiveUserId: string | undefined;
+
+  if (!task) {
+    // Fallback: task may only exist in task_archives (e.g. non-streaming chat)
+    const archive = await TaskArchiveRepo.getById(taskId);
+    if (!archive) return c.json({ error: `Task not found: ${taskId}` }, 404);
+    archiveUserId = (archive as any).user_id;
+    if (archiveUserId && archiveUserId !== userId) {
+      return c.json({ error: "Forbidden: task does not belong to this user" }, 403);
+    }
+  } else {
+    if (task.user_id !== userId) {
+      return c.json({ error: "Forbidden: task does not belong to this user" }, 403);
+    }
+  }
 
   // Only retry terminal states
   const archive = await TaskArchiveRepo.getById(taskId);
@@ -262,8 +290,10 @@ taskRouter.post("/:task_id/retry", async (c) => {
   }
 
   try {
-    // Reset task to running state
-    await TaskRepo.setStatus(taskId, "running");
+    // Reset task to running state (skip if task only exists in archives)
+    if (task) {
+      await TaskRepo.setStatus(taskId, "running");
+    }
 
     // Reset archive state to new so worker picks it up
     await TaskArchiveRepo.updateState(taskId, "new");

@@ -123,6 +123,7 @@ function mapProviderError(error: any, model: string): ProviderError {
 
 const MANAGER_TIMEOUT_MS = 30_000;  // 30s for Manager routing decisions
 const WORKER_TIMEOUT_MS = Number(process.env["WORKER_TIMEOUT_MS"]) || 120_000;  // 120s for Worker code generation (env-overridable)
+const DELEGATED_TASK_TIMEOUT_MS = Number(process.env["DELEGATED_TASK_TIMEOUT_MS"]) || 600_000;  // 600s (10min) for delegated task execution (full webpage/code generation)
 
 /**
  * S93P: 根据调用角色返回超时毫秒数。
@@ -131,6 +132,10 @@ function getTimeoutMs(llmCallKind?: LlmCallKind): number {
   // Manager/Synthesis 类调用 → 短超时
   if (llmCallKind === "manager" || llmCallKind === "manager_synthesis" || llmCallKind === "fast") {
     return MANAGER_TIMEOUT_MS;
+  }
+  // Delegated task → 超长超时（完整网页/代码生成）
+  if (llmCallKind === "delegated_task") {
+    return DELEGATED_TASK_TIMEOUT_MS;
   }
   // Worker/executor 类调用 → 长超时
   return WORKER_TIMEOUT_MS;

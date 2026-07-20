@@ -198,12 +198,18 @@ export function ManagerConversation({
                   查看任务 →
                 </button>
               )}
-              <div
-                className="text-[10px] mt-1 opacity-50"
-                style={{ color: msg.role === "user" ? "rgba(255,255,255,0.7)" : "var(--text-muted)" }}
-              >
-                {new Date(msg.createdAt).toLocaleTimeString()}
-              </div>
+              {msg.createdAt && (() => {
+                const d = new Date(msg.createdAt);
+                const valid = !isNaN(d.getTime());
+                return valid ? (
+                  <div
+                    className="text-[10px] mt-1 opacity-50"
+                    style={{ color: msg.role === "user" ? "rgba(255,255,255,0.7)" : "var(--text-muted)" }}
+                  >
+                    {d.toLocaleTimeString()}
+                  </div>
+                ) : null;
+              })()}
             </div>
             {/* S101P Phase B: Execution metadata — conditionally rendered for manager messages */}
             {msg.role === "manager" && (

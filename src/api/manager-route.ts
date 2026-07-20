@@ -17,6 +17,8 @@ import { ManagerMessageRepo } from "../db/repositories/manager-message.js";
 import { SessionEventRepo } from "../db/repositories/session-event.js";
 import { routeMessage } from "../services/manager-routing/manager-router.js";
 import { routeVisibility } from "../services/visibility-routing/visibility-router.js";
+import { callModel } from "../models/model-gateway.js";
+import { config } from "../config.js";
 import type { ActiveSessionSummary } from "../services/manager-routing/manager-routing-types.js";
 
 export const managerRouteRouter = new Hono();
@@ -67,6 +69,24 @@ managerRouteRouter.post("/route-message", async (c) => {
       active_sessions: activeSessions,
     });
 
+    // 2b. Normal conversation: call LLM for real reply instead of echoing user input
+    if (routing.route_type === "normal_conversation") {
+      try {
+        const reply = await callModel(
+          config.fastModel,
+          [
+            { role: "system", content: "You are a helpful assistant. Answer the user's question concisely in the same language they used." },
+            { role: "user", content: message.trim() },
+          ],
+          "fast"
+        );
+        routing.manager_message_content = reply;
+      } catch (err: any) {
+        console.error("[manager-route] LLM call failed for normal_conversation:", err.message);
+        routing.manager_message_content = "抱歉，我暂时无法回答这个问题。请尝试输入一个委托任务，如「帮我修登录页UI」。";
+      }
+    }
+
     // 3. Execute routing result — create appropriate records
 
     let createdSession = null;
@@ -82,6 +102,68 @@ managerRouteRouter.post("/route-message", async (c) => {
         risk_level: routing.created_session.risk_level,
         delegation_contract: routing.created_session.delegation_contract,
       });
+    }
+
+    // 3a2. Execute delegated task via LLM and store results
+    let taskResult: string | null = null;
+    if (routing.route_type === "new_delegated_task" && createdSession) {
+      const sessionId = createdSession.id;
+      try {
+        // Mark worker as started
+        await SessionEventRepo.create({
+          session_id: sessionId,
+          type: "worker_started",
+          summary: `开始执行任务：${message.trim()}`,
+          severity: "info",
+          visibility: "session_timeline",
+        });
+
+        // Call LLM for task execution (delegated_task timeout = 600s for full webpage/code generation)
+        taskResult = await callModel(
+          config.fastModel,
+          [
+            {
+              role: "system",
+              content: "You are a capable AI assistant. Complete the user's request thoroughly. When creating webpages: write a single self-contained HTML file with inline CSS (no separate files). When writing code: output complete working code. Be concise — aim for quality over quantity. Do NOT describe what you would do — output the actual deliverable directly.",
+            },
+            { role: "user", content: message.trim() },
+          ],
+          "delegated_task"
+        );
+
+        // Store worker completed event with the result
+        await SessionEventRepo.create({
+          session_id: sessionId,
+          type: "worker_completed",
+          summary: taskResult,
+          severity: "info",
+          visibility: "session_timeline",
+        });
+
+        // Mark session as completed
+        await AgentSessionRepo.setStatus(sessionId, "completed", userId);
+        createdSession.status = "completed";
+
+        // Update manager message to show completion
+        const taskTitle = routing.created_session?.title ?? createdSession.title ?? "任务";
+        routing.manager_message_content = `✅ 任务「${taskTitle}」已完成！点击下方「查看任务 →」查看结果。`;
+      } catch (err: any) {
+        console.error("[manager-route] Task execution failed:", err.message);
+
+        await SessionEventRepo.create({
+          session_id: sessionId,
+          type: "worker_failed",
+          summary: `任务执行失败：${err.message}`,
+          severity: "error",
+          visibility: "session_timeline",
+        });
+
+        await AgentSessionRepo.setStatus(sessionId, "failed", userId);
+        createdSession.status = "failed";
+
+        const taskTitle = routing.created_session?.title ?? createdSession.title ?? "任务";
+        routing.manager_message_content = `❌ 任务「${taskTitle}」执行失败：${err.message}`;
+      }
     }
 
     // 3b. Create manager message

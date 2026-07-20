@@ -365,4 +365,23 @@ export const TaskArchiveRepo = {
     );
     return result.rows.map(mapTaskArchiveRow);
   },
+
+  // S96P: Update task_archives.state (used by cancel/retry/watchdog)
+  async updateState(archiveId: string, newState: string): Promise<void> {
+    await query(
+      `UPDATE task_archives SET state = $1, updated_at = NOW() WHERE id = $2`,
+      [newState, archiveId]
+    );
+  },
+
+  // S96P: Merge-patch slow_execution JSONB (preserves existing fields)
+  async setSlowExecution(
+    archiveId: string,
+    execution: Record<string, unknown>
+  ): Promise<void> {
+    await query(
+      `UPDATE task_archives SET slow_execution = COALESCE(slow_execution, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(execution), archiveId]
+    );
+  },
 };
