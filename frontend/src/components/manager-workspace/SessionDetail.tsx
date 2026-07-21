@@ -59,6 +59,7 @@ export function SessionDetail({ userId, sessionId, refreshKey }: SessionDetailPr
   const [sessionLoading, setSessionLoading] = useState(false);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewHtml, setViewHtml] = useState<string | null>(null);
 
   // Fetch session detail
   useEffect(() => {
@@ -350,6 +351,20 @@ export function SessionDetail({ userId, sessionId, refreshKey }: SessionDetailPr
                 <div className="text-[10px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
                   {event.summary}
                 </div>
+                {event.type === "worker_completed" && event.raw_ref && (
+                  <button
+                    onClick={() => setViewHtml(event.raw_ref!)}
+                    className="mt-1 text-[10px] px-2 py-0.5 rounded"
+                    style={{
+                      backgroundColor: "var(--accent-blue)",
+                      color: "#fff",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    查看生成结果
+                  </button>
+                )}
                 <div className="text-[9px] mt-0.5" style={{ color: "var(--text-muted)" }}>
                   {new Date(event.created_at).toLocaleTimeString()}
                 </div>
@@ -358,6 +373,49 @@ export function SessionDetail({ userId, sessionId, refreshKey }: SessionDetailPr
           </div>
         ))}
       </div>
+
+      {/* HTML Result Modal */}
+      {viewHtml && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60"
+          onClick={() => setViewHtml(null)}
+        >
+          <div
+            className="relative bg-white rounded-lg shadow-2xl overflow-hidden"
+            style={{ width: "90vw", height: "90vh", maxWidth: "1200px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2 bg-gray-800 text-white">
+              <span className="text-sm font-medium">生成结果预览</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const blob = new Blob([viewHtml], { type: "text/html" });
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, "_blank");
+                  }}
+                  className="text-xs px-3 py-1 rounded bg-blue-600 hover:bg-blue-500"
+                >
+                  新窗口打开
+                </button>
+                <button
+                  onClick={() => setViewHtml(null)}
+                  className="text-xs px-3 py-1 rounded bg-gray-600 hover:bg-gray-500"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+            <iframe
+              srcDoc={viewHtml}
+              sandbox="allow-scripts allow-same-origin"
+              className="w-full"
+              style={{ height: "calc(100% - 40px)", border: "none" }}
+              title="生成结果"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

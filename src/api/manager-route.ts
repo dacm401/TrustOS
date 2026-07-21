@@ -131,13 +131,18 @@ managerRouteRouter.post("/route-message", async (c) => {
           "delegated_task"
         );
 
-        // Store worker completed event with the result
+        // Store worker completed event: summary = brief, raw_ref = full HTML output
+        const isHtmlOutput = taskResult.includes("<!DOCTYPE html>") || taskResult.includes("<html");
+        const summaryText = isHtmlOutput
+          ? "任务执行完成，已生成 HTML 页面"
+          : `任务执行完成：${taskResult.substring(0, 200)}${taskResult.length > 200 ? "..." : ""}`;
         await SessionEventRepo.create({
           session_id: sessionId,
           type: "worker_completed",
-          summary: taskResult,
+          summary: summaryText,
           severity: "info",
           visibility: "session_timeline",
+          raw_ref: taskResult,
         });
 
         // Mark session as completed
