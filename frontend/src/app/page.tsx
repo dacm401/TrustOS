@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/query-client';
-import { ChatInterface } from "@/components/chat/ChatInterface";
 import { SettingsModal } from "@/components/chat/SettingsModal";
 import { TaskPanel } from "@/components/workbench/TaskPanel";
 import { EvidencePanel } from "@/components/workbench/EvidencePanel";
@@ -64,56 +63,82 @@ export default function HomePage() {
           {/* Left: Sidebar */}
           <Sidebar activeNav={activeNav} onNavChange={(id) => setActiveNav(id as NavView)} onSettingsClick={() => setShowSettings(true)} />
 
-          {/* Center: View Area - 用CSS隐藏而非卸载，保持状态 */}
+          {/* Center: View Area — 条件渲染，仅挂载当前 active view */}
           <main
             className="flex-1 overflow-hidden"
             style={{ maxWidth: sidebarOpen ? undefined : "100%" }}
           >
-            <ErrorBoundary fallback={
-              <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
-                ⚠️ 聊天界面加载失败，请刷新页面重试
-              </div>
-            }>
-              <div style={{ display: activeNav === "chat" ? "block" : "none", height: "100%" }}>
-                <ManagerWorkspace userId={userId} />
-              </div>
-            </ErrorBoundary>
+            {activeNav === "chat" && (
+              <ErrorBoundary fallback={
+                <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  ⚠️ 聊天界面加载失败，请刷新页面重试
+                </div>
+              }>
+                <div style={{ height: "100%" }}>
+                  <ManagerWorkspace userId={userId} />
+                </div>
+              </ErrorBoundary>
+            )}
 
-            <ErrorBoundary fallback={
-              <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
-                ⚠️ 任务视图加载失败，请刷新页面重试
-              </div>
-            }>
-              <div style={{ display: activeNav === "tasks" ? "block" : "none", height: "100%" }}>
-                <TasksView userId={userId} />
-              </div>
-            </ErrorBoundary>
+            {activeNav === "tasks" && (
+              <ErrorBoundary fallback={
+                <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  ⚠️ 任务视图加载失败，请刷新页面重试
+                </div>
+              }>
+                <div style={{ height: "100%" }}>
+                  <TasksView userId={userId} />
+                </div>
+              </ErrorBoundary>
+            )}
 
-            <ErrorBoundary fallback={
-              <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
-                ⚠️ 记忆视图加载失败，请刷新页面重试
-              </div>
-            }>
-              <div style={{ display: activeNav === "memory" ? "block" : "none", height: "100%" }}>
-                <MemoryView userId={userId} />
-              </div>
-            </ErrorBoundary>
+            {activeNav === "memory" && (
+              <ErrorBoundary fallback={
+                <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  ⚠️ 记忆视图加载失败，请刷新页面重试
+                </div>
+              }>
+                <div style={{ height: "100%" }}>
+                  <MemoryView userId={userId} />
+                </div>
+              </ErrorBoundary>
+            )}
 
-            <ErrorBoundary fallback={
-              <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
-                ⚠️ 数据面板加载失败，请刷新页面重试
-              </div>
-            }>
-              <div style={{ display: activeNav === "dashboard" ? "block" : "none", height: "100%" }}>
-                <DashboardView userId={userId} />
-              </div>
-              <div style={{ display: activeNav === "beta" ? "block" : "none", height: "100%" }}>
-                <BetaPanel userId={userId} />
-              </div>
-              <div style={{ display: activeNav === "admin" ? "block" : "none", height: "100%" }}>
-                <AdminPanel adminKey={adminKey} />
-              </div>
-            </ErrorBoundary>
+            {activeNav === "dashboard" && (
+              <ErrorBoundary fallback={
+                <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  ⚠️ 数据面板加载失败，请刷新页面重试
+                </div>
+              }>
+                <div style={{ height: "100%" }}>
+                  <DashboardView userId={userId} />
+                </div>
+              </ErrorBoundary>
+            )}
+
+            {activeNav === "beta" && (
+              <ErrorBoundary fallback={
+                <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  ⚠️ 数据面板加载失败，请刷新页面重试
+                </div>
+              }>
+                <div style={{ height: "100%" }}>
+                  <BetaPanel userId={userId} />
+                </div>
+              </ErrorBoundary>
+            )}
+
+            {activeNav === "admin" && (
+              <ErrorBoundary fallback={
+                <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  ⚠️ 数据面板加载失败，请刷新页面重试
+                </div>
+              }>
+                <div style={{ height: "100%" }}>
+                  <AdminPanel adminKey={adminKey} />
+                </div>
+              </ErrorBoundary>
+            )}
           </main>
 
           {/* Right: Workbench Sidebar — hidden when ManagerWorkspace (chat) is active */}

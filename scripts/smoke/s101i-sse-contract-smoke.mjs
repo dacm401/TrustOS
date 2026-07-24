@@ -92,18 +92,14 @@ async function verifySSEEventTypeContract() {
 // ── Frontend Type Contract ────────────────────────────────────────────
 
 async function verifyFrontendTypeContract() {
-  console.log("\n── C2: Frontend SSE Event Handler Contract (static) ──\n");
+  console.log("\n── C2: Frontend StreamEvent Type Contract (static) ──\n");
 
-  // Read ChatInterface for event handlers
-  const chatPath = path.join(ROOT, "frontend/src/components/chat/ChatInterface.tsx");
-  const chatCode = await readFile(chatPath, "utf-8");
-
-  const eventHandlers = ["progress", "partial_result", "usage", "terminalSummary"];
-  for (const handler of eventHandlers) {
-    const found = chatCode.includes(handler);
-    record(`ChatInterface handles "${handler}" event/field`, found,
-      found ? "found in SSE event handler" : "NOT FOUND");
-  }
+  // ChatInterface SSE handler assertions were removed because:
+  // ChatInterface was unreachable legacy UI (page.tsx switched to ManagerWorkspace).
+  // Current reachable path (ManagerConversation/ExecutionMetadata) does not use
+  // SSE streaming — usage/terminalSummary are static props, not event handlers.
+  // Do not reintroduce ChatInterface-only assertions unless the component
+  // becomes reachable again. No runtime SSE behavior changed.
 
   // Verify StreamEvent type has all 4 fields
   const typesPath = path.join(ROOT, "frontend/src/types/dashboard.ts");
