@@ -32,7 +32,7 @@ export async function forwardChatCompletion(
   upstreamApiKey: string,
   body: ForwardRequest,
 ): Promise<ForwardResult> {
-  const url = `${upstreamBaseUrl.replace(/\/$/, "")}/v1/chat/completions`;
+  const url = `${upstreamBaseUrl.replace(/\/$/, "")}/chat/completions`;
   const requestSentAt = Date.now();
 
   const response = await fetch(url, {
