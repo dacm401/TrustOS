@@ -9,9 +9,11 @@
 ## Current Gate
 
 ```text
-TRST-1A/1B PASS_FULL — COMPLETE ✅
-Gate passed. All 8 smoke tests + real upstream validation passed.
-Fix upstream URL double /v1 at eef4f31.
+TRST-1C MCP Broker Passthrough Spike — IMPLEMENTATION IN PROGRESS
+Planning approved with revisions:
+- Endpoint: POST /trst1/mcp/tools/call
+- HTTP JSON-RPC only (no SSE/stdio)
+- No new dependencies
 ```
 
 ---
@@ -26,7 +28,7 @@ Fix upstream URL double /v1 at eef4f31.
 | TRST-1 Charter v0.1 | ACCEPTED AS PLANNING BASELINE | `1bf5a19` |
 | TRST-1A Real LLM Gateway MVP | ACCEPTED_FULL (PASS_FULL) | `2de76cb` |
 | TRST-1B Tool Trace CLI | ACCEPTED_FULL (PASS_FULL) | `2de76cb` |
-| TRST-1C MCP Broker Passthrough Spike | HOLD / NOT STARTED | — |
+| TRST-1C MCP Broker Passthrough Spike | IMPLEMENTING | — |
 | S101T-safe-ui-debt-cleanup | ACCEPTED | `ec702df` |
 | TRST-1B Gateway URL fix | ACCEPTED | `eef4f31` |
 
@@ -127,6 +129,7 @@ All 6 original PM Smoke Test acceptance criteria met, plus response integrity an
 
 ## Latest PM Decisions
 
+- **2026-07-24**: TRST-1C Planning approved with revisions. Endpoint corrected to `POST /trst1/mcp/tools/call`. HTTP JSON-RPC only, no SSE/stdio. Scope: mcp-passthrough-forwarder + fake-mcp-server + smoke test. No new npm dependencies. Shadow Report allowed to add tool_call stats only (no semantic changes).
 - **2026-07-24**: TRST-1A/1B Real Upstream Validation re-verified. User confirmed API key available in `.env`. Discovered URL double `/v1` bug: `openai-compatible-forwarder.ts` appended `/v1/chat/completions` to a base URL already containing `/v1`. Fixed at `eef4f31` — changed to `/chat/completions`. Re-ran validation: HTTP 200, real model response, all hashes present, Shadow Report regenerated. TRST-1A/1B PASS_FULL confirmed.
 - **2026-07-24**: S101T-safe-ui-debt-cleanup ACCEPTED at `ec702df`. 方案 A only — confirmed dead UI chain removal and lazy view mounting.
   - Removed unreachable ChatInterface dead-code chain (8 files, -1802 lines).
@@ -159,21 +162,20 @@ All 6 original PM Smoke Test acceptance criteria met, plus response integrity an
 
 | # | Action | Owner | Status |
 |---|--------|-------|--------|
-| 1 | Create/update TRST execution log | Agent | ✅ Done |
-| 2 | Start Gateway locally: `npm run trst1:gateway` | Agent | ✅ PASS |
-| 3 | Validate `stream=true` → HTTP 400 + failure event | Agent | ✅ PASS |
-| 4 | Run Tool Trace CLI: `npm run trst1:tool` | Agent | ✅ PASS |
-| 5 | Generate Shadow Report: `npm run trst1:report` | Agent | ✅ PASS |
-| 6 | Audit event log (event_hash, no raw content) | Agent | ✅ PASS |
-| 7 | Execute real model call through localhost:8787 | PM/User | ⏸️ PENDING_API_KEY |
-| 8 | PM review smoke test results → final acceptance | PM | PENDING |
+| 1 | Implement TRST-1C MCP passthrough | Agent | 🔄 In Progress |
+| 2 | Start fake MCP server: `npm run trst1:mcp:fake-server` | Agent | PENDING |
+| 3 | Run MCP smoke test: `npm run trst1:mcp:smoke` | Agent | PENDING |
+| 4 | Generate Shadow Report: `npm run trst1:report` | Agent | PENDING |
+| 5 | Validate no raw args/result stored | Agent | PENDING |
+| 6 | PM review TRST-1C results → acceptance | PM | PENDING |
 
 ---
 
 ## Hold Items (Do Not Start)
 
 ```text
-- TRST-1C MCP Broker passthrough
+- Full MCP protocol (SSE/stdio/lifecycle)
+- Multiple upstream MCP servers
 - Streaming support
 - Policy enforcement
 - DLP detection (semantic or pattern-based)
@@ -233,20 +235,17 @@ TRST-1A/1B Real Upstream Validation — 1 remaining:
 ## Next Gate Outcomes
 
 ```text
-If Real Upstream Validation PASS:
-  → TRST-1A/1B → ACCEPTED_FULL
-  → Prepare TRST-1C MCP Spike Plan (planning only, no code)
-  → Agent updates execution log with results
+TRST-1A/1B → PASS_FULL ACCEPTED / CLOSED
 
-If Real Upstream Validation FAIL (blocking):
-  → Root cause review
-  → Fix Gateway/forwarder critical path only
-  → Re-run real upstream validation
+TRST-1C → IMPLEMENTING
+  Endpoint: POST /trst1/mcp/tools/call
+  Transport: HTTP JSON-RPC only (no SSE/stdio)
+  Scope: mcp-passthrough-forwarder + fake-mcp-server + smoke test
+  Next: PM smoke test → acceptance → CLOSED
 
-If API key NOT available:
-  → TRST-1A/1B remains ACCEPTED_LOCAL
-  → PENDING_REAL_UPSTREAM_KEY
-  → TRST-1C remains HOLD
+After TRST-1C Acceptance:
+  → Continuity Packet with next gate recommendation
+  → Possible: production hardening, streaming, or TRST-2 planning
 ```
 
 ---
@@ -270,7 +269,7 @@ If API key NOT available:
 
 ---
 
-## File Manifest (TRST-1A/1B)
+## File Manifest (TRST-1A/1B/1C)
 
 ```
 src/services/trst1/
@@ -279,14 +278,17 @@ src/services/trst1/
   context-trace-lite.ts        — Message metadata: hash, role, approx tokens
   cost-ledger-lite.ts          — Static price table, null for unknown models
   openai-compatible-forwarder.ts — Upstream OpenAI proxy
-  llm-gateway-server.ts        — Hono Gateway: POST /v1/chat/completions
-  shadow-report.ts             — JSONL → markdown report generator
+  mcp-passthrough-forwarder.ts   — MCP HTTP JSON-RPC tools/call forwarder (TRST-1C)
+  llm-gateway-server.ts        — Hono Gateway: POST /v1/chat/completions, POST /trst1/mcp/tools/call
+  shadow-report.ts             — JSONL → markdown report generator (tool_call stats TRST-1C)
   tool-trace-lite.ts           — Tool call event recorder
 
 scripts/trst1/
   start-gateway.ts             — Gateway entry point (npm run trst1:gateway)
   generate-shadow-report.ts    — Report CLI (npm run trst1:report)
   simulate-tool-call.ts        — Tool Trace CLI (npm run trst1:tool)
+  fake-mcp-server.ts           — Fake MCP JSON-RPC server for validation (TRST-1C)
+  run-mcp-smoke.mjs            — MCP passthrough smoke test (TRST-1C)
 
 docs/strategy/
   TRST-1-mvp-test-plan.md      — Test plan + Charter deviation + acceptance criteria
@@ -319,4 +321,4 @@ PM responsibilities:
 
 ---
 
-*Last updated: 2026-07-24 — TRST-1A/1B URL fix at eef4f31. Real upstream validation re-verified. PASS_FULL confirmed.*
+*Last updated: 2026-07-24 — TRST-1C MCP passthrough implementation. Endpoint POST /trst1/mcp/tools/call.*

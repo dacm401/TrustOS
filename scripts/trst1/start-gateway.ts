@@ -19,6 +19,7 @@ import { initEventStore } from "../../src/services/trst1/jsonl-event-store.js";
 const PORT = parseInt(process.env.TRUSTOS_GATEWAY_PORT ?? "8787", 10);
 const UPSTREAM_BASE_URL = process.env.TRUSTOS_UPSTREAM_BASE_URL;
 const UPSTREAM_API_KEY = process.env.TRUSTOS_UPSTREAM_API_KEY;
+const MCP_UPSTREAM_URL = process.env.TRUSTOS_MCP_UPSTREAM_URL;
 const EVENT_LOG_PATH = process.env.TRUSTOS_EVENT_LOG_PATH ?? ".trustos/events.jsonl";
 const PROJECT_ID = process.env.TRUSTOS_PROJECT_ID ?? "local-dev";
 
@@ -44,17 +45,19 @@ const app = createGatewayApp({
   upstreamBaseUrl: UPSTREAM_BASE_URL,
   upstreamApiKey: UPSTREAM_API_KEY,
   projectId: PROJECT_ID,
+  mcpUpstreamUrl: MCP_UPSTREAM_URL ?? undefined,
 });
 
 // ── Start ───────────────────────────────────────────────────────────────────
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`\nTrustOS TRST-1 Gateway`);
-  console.log(`  Listening:  http://localhost:${info.port}`);
-  console.log(`  Mode:       Shadow`);
-  console.log(`  Streaming:  unsupported (stream=false only)`);
-  console.log(`  Upstream:   ${UPSTREAM_BASE_URL}`);
-  console.log(`  Event log:  ${EVENT_LOG_PATH}`);
-  console.log(`  Project:    ${PROJECT_ID}`);
+  console.log(`  Listening:    http://localhost:${info.port}`);
+  console.log(`  Mode:         Shadow`);
+  console.log(`  Streaming:    unsupported (stream=false only)`);
+  console.log(`  LLM Upstream: ${UPSTREAM_BASE_URL}`);
+  console.log(`  MCP Upstream: ${MCP_UPSTREAM_URL ?? "(not configured)"}`);
+  console.log(`  Event log:    ${EVENT_LOG_PATH}`);
+  console.log(`  Project:      ${PROJECT_ID}`);
   console.log(`\nReady. Press Ctrl+C to stop.\n`);
 });

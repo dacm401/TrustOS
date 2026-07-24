@@ -25,7 +25,9 @@
     "benchmark:ci:verbose": "node scripts/benchmark-ci.cjs --verbose",
     "trst1:gateway": "npx tsx scripts/trst1/start-gateway.ts",
     "trst1:report": "npx tsx scripts/trst1/generate-shadow-report.ts",
-    "trst1:tool": "npx tsx scripts/trst1/simulate-tool-call.ts"
+    "trst1:tool": "npx tsx scripts/trst1/simulate-tool-call.ts",
+    "trst1:mcp:fake-server": "npx tsx scripts/trst1/fake-mcp-server.ts",
+    "trst1:mcp:smoke": "node scripts/trst1/run-mcp-smoke.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.0",

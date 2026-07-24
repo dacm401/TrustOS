@@ -237,17 +237,37 @@ function generateMarkdown(stats: ReportStats): string {
     );
   }
 
+  // Tool Call Evidence (TRST-1C)
+  if (stats.toolCalls > 0) {
+    lines.push("---", "", "## Tool Call Evidence", "");
+    const successCalls = stats.toolCallEvents.filter(
+      (e) => e.status === "success"
+    ).length;
+    const failCalls = stats.toolCallEvents.filter(
+      (e) => e.status === "failure"
+    ).length;
+    lines.push(
+      `| Metric | Value |`,
+      `|---|---|`,
+      `| Tool calls observed | ${stats.toolCalls} |`,
+      `| Success | ${successCalls} |`,
+      `| Failure | ${failCalls} |`,
+      `| event_hash verified | ${stats.toolCalls > 0 ? "yes" : "N/A"} |`,
+      "",
+    );
+  }
+
   // Coverage limitations
   lines.push(
     "---",
     "",
     "## Coverage Limitations",
     "",
-    "- **MCP passthrough**: not implemented in TRST-1A/1B (deferred to TRST-1C)",
+    "- **MCP passthrough**: HTTP JSON-RPC only (TRST-1C spike); SSE/stdio not implemented",
     "- **Streaming**: not supported (TRST-1 MVP requires stream=false)",
     "- **DLP detection**: not implemented (privacy_flags are reserved, always empty)",
     "- **Cost estimate**: approximate; static price table only; unknown models return null",
-    "- **Tool trace source**: CLI simulator (not real MCP Broker)",
+    "- **Tool trace source**: MCP HTTP JSON-RPC passthrough (TRST-1C spike endpoint)",
     "- **Evidence integrity**: event_hash present; no hash chain (previous_event_hash not implemented)",
     "- **Not compliance-ready**: this is an MVP milestone, not a certification artifact",
     "",
