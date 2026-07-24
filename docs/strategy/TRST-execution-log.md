@@ -10,7 +10,8 @@
 
 ```text
 TRST-1A/1B PASS_FULL — COMPLETE ✅
-Gate passed. Awaiting PM final full acceptance.
+Gate passed. All 8 smoke tests + real upstream validation passed.
+Fix upstream URL double /v1 at eef4f31.
 ```
 
 ---
@@ -26,6 +27,8 @@ Gate passed. Awaiting PM final full acceptance.
 | TRST-1A Real LLM Gateway MVP | ACCEPTED_FULL (PASS_FULL) | `2de76cb` |
 | TRST-1B Tool Trace CLI | ACCEPTED_FULL (PASS_FULL) | `2de76cb` |
 | TRST-1C MCP Broker Passthrough Spike | HOLD / NOT STARTED | — |
+| S101T-safe-ui-debt-cleanup | ACCEPTED | `ec702df` |
+| TRST-1B Gateway URL fix | ACCEPTED | `eef4f31` |
 
 ---
 
@@ -124,6 +127,14 @@ All 6 original PM Smoke Test acceptance criteria met, plus response integrity an
 
 ## Latest PM Decisions
 
+- **2026-07-24**: TRST-1A/1B Real Upstream Validation re-verified. User confirmed API key available in `.env`. Discovered URL double `/v1` bug: `openai-compatible-forwarder.ts` appended `/v1/chat/completions` to a base URL already containing `/v1`. Fixed at `eef4f31` — changed to `/chat/completions`. Re-ran validation: HTTP 200, real model response, all hashes present, Shadow Report regenerated. TRST-1A/1B PASS_FULL confirmed.
+- **2026-07-24**: S101T-safe-ui-debt-cleanup ACCEPTED at `ec702df`. 方案 A only — confirmed dead UI chain removal and lazy view mounting.
+  - Removed unreachable ChatInterface dead-code chain (8 files, -1802 lines).
+  - Removed legacy ChatInterface-specific smoke assertion, retained StreamEvent type validation.
+  - Replaced `display:none/block` multi-view mounting with conditional rendering in page.tsx.
+  - Inactive views no longer mount/fetch. No routing/navigation/product IA changes.
+  - Validation: smoke 19 PASS/0 FAIL, build 6/6 static pages, backend tsc 0 errors.
+  - Frontend tsc: 0 new errors, 10 known pre-existing unrelated errors remain (DecisionTimeline, DashboardView, useQueries, api.ts, crypto-utils).
 - **2026-07-15**: Boss directive — stop waiting for each other. Agent found API key in `.env`, completed real upstream validation autonomously.
 - **2026-07-15**: Real upstream validation completed. 8/8 PASS. TRST-1A/1B → PASS_FULL.
 - **2026-07-14**: PM accepted PASS_LOCAL. TRST-1A/1B → ACCEPTED_LOCAL.
@@ -308,4 +319,4 @@ PM responsibilities:
 
 ---
 
-*Last updated: 2026-07-15 — Real upstream validation: PASS_FULL (8/8). TRST-1A/1B complete. Awaiting PM final acceptance.*
+*Last updated: 2026-07-24 — TRST-1A/1B URL fix at eef4f31. Real upstream validation re-verified. PASS_FULL confirmed.*
