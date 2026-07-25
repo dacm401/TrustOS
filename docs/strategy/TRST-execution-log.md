@@ -9,11 +9,13 @@
 ## Current Gate
 
 ```text
-TRST-1C MCP Broker Passthrough Spike — IMPLEMENTATION IN PROGRESS
-Planning approved with revisions:
-- Endpoint: POST /trst1/mcp/tools/call
-- HTTP JSON-RPC only (no SSE/stdio)
-- No new dependencies
+NONE OPEN
+
+Last Closed Gate:
+TRST-1C MCP Broker Passthrough Spike — PASS_ACCEPTED / CLOSED
+
+Previous Closed Gate:
+TRST-1A/1B Real Upstream Validation — PASS_FULL ACCEPTED / CLOSED
 ```
 
 ---
@@ -28,7 +30,7 @@ Planning approved with revisions:
 | TRST-1 Charter v0.1 | ACCEPTED AS PLANNING BASELINE | `1bf5a19` |
 | TRST-1A Real LLM Gateway MVP | ACCEPTED_FULL (PASS_FULL) | `2de76cb` |
 | TRST-1B Tool Trace CLI | ACCEPTED_FULL (PASS_FULL) | `2de76cb` |
-| TRST-1C MCP Broker Passthrough Spike | IMPLEMENTING | — |
+| TRST-1C MCP Broker Passthrough Spike | PASS_ACCEPTED / CLOSED | `1906321` |
 | S101T-safe-ui-debt-cleanup | ACCEPTED | `ec702df` |
 | TRST-1B Gateway URL fix | ACCEPTED | `eef4f31` |
 
@@ -129,6 +131,7 @@ All 6 original PM Smoke Test acceptance criteria met, plus response integrity an
 
 ## Latest PM Decisions
 
+- **2026-07-25**: TRST-1C MCP Broker Passthrough Spike FINAL CLOSE ACCEPTED at `1906321`. PASS_ACCEPTED / CLOSED. Validated MCP-style HTTP JSON-RPC tools/call passthrough with unified shadow evidence. Smoke 8/8 PASS. Build 0 errors project-wide. Event audit + privacy audit CLEAN. Next gate: TBD by PM.
 - **2026-07-24**: TRST-1C Planning approved with revisions. Endpoint corrected to `POST /trst1/mcp/tools/call`. HTTP JSON-RPC only, no SSE/stdio. Scope: mcp-passthrough-forwarder + fake-mcp-server + smoke test. No new npm dependencies. Shadow Report allowed to add tool_call stats only (no semantic changes).
 - **2026-07-24**: TRST-1A/1B Real Upstream Validation re-verified. User confirmed API key available in `.env`. Discovered URL double `/v1` bug: `openai-compatible-forwarder.ts` appended `/v1/chat/completions` to a base URL already containing `/v1`. Fixed at `eef4f31` — changed to `/chat/completions`. Re-ran validation: HTTP 200, real model response, all hashes present, Shadow Report regenerated. TRST-1A/1B PASS_FULL confirmed.
 - **2026-07-24**: S101T-safe-ui-debt-cleanup ACCEPTED at `ec702df`. 方案 A only — confirmed dead UI chain removal and lazy view mounting.
@@ -160,14 +163,15 @@ All 6 original PM Smoke Test acceptance criteria met, plus response integrity an
 
 ## Next Allowed Actions
 
-| # | Action | Owner | Status |
-|---|--------|-------|--------|
-| 1 | Implement TRST-1C MCP passthrough | Agent | 🔄 In Progress |
-| 2 | Start fake MCP server: `npm run trst1:mcp:fake-server` | Agent | PENDING |
-| 3 | Run MCP smoke test: `npm run trst1:mcp:smoke` | Agent | PENDING |
-| 4 | Generate Shadow Report: `npm run trst1:report` | Agent | PENDING |
-| 5 | Validate no raw args/result stored | Agent | PENDING |
-| 6 | PM review TRST-1C results → acceptance | PM | PENDING |
+```text
+No open gate. All TRST-1 gates closed.
+Next gate to be defined by PM.
+
+TRST-1A/1B: PASS_FULL ACCEPTED / CLOSED
+TRST-1C: PASS_ACCEPTED / CLOSED
+
+Awaiting PM direction for next phase (e.g. TRST-2, production hardening, streaming, etc.)
+```
 
 ---
 
@@ -235,17 +239,18 @@ TRST-1A/1B Real Upstream Validation — 1 remaining:
 ## Next Gate Outcomes
 
 ```text
-TRST-1A/1B → PASS_FULL ACCEPTED / CLOSED
+TRST-1A/1B → PASS_FULL ACCEPTED / CLOSED ✅
+TRST-1C   → PASS_ACCEPTED / CLOSED ✅
 
-TRST-1C → IMPLEMENTING
-  Endpoint: POST /trst1/mcp/tools/call
-  Transport: HTTP JSON-RPC only (no SSE/stdio)
-  Scope: mcp-passthrough-forwarder + fake-mcp-server + smoke test
-  Next: PM smoke test → acceptance → CLOSED
+All TRST-1 gates closed. Next gate TBD by PM.
 
-After TRST-1C Acceptance:
-  → Continuity Packet with next gate recommendation
-  → Possible: production hardening, streaming, or TRST-2 planning
+Current baseline:
+- Real OpenAI-compatible LLM Gateway validated
+- Tool Trace CLI validated
+- Real upstream forwarding validated
+- MCP HTTP JSON-RPC tools/call passthrough validated
+- Unified shadow event evidence: model_call + tool_call
+- Full project build clean: 0 errors
 ```
 
 ---
@@ -321,4 +326,4 @@ PM responsibilities:
 
 ---
 
-*Last updated: 2026-07-24 — TRST-1C MCP passthrough implementation. Endpoint POST /trst1/mcp/tools/call.*
+*Last updated: 2026-07-25 — TRST-1C FINAL CLOSE ACCEPTED. All TRST-1 gates closed. Next gate TBD by PM.*
