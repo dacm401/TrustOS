@@ -10,12 +10,14 @@ import {
   fetchTraces,
   fetchDecision,
   fetchHealth,
+  fetchGatewayHealth,
   getApiConfig,
   getDashboard,
   getGrowth,
   type MemoryEntry,
   type CostStats,
   type HealthStatus,
+  type GatewayHealth,
 } from '@/lib/api';
 
 // Tasks
@@ -142,6 +144,17 @@ export function useHealth() {
     queryFn: fetchHealth,
     staleTime: 5 * 1000,
     refetchInterval: 10000,
+  });
+}
+
+// TRST-2 Gateway Health (polled)
+export function useGatewayHealth() {
+  return useQuery<GatewayHealth>({
+    queryKey: ['gateway-health'],
+    queryFn: fetchGatewayHealth,
+    staleTime: 5 * 1000,
+    refetchInterval: 15000,
+    retry: 2,
   });
 }
 

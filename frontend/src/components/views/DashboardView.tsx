@@ -5,6 +5,7 @@ import { PerformancePanel } from "@/components/dashboard/PerformanceCharts";
 import { TokenSankey } from "@/components/dashboard/TokenSankey";
 import { LearningPanel } from "@/components/dashboard/LearningPanel";
 import { Phase4Panel } from "@/components/dashboard/Phase4Panel";
+import GatewayStatusCard from "@/components/dashboard/GatewayStatusCard";
 
 function KpiCard({ label, value, unit, color }: { label: string; value: number | string; unit?: string; color: string }) {
   return (
@@ -239,6 +240,11 @@ export default function DashboardView({ userId }: DashboardViewProps) {
         {/* System Status: Phase 4 + Circuit Breaker + Embedding Cache */}
         <div className="mb-5">
           <Phase4Panel />
+        </div>
+
+        {/* TRST-2 Gateway Status */}
+        <div className="mb-5">
+          <GatewayStatusCard />
         </div>
 
         {/* Growth Profile */}

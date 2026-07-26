@@ -400,3 +400,32 @@ export async function fetchSessionEvents(userId: string, sessionId: string, limi
   if (!res.ok) throw new Error(`加载 Session 事件失败 (${res.status})`);
   return res.json();
 }
+
+// ── TRST-2: Gateway Health ──────────────────────────────────────────────────
+
+export interface GatewayHealth {
+  status: "ok" | "degraded" | "error";
+  service: string;
+  mode?: string;
+  streaming: string;
+  mcp_lifecycle: string;
+  providers: string[] | Record<string, {
+    provider_id?: string;
+    models?: string[];
+    base_url?: string;
+    model_count?: number;
+  }>;
+  events_count?: number;
+  uptime_seconds?: number;
+  gateway_overhead_ms?: number;
+  timestamp?: string;
+}
+
+/** Gateway port. Can be overridden via NEXT_PUBLIC_GATEWAY_URL env var. */
+const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8795";
+
+export async function fetchGatewayHealth(): Promise<GatewayHealth> {
+  const res = await fetch(`${GATEWAY_URL}/health`);
+  if (!res.ok) throw new Error(`网关健康检查失败 (${res.status})`);
+  return res.json();
+}

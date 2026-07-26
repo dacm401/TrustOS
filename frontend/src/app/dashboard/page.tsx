@@ -7,6 +7,7 @@ import { DecisionTimeline } from "@/components/dashboard/DecisionTimeline";
 import { GrowthChart } from "@/components/dashboard/GrowthChart";
 import { LearningPanel } from "@/components/dashboard/LearningPanel";
 import { ObservabilityPanel } from "@/components/dashboard/ObservabilityPanel"; // S94P
+import GatewayStatusCard from "@/components/dashboard/GatewayStatusCard";
 
 const USER_ID = "user-001";
 
@@ -28,6 +29,9 @@ export default function DashboardPage() {
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+        {/* TRST-2: Gateway Status — always visible, independent of dashboard data */}
+        <GatewayStatusCard />
+
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
@@ -39,6 +43,7 @@ export default function DashboardPage() {
           <>
             {/* S94P: Observability Panel first — system health at a glance */}
             <ObservabilityPanel userId={USER_ID} />
+
             <StatsCards data={data} />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <TokenSankey tokenFlow={data?.token_flow} />
