@@ -24,7 +24,7 @@ import { v4 as uuidv4 } from "uuid";
 import { createHash } from "node:crypto";
 
 import { createEventId, type TrstEventEnvelope } from "./event-envelope.js";
-import { appendEvent } from "./jsonl-event-store.js";
+import { appendEvent, countEvents } from "./jsonl-event-store.js";
 import { extractContextBlocks } from "./context-trace-lite.js";
 import { estimateCost } from "./cost-ledger-lite.js";
 import {
@@ -41,6 +41,9 @@ import {
 } from "./mcp-passthrough-forwarder.js";
 import type { McpForwardResult } from "./mcp-passthrough-forwarder.js";
 import { ModelRegistry } from "./model-registry.js";
+
+// ── Gateway runtime metrics ─────────────────────────────────────────────────
+const GATEWAY_STARTED_AT_MS = Date.now();
 
 // ── Gateway Config ──────────────────────────────────────────────────────────
 
@@ -83,6 +86,8 @@ export function createGatewayApp(config: GatewayConfig): Hono {
 
   // Health check
   app.get("/health", (c) => {
+    const uptimeSeconds = Math.floor((Date.now() - GATEWAY_STARTED_AT_MS) / 1000);
+    const eventsCount = countEvents();
     return c.json({
       status: "ok",
       service: "trst2-gateway",
@@ -90,6 +95,9 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       streaming: "sse_passthrough",
       mcp_lifecycle: "enabled",
       providers: config.modelRegistry.getProviderIds(),
+      uptime_seconds: uptimeSeconds,
+      events_count: eventsCount,
+      gateway_overhead_ms: null,
     });
   });
 

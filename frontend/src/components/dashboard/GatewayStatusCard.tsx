@@ -7,11 +7,15 @@ import type { GatewayHealth } from "@/lib/api";
 
 function formatUptime(seconds?: number): string {
   if (!seconds && seconds !== 0) return "—";
+  if (seconds < 60) return `${seconds}s`;
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
   if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
+  // 1m–59m range: show m+s for better granularity
+  if (s > 0) return `${m}m ${s}s`;
   return `${m}m`;
 }
 

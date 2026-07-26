@@ -6,7 +6,7 @@
  * to a fallback file or emitted to stderr.
  */
 
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { createEventId, sealEvent, type TrstEventEnvelope } from "./event-envelope.js";
 
@@ -87,4 +87,21 @@ export function appendEvent(event: Omit<TrstEventEnvelope, "event_hash">): void 
  */
 export function getEventLogPath(): string {
   return storePath;
+}
+
+/**
+ * Count events in the JSONL store.
+ * Returns 0 if the file does not exist or cannot be read.
+ * Does NOT expose raw event content.
+ */
+export function countEvents(): number {
+  if (!storePath) return 0;
+  if (!existsSync(storePath)) return 0;
+  try {
+    const content = readFileSync(storePath, "utf-8");
+    const lines = content.split("\n").filter((line) => line.trim().length > 0);
+    return lines.length;
+  } catch {
+    return 0;
+  }
 }
