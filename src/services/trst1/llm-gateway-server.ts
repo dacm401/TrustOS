@@ -24,7 +24,7 @@ import { v4 as uuidv4 } from "uuid";
 import { createHash } from "node:crypto";
 
 import { createEventId, type TrstEventEnvelope } from "./event-envelope.js";
-import { appendEvent, countEvents } from "./jsonl-event-store.js";
+import { appendEvent, countEvents, readEvents } from "./jsonl-event-store.js";
 import { extractContextBlocks } from "./context-trace-lite.js";
 import { estimateCost } from "./cost-ledger-lite.js";
 import {
@@ -98,6 +98,68 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       uptime_seconds: uptimeSeconds,
       events_count: eventsCount,
       gateway_overhead_ms: null,
+    });
+  });
+
+  // ── Whitelist Sanitizer ──────────────────────────────────────────────────
+  const ALLOWED_EVENT_FIELDS = new Set([
+    "event_id", "event_type", "timestamp", "status",
+    "trace_id", "session_id", "run_id",
+    "source", "destination",
+    "resource_type", "resource_ref",
+    "provider", "model", "tool_name", "tool_id",
+    "event_hash", "input_hash", "output_hash", "args_hash", "result_hash",
+    "latency_ms", "gateway_overhead_ms",
+    "privacy_flags",
+    "token_count", "cost_estimate",
+    "actor_id", "agent_id", "project_id",
+  ]);
+
+  const FORBIDDEN_KEYS = new Set([
+    "prompt", "response", "input", "output", "args", "result",
+    "content", "messages",
+    "body", "headers",
+    "authorization", "api_key", "apiKey", "secret", "token", "password",
+    "raw", "raw_body", "raw_response",
+    "env", "environment",
+  ]);
+
+  function toSafeEventMetadata(rawEvent: Record<string, unknown>): Record<string, unknown> {
+    const safe: Record<string, unknown> = {};
+    for (const key of ALLOWED_EVENT_FIELDS) {
+      if (key in rawEvent) {
+        const value = rawEvent[key];
+        // Ensure forbidden keys are never copied even if they match allowed set
+        if (FORBIDDEN_KEYS.has(key)) continue;
+        safe[key] = value ?? null;
+      }
+    }
+    return safe;
+  }
+
+  // GET /events — read-only event metadata viewer
+  app.get("/events", (c) => {
+    const rawLimit = c.req.query("limit");
+    let limit = 50;
+    if (rawLimit !== undefined) {
+      const parsed = Number(rawLimit);
+      if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+        limit = Math.max(1, Math.min(200, Math.floor(parsed)));
+      }
+    }
+
+    const totalCount = countEvents();
+    const rawEvents = readEvents(limit);
+    const safeEvents = rawEvents.map(toSafeEventMetadata);
+
+    return c.json({
+      status: "ok",
+      service: "trst2-gateway",
+      mode: "shadow",
+      limit,
+      events_count: totalCount,
+      returned_count: safeEvents.length,
+      events: safeEvents,
     });
   });
 

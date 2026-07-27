@@ -6,6 +6,7 @@ import { TokenSankey } from "@/components/dashboard/TokenSankey";
 import { LearningPanel } from "@/components/dashboard/LearningPanel";
 import { Phase4Panel } from "@/components/dashboard/Phase4Panel";
 import GatewayStatusCard from "@/components/dashboard/GatewayStatusCard";
+import EventChainViewer from "@/components/dashboard/EventChainViewer";
 
 function KpiCard({ label, value, unit, color }: { label: string; value: number | string; unit?: string; color: string }) {
   return (
@@ -245,6 +246,11 @@ export default function DashboardView({ userId }: DashboardViewProps) {
         {/* TRST-2 Gateway Status */}
         <div className="mb-5">
           <GatewayStatusCard />
+        </div>
+
+        {/* TRST-2E Event Chain Viewer */}
+        <div className="mb-5">
+          <EventChainViewer />
         </div>
 
         {/* Growth Profile */}

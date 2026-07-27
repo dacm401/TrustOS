@@ -8,6 +8,7 @@ import { GrowthChart } from "@/components/dashboard/GrowthChart";
 import { LearningPanel } from "@/components/dashboard/LearningPanel";
 import { ObservabilityPanel } from "@/components/dashboard/ObservabilityPanel"; // S94P
 import GatewayStatusCard from "@/components/dashboard/GatewayStatusCard";
+import EventChainViewer from "@/components/dashboard/EventChainViewer";
 
 const USER_ID = "user-001";
 
@@ -31,6 +32,9 @@ export default function DashboardPage() {
       <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
         {/* TRST-2: Gateway Status — always visible, independent of dashboard data */}
         <GatewayStatusCard />
+
+        {/* TRST-2E: Event Chain Viewer — always visible */}
+        <EventChainViewer />
 
         {isLoading ? (
           <div className="flex items-center justify-center py-20">

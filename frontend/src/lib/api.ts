@@ -429,3 +429,55 @@ export async function fetchGatewayHealth(): Promise<GatewayHealth> {
   if (!res.ok) throw new Error(`网关健康检查失败 (${res.status})`);
   return res.json();
 }
+
+// ── TRST-2E: Event Chain Viewer ──────────────────────────────────────────────
+
+export interface GatewayEvent {
+  event_id?: string | null;
+  event_type?: string | null;
+  timestamp?: string | null;
+  status?: string | null;
+  trace_id?: string | null;
+  session_id?: string | null;
+  run_id?: string | null;
+  source?: string | null;
+  destination?: string | null;
+  resource_type?: string | null;
+  resource_ref?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  tool_name?: string | null;
+  tool_id?: string | null;
+  event_hash?: string | null;
+  input_hash?: string | null;
+  output_hash?: string | null;
+  args_hash?: string | null;
+  result_hash?: string | null;
+  latency_ms?: number | null;
+  gateway_overhead_ms?: number | null;
+  privacy_flags?: string[] | null;
+  token_count?: number | null;
+  cost_estimate?: number | null;
+  actor_id?: string | null;
+  agent_id?: string | null;
+  project_id?: string | null;
+}
+
+export interface GatewayEventsResponse {
+  status: string;
+  service: string;
+  mode: string;
+  limit: number;
+  events_count: number;
+  returned_count: number;
+  events: GatewayEvent[];
+}
+
+export async function fetchGatewayEvents(limit?: number): Promise<GatewayEventsResponse> {
+  const url = limit != null
+    ? `${GATEWAY_URL}/events?limit=${limit}`
+    : `${GATEWAY_URL}/events`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`网关事件查询失败 (${res.status})`);
+  return res.json();
+}

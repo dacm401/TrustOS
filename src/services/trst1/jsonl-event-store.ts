@@ -105,3 +105,31 @@ export function countEvents(): number {
     return 0;
   }
 }
+
+/**
+ * Read the latest N events from the JSONL store.
+ * Returns parsed event objects (oldest first). Skips malformed lines silently.
+ * Returns [] if the file is missing, empty, or unreadable.
+ * Does NOT filter or sanitize — caller must apply privacy controls.
+ */
+export function readEvents(limit: number): Record<string, unknown>[] {
+  if (!storePath) return [];
+  if (!existsSync(storePath)) return [];
+  try {
+    const content = readFileSync(storePath, "utf-8");
+    const lines = content.split("\n").filter((line) => line.trim().length > 0);
+    const events: Record<string, unknown>[] = [];
+    // Process from end to get latest N, then unshift for chronological order
+    for (let i = lines.length - 1; i >= 0 && events.length < limit; i--) {
+      try {
+        const parsed = JSON.parse(lines[i]);
+        events.unshift(parsed);
+      } catch {
+        // skip malformed lines silently
+      }
+    }
+    return events;
+  } catch {
+    return [];
+  }
+}

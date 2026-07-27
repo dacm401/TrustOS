@@ -11,6 +11,7 @@ import {
   fetchDecision,
   fetchHealth,
   fetchGatewayHealth,
+  fetchGatewayEvents,
   getApiConfig,
   getDashboard,
   getGrowth,
@@ -18,6 +19,7 @@ import {
   type CostStats,
   type HealthStatus,
   type GatewayHealth,
+  type GatewayEventsResponse,
 } from '@/lib/api';
 
 // Tasks
@@ -154,6 +156,17 @@ export function useGatewayHealth() {
     queryFn: fetchGatewayHealth,
     staleTime: 5 * 1000,
     refetchInterval: 15000,
+    retry: 2,
+  });
+}
+
+// TRST-2E Gateway Events (polled)
+export function useGatewayEvents(limit: number = 50) {
+  return useQuery<GatewayEventsResponse>({
+    queryKey: ['gateway-events', limit],
+    queryFn: () => fetchGatewayEvents(limit),
+    staleTime: 10 * 1000,
+    refetchInterval: 30000,
     retry: 2,
   });
 }
