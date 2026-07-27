@@ -65,7 +65,7 @@ function buildIdentity(c: Context, projectId: string) {
     traceId: getHeader(c, "X-TrustOS-Trace-Id") ?? uuidv4(),
     agentId: getHeader(c, "X-TrustOS-Agent-Id") ?? "unknown-agent",
     actorId: getHeader(c, "X-TrustOS-Actor-Id") ?? "local-user",
-    runId: uuidv4(),
+    runId: getHeader(c, "X-TrustOS-Run-Id") ?? uuidv4(),
     projectId,
   };
 }
