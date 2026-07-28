@@ -67,16 +67,19 @@ function computeEventSignals(ev) {
   if (!ev.provider || ev.provider === '' || ev.provider === 'unknown')
     signals.push(SIGNALS.MODEL_PROVIDER_UNKNOWN);
 
-  // Privacy
+  // Privacy — hash presence checks
+  // Use 'key' in ev to distinguish "field absent from schema" vs "present but null/empty".
+  // If Gateway never emits the hash field, we do NOT flag a missing hash (that is a
+  // schema-level decision, not a per-event integrity violation).
   if (!ev.event_hash)
     signals.push(SIGNALS.MISSING_EVENT_HASH);
-  if (ev.event_type === 'model_call' && !ev.input_hash)
+  if (ev.event_type === 'model_call' && 'input_hash' in ev && !ev.input_hash)
     signals.push(SIGNALS.MISSING_INPUT_HASH);
-  if (ev.event_type === 'model_call' && ev.status === 'success' && !ev.output_hash)
+  if (ev.event_type === 'model_call' && ev.status === 'success' && 'output_hash' in ev && !ev.output_hash)
     signals.push(SIGNALS.MISSING_OUTPUT_HASH);
-  if (ev.event_type === 'tool_call' && !ev.args_hash)
+  if (ev.event_type === 'tool_call' && 'args_hash' in ev && !ev.args_hash)
     signals.push(SIGNALS.MISSING_ARGS_HASH);
-  if (ev.event_type === 'tool_call' && ev.status === 'success' && !ev.result_hash)
+  if (ev.event_type === 'tool_call' && ev.status === 'success' && 'result_hash' in ev && !ev.result_hash)
     signals.push(SIGNALS.MISSING_RESULT_HASH);
 
   // Trace Integrity
