@@ -5,9 +5,12 @@ import { useGatewayEvents } from "@/hooks/useQueries";
 import type { GatewayEvent } from "@/lib/api";
 import {
   assessEvents,
+  computeControlRecommendation,
   computeRiskDistribution,
   getTraceKey,
   getTraceLabel,
+  type ControlAction,
+  type ControlRecommendation,
   type RiskLevel,
 } from "@/lib/assess-utils";
 
@@ -128,6 +131,33 @@ function RiskBadge({ level, signalCount }: { level: RiskLevel; signalCount: numb
   );
 }
 
+// ── Dry-Run Control Badge ─────────────────────────────────────────────────────
+// Control Discovery — label only, does NOT block or change runtime.
+
+const CONTROL_LABELS: Record<ControlAction, { bg: string; fg: string; label: string }> = {
+  allow:       { bg: "rgba(34,197,94,0.06)",  fg: "#16a34a", label: "通过" },
+  review:      { bg: "rgba(234,179,8,0.08)",  fg: "#ca8a04", label: "复核" },
+  would_block: { bg: "rgba(239,68,68,0.08)",  fg: "#dc2626", label: "拦截" },
+};
+
+function ControlBadge({ recommendation }: { recommendation: ControlRecommendation }) {
+  const c = CONTROL_LABELS[recommendation.action];
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: c.bg, color: c.fg, border: `1px solid ${c.fg}20` }}
+      title={
+        recommendation.reasons.length > 0
+          ? `理由: ${recommendation.reasons.join(", ")} (dry-run)`
+          : "dry-run — 无控制信号"
+      }
+    >
+      <span>{c.label}</span>
+      <span style={{ opacity: 0.5, fontSize: "0.65rem" }}>dry-run</span>
+    </span>
+  );
+}
+
 // ── Single Event Row ─────────────────────────────────────────────────────────
 
 function EventRow({ event }: { event: GatewayEvent }) {
@@ -209,11 +239,13 @@ function GroupHeader({
   count,
   riskLevel,
   signalCount,
+  controlAction,
 }: {
   label: string;
   count: number;
   riskLevel?: RiskLevel;
   signalCount?: number;
+  controlAction?: ControlRecommendation;
 }) {
   return (
     <div
@@ -232,6 +264,9 @@ function GroupHeader({
         </span>
         {riskLevel && riskLevel !== "none" && (
           <RiskBadge level={riskLevel} signalCount={signalCount ?? 0} />
+        )}
+        {controlAction && (
+          <ControlBadge recommendation={controlAction} />
         )}
       </div>
       <span
@@ -341,6 +376,27 @@ export default function EventChainViewer() {
     return m;
   }, [assessments]);
 
+  // ── Compute dry-run control recommendations ────────────────────────────
+  // Control Discovery — label only, does NOT block, does NOT change runtime.
+  const controlByKey = useMemo(() => {
+    const m = new Map<string, ControlRecommendation>();
+    for (const a of assessments) {
+      m.set(a.traceKey, computeControlRecommendation(a));
+    }
+    return m;
+  }, [assessments]);
+
+  // Control distribution for footer
+  const controlDist = useMemo(() => {
+    let allow = 0, review = 0, wouldBlock = 0;
+    for (const c of controlByKey.values()) {
+      if (c.action === "allow") allow++;
+      else if (c.action === "review") review++;
+      else if (c.action === "would_block") wouldBlock++;
+    }
+    return { allow, review, wouldBlock };
+  }, [controlByKey]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -360,6 +416,7 @@ export default function EventChainViewer() {
       <div className="space-y-4">
         {groupEntries.map(([groupKey, events]) => {
           const ass = assessmentByKey.get(groupKey);
+          const ctrl = controlByKey.get(groupKey);
           return (
             <div key={groupKey} className="space-y-2">
               <GroupHeader
@@ -367,6 +424,7 @@ export default function EventChainViewer() {
                 count={events.length}
                 riskLevel={ass?.riskLevel}
                 signalCount={ass?.signals.length}
+                controlAction={ctrl}
               />
               {events.map((event, idx) => (
                 <EventRow
@@ -379,9 +437,9 @@ export default function EventChainViewer() {
         })}
       </div>
 
-      {/* Summary footer with risk distribution */}
+      {/* Summary footer with risk + control distribution */}
       <div
-        className="mt-4 pt-3 flex items-center gap-4 text-xs"
+        className="mt-4 pt-3 flex items-center gap-4 text-xs flex-wrap"
         style={{
           borderTop: "1px solid var(--border-subtle)",
           color: "var(--text-muted)",
@@ -395,6 +453,14 @@ export default function EventChainViewer() {
             {dist.high > 0 && <span style={{ color: RISK_COLORS.high.fg }}>高 {dist.high}</span>}
             {dist.medium > 0 && <span style={{ color: RISK_COLORS.medium.fg }}>中 {dist.medium}</span>}
             {dist.low > 0 && <span style={{ color: RISK_COLORS.low.fg }}>低 {dist.low}</span>}
+          </span>
+        )}
+        {(controlDist.review > 0 || controlDist.wouldBlock > 0) && (
+          <span className="flex items-center gap-1.5">
+            控制(dry-run):
+            {controlDist.wouldBlock > 0 && <span style={{ color: CONTROL_LABELS.would_block.fg }}>拦截 {controlDist.wouldBlock}</span>}
+            {controlDist.review > 0 && <span style={{ color: CONTROL_LABELS.review.fg }}>复核 {controlDist.review}</span>}
+            {controlDist.allow > 0 && <span style={{ color: CONTROL_LABELS.allow.fg }}>通过 {controlDist.allow}</span>}
           </span>
         )}
         <span>mode: {data.mode ?? "—"}</span>

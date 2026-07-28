@@ -210,3 +210,59 @@ export function computeRiskDistribution(assessments: TraceAssessment[]): RiskDis
   }
   return dist;
 }
+
+// ── Dry-Run Control ──────────────────────────────────────────────────────────
+// Control Discovery Phase — dry-run only, no enforcement, no runtime impact.
+//
+// Control model:
+//   allow       → no control-relevant (privacy/trace_integrity) signals at medium+
+//   review      → at least one medium severity privacy/trace_integrity signal
+//   would_block → at least one high severity privacy/trace_integrity signal
+//                 (label only — does NOT block, does NOT change runtime)
+//
+// Excluded from control decisions:
+//   - operational signals (HIGH_LATENCY, UNKNOWN_AGENT, MODEL_PROVIDER_UNKNOWN)
+//   - behavior signals
+//   - single_event_trace (trace_integrity but low severity = informational)
+//   - raw content signals (none exist — design constraint)
+
+export type ControlAction = "allow" | "review" | "would_block";
+
+export interface ControlRecommendation {
+  action: ControlAction;
+  reasons: string[];       // signal codes that drove the decision
+  mode: "dry_run";         // always dry_run at this stage
+  runtimeEffect: "none";   // always none at this stage
+}
+
+/** Which signal categories are eligible to drive control decisions. */
+const CONTROL_ELIGIBLE_CATEGORIES = new Set(["privacy", "trace_integrity"]);
+
+export function computeControlRecommendation(
+  assessment: TraceAssessment
+): ControlRecommendation {
+  const controlSignals = assessment.signals.filter(
+    (s) =>
+      CONTROL_ELIGIBLE_CATEGORIES.has(s.category) &&
+      s.severity !== "low" // low severity is informational only
+  );
+
+  if (controlSignals.length === 0) {
+    return {
+      action: "allow",
+      reasons: [],
+      mode: "dry_run",
+      runtimeEffect: "none",
+    };
+  }
+
+  const hasHigh = controlSignals.some((s) => s.severity === "high");
+  const reasons = [...new Set(controlSignals.map((s) => s.code))];
+
+  return {
+    action: hasHigh ? "would_block" : "review",
+    reasons,
+    mode: "dry_run",
+    runtimeEffect: "none",
+  };
+}
