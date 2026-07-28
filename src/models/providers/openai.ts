@@ -12,6 +12,7 @@ export interface GatewayTraceHeaders {
   traceId: string;
   sessionId: string;
   runId: string;
+  [key: string]: string;
 }
 
 export const gatewayTraceStore = new AsyncLocalStorage<GatewayTraceHeaders>();
