@@ -1,7 +1,15 @@
 "use client";
 
+import { useMemo } from "react";
 import { useGatewayEvents } from "@/hooks/useQueries";
 import type { GatewayEvent } from "@/lib/api";
+import {
+  assessEvents,
+  computeRiskDistribution,
+  getTraceKey,
+  getTraceLabel,
+  type RiskLevel,
+} from "@/lib/assess-utils";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,6 +103,31 @@ function StatusBadge({ status }: { status?: string | null }) {
   );
 }
 
+// ── Risk Badge ────────────────────────────────────────────────────────────────
+
+const RISK_COLORS: Record<RiskLevel, { bg: string; fg: string; label: string }> = {
+  none:  { bg: "rgba(100,116,139,0.08)", fg: "#94a3b8", label: "—" },
+  low:   { bg: "rgba(34,197,94,0.08)",  fg: "#16a34a", label: "低" },
+  medium:{ bg: "rgba(234,179,8,0.10)",  fg: "#ca8a04", label: "中" },
+  high:  { bg: "rgba(239,68,68,0.10)",  fg: "#dc2626", label: "高" },
+};
+
+function RiskBadge({ level, signalCount }: { level: RiskLevel; signalCount: number }) {
+  const c = RISK_COLORS[level];
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: c.bg, color: c.fg }}
+      title={signalCount > 0 ? `${signalCount} 个信号` : "无信号"}
+    >
+      <span>{c.label}</span>
+      {signalCount > 0 && (
+        <span style={{ opacity: 0.7 }}>·{signalCount}</span>
+      )}
+    </span>
+  );
+}
+
 // ── Single Event Row ─────────────────────────────────────────────────────────
 
 function EventRow({ event }: { event: GatewayEvent }) {
@@ -174,9 +207,13 @@ function EventRow({ event }: { event: GatewayEvent }) {
 function GroupHeader({
   label,
   count,
+  riskLevel,
+  signalCount,
 }: {
   label: string;
   count: number;
+  riskLevel?: RiskLevel;
+  signalCount?: number;
 }) {
   return (
     <div
@@ -193,6 +230,9 @@ function GroupHeader({
         >
           {label}
         </span>
+        {riskLevel && riskLevel !== "none" && (
+          <RiskBadge level={riskLevel} signalCount={signalCount ?? 0} />
+        )}
       </div>
       <span
         className="text-xs rounded-full px-2 py-0.5"
@@ -276,30 +316,30 @@ export default function EventChainViewer() {
 
   // ── Group events ──────────────────────────────────────────────────────────
 
-  function getGroupKey(e: GatewayEvent): string {
-    if (e.trace_id) return `trace:${e.trace_id}`;
-    if (e.session_id) return `session:${e.session_id}`;
-    return "ungrouped";
-  }
-
-  function getGroupLabel(key: string): string {
-    if (key.startsWith("trace:")) return key.slice(6);
-    if (key.startsWith("session:")) return `会话 ${key.slice(8)}`;
-    return "未分组";
-  }
-
-  const groups = new Map<string, GatewayEvent[]>();
-  for (const e of data.events) {
-    const k = getGroupKey(e);
-    const arr = groups.get(k);
-    if (arr) {
-      arr.push(e);
-    } else {
-      groups.set(k, [e]);
+  const groupEntries = useMemo(() => {
+    const groups = new Map<string, GatewayEvent[]>();
+    for (const e of data.events) {
+      const k = getTraceKey(e);
+      const arr = groups.get(k);
+      if (arr) arr.push(e);
+      else groups.set(k, [e]);
     }
-  }
+    return Array.from(groups.entries());
+  }, [data.events]);
 
-  const groupEntries = Array.from(groups.entries());
+  // ── Compute assessments ───────────────────────────────────────────────────
+  // Ephemeral: derived from sanitized /events, no writes, no enforcement.
+  const { assessments, dist } = useMemo(() => {
+    const a = assessEvents(data.events);
+    const d = computeRiskDistribution(a);
+    return { assessments: a, dist: d };
+  }, [data.events]);
+
+  const assessmentByKey = useMemo(() => {
+    const m = new Map<string, (typeof assessments)[number]>();
+    for (const a of assessments) m.set(a.traceKey, a);
+    return m;
+  }, [assessments]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -318,23 +358,28 @@ export default function EventChainViewer() {
       </div>
 
       <div className="space-y-4">
-        {groupEntries.map(([groupKey, events]) => (
-          <div key={groupKey} className="space-y-2">
-            <GroupHeader
-              label={getGroupLabel(groupKey)}
-              count={events.length}
-            />
-            {events.map((event, idx) => (
-              <EventRow
-                key={event.event_id ?? `${groupKey}-${idx}`}
-                event={event}
+        {groupEntries.map(([groupKey, events]) => {
+          const ass = assessmentByKey.get(groupKey);
+          return (
+            <div key={groupKey} className="space-y-2">
+              <GroupHeader
+                label={getTraceLabel(groupKey)}
+                count={events.length}
+                riskLevel={ass?.riskLevel}
+                signalCount={ass?.signals.length}
               />
-            ))}
-          </div>
-        ))}
+              {events.map((event, idx) => (
+                <EventRow
+                  key={event.event_id ?? `${groupKey}-${idx}`}
+                  event={event}
+                />
+              ))}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Summary footer */}
+      {/* Summary footer with risk distribution */}
       <div
         className="mt-4 pt-3 flex items-center gap-4 text-xs"
         style={{
@@ -344,6 +389,14 @@ export default function EventChainViewer() {
       >
         <span>{groupEntries.length} 个分组</span>
         <span>{data.events_count} 个总事件</span>
+        {(dist.low > 0 || dist.medium > 0 || dist.high > 0) && (
+          <span className="flex items-center gap-1.5">
+            风险:
+            {dist.high > 0 && <span style={{ color: RISK_COLORS.high.fg }}>高 {dist.high}</span>}
+            {dist.medium > 0 && <span style={{ color: RISK_COLORS.medium.fg }}>中 {dist.medium}</span>}
+            {dist.low > 0 && <span style={{ color: RISK_COLORS.low.fg }}>低 {dist.low}</span>}
+          </span>
+        )}
         <span>mode: {data.mode ?? "—"}</span>
       </div>
     </div>
