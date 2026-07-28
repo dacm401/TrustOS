@@ -12,6 +12,7 @@ export interface GatewayTraceHeaders {
   traceId: string;
   sessionId: string;
   runId: string;
+  agentId: string;
   [key: string]: string;
 }
 
@@ -94,10 +95,12 @@ async function callChat(
   const resolveTrace = (h: Record<string, string>) => h.traceId ?? h["X-TrustOS-Trace-Id"];
   const resolveSession = (h: Record<string, string>) => h.sessionId ?? h["X-TrustOS-Session-Id"];
   const resolveRun = (h: Record<string, string>) => h.runId ?? h["X-TrustOS-Run-Id"];
+  const resolveAgent = (h: Record<string, string>) => h.agentId ?? h["X-TrustOS-Agent-Id"];
 
   const traceId = rawHeaders ? resolveTrace(rawHeaders) : undefined;
   const sessionId = rawHeaders ? resolveSession(rawHeaders) : undefined;
   const runId = rawHeaders ? resolveRun(rawHeaders) : undefined;
+  const agentId = rawHeaders ? resolveAgent(rawHeaders) : undefined;
   const hasGatewayTrace = !!(traceId && sessionId && runId);
 
   const response = await client.chat.completions.create(
@@ -116,6 +119,7 @@ async function callChat(
         "X-TrustOS-Trace-Id": traceId!,
         "X-TrustOS-Session-Id": sessionId!,
         "X-TrustOS-Run-Id": runId!,
+        ...(agentId ? { "X-TrustOS-Agent-Id": agentId } : {}),
       },
     } : undefined
   );

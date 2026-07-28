@@ -1316,7 +1316,8 @@ async function pollLoop(): Promise<void> {
         // Uses module-level setter (not ALS) because ALS does not reliably
         // propagate through Promise.race in callProviderWithTimeout.
         if (cmdRecord.gateway_trace_headers) {
-          setExplicitGatewayTraceHeaders(cmdRecord.gateway_trace_headers);
+          // Worker always self-identifies as "worker" regardless of parent agentId
+          setExplicitGatewayTraceHeaders({ ...cmdRecord.gateway_trace_headers, agentId: "worker" });
         }
         try {
           await executeDelegateCommand(cmdRecord);

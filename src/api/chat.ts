@@ -124,6 +124,7 @@ chatRouter.post("/chat", async (c) => {
         traceId: `${userId}_${sessionId}_${startTime}`,
         sessionId,
         runId: uuid(),
+        agentId: "manager",
       }
     : undefined;
 
