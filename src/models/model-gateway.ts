@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ChatMessage } from "../types/index.js";
 import type { ModelProvider, ModelResponse, ToolParam } from "./providers/base-provider.js";
 import type { LlmCallKind } from "../types/runtime-trace.js";
-import { openaiProvider } from "./providers/openai.js";
+import { openaiProvider, gatewayTraceStore } from "./providers/openai.js";
 import { callOpenAIWithOptions as _callOpenAIWithOptions } from "./providers/openai.js";
 import { anthropicProvider } from "./providers/anthropic.js";
 import { getRequestTrace, recordLlmCall } from "../services/runtime-trace.js";
@@ -714,12 +714,22 @@ export async function* callModelStream(
     const clientOptions: ConstructorParameters<typeof OpenAI>[0] = {
       apiKey: reqApiKey || config.openaiApiKey,
     };
-    if (!reqApiKey && config.openaiBaseUrl) {
+    // TRST-2: Route through TrustOS Gateway when feature-flagged
+    if (config.trustosGatewayUrl) {
+      clientOptions.baseURL = `${config.trustosGatewayUrl}/v1`;
+    } else if (!reqApiKey && config.openaiBaseUrl) {
       clientOptions.baseURL = config.openaiBaseUrl;
     } else if (reqApiKey && config.openaiBaseUrl) {
       // When using a custom key, still use the configured base URL
       // (e.g. SiliconFlow gateway). Only override if key is from the same gateway.
       clientOptions.baseURL = config.openaiBaseUrl;
+    }
+    // TRST-2: Attach Gateway trace headers for real caller correlation
+    if (config.trustosGatewayUrl) {
+      const headers = gatewayTraceStore.getStore();
+      if (headers) {
+        clientOptions.defaultHeaders = headers;
+      }
     }
     const openaiClient = new OpenAI(clientOptions);
 

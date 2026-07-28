@@ -22,6 +22,8 @@ import { getContextUserId } from "../middleware/identity.js";
 // SSE 流式轮询（从 orchestrator.ts 迁移出来）
 import { pollArchiveAndYield } from "../services/phase3/sse-poller.js";
 import { routeWithManagerDecision } from "../services/llm-native-router.js";
+// TRST-2: Gateway trace headers for real caller correlation
+import { runWithGatewayTrace, type GatewayTraceHeaders } from "../models/providers/openai.js";
 import { TaskArchiveRepo } from "../db/task-archive-repo.js";
 // Sprint 63: 跨会话上下文
 import { buildCrossSessionContext } from "../services/cross-session-context.js";
@@ -115,6 +117,16 @@ chatRouter.post("/chat", async (c) => {
   const effectiveFastModel = body.fast_model || config.fastModel;
   const effectiveSlowModel = body.slow_model || config.slowModel;
 
+  // TRST-2: Gateway trace headers for real caller correlation.
+  // Generated per /api/chat request; injected into OpenAI SDK calls via AsyncLocalStorage.
+  const gatewayTrace: GatewayTraceHeaders | undefined = config.trustosGatewayUrl
+    ? {
+        "X-TrustOS-Trace-Id": `${userId}_${sessionId}_${startTime}`,
+        "X-TrustOS-Session-Id": sessionId,
+        "X-TrustOS-Run-Id": uuid(),
+      }
+    : undefined;
+
   // ── Sprint 65: 权限响应检测（优先于路由，直接处理授权指令）─────────────────
   // 检测用户消息是否是"允许 xxx" / "拒绝 xxx" 格式，如果是，直接处理授权并返回
   try {
@@ -192,6 +204,8 @@ chatRouter.post("/chat", async (c) => {
       if (runtimeTrace && crossSessionT) endStage(runtimeTrace, RUNTIME_TRACE_STAGES.CROSS_SESSION_CONTEXT, crossSessionT);
       // S86P: Wrap SSE handler in AsyncLocalStorage-based trace context
       const sseHandler = async () => {
+        // TRST-2: Set Gateway trace headers for model calls within this SSE request
+        return runWithGatewayTrace(gatewayTrace, async () => {
         let llmNativeResult;
         let activeArtifact: import("../services/context/active-artifact.js").ActiveArtifactContext | undefined;
         try {
@@ -808,6 +822,7 @@ chatRouter.post("/chat", async (c) => {
           // （SSE已失败，客户端已经断开）
         }
       });
+      }); // TRST-2: close runWithGatewayTrace wrapper
       };
       return runWithRequestTrace(runtimeTrace, sseHandler);
     }
@@ -841,7 +856,9 @@ chatRouter.post("/chat", async (c) => {
       });
 
       // Sprint 64P: 加超时保护 — 没有 API key 时模型调用会失败/无限等
-      const routePromise = routeWithManagerDecision({
+      // TRST-2: Wrap in Gateway trace context for real caller correlation
+      const routePromise = runWithGatewayTrace(gatewayTrace, () =>
+        routeWithManagerDecision({
         message: body.message ?? "",
         user_id: userId,
         session_id: sessionId,
@@ -855,7 +872,8 @@ chatRouter.post("/chat", async (c) => {
         crossSessionContext,
         activeArtifact,
         rawHistory: rawHistory as any, // Sprint 66P: 用于 quality routing 从 meta.verification 读取
-      });
+      })
+      ); // TRST-2: close runWithGatewayTrace wrapper
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("routeWithManagerDecision timeout (no API key or network issue)")), 60000)
       );

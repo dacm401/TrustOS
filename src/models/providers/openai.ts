@@ -1,16 +1,50 @@
 import OpenAI from "openai";
+import { AsyncLocalStorage } from "async_hooks";
 import type { ChatMessage } from "../../types/index.js";
 import type { ModelProvider, ModelResponse, ToolCallParam, ToolParam } from "./base-provider.js";
 import { config } from "../../config.js";
+
+// ── TRST-2: Gateway Trace Headers (AsyncLocalStorage) ──────────────────────────
+// Per-request gateway identity propagated via OpenAI SDK request options.
+// Set by chat.ts at the start of each /api/chat request.
+
+export interface GatewayTraceHeaders {
+  [key: string]: string;
+  "X-TrustOS-Trace-Id": string;
+  "X-TrustOS-Session-Id": string;
+  "X-TrustOS-Run-Id": string;
+}
+
+export const gatewayTraceStore = new AsyncLocalStorage<GatewayTraceHeaders>();
+
+/**
+ * Run a function with Gateway trace headers in AsyncLocalStorage.
+ * When TRUSTOS_GATEWAY_URL is configured, callChat injects these headers.
+ */
+export function runWithGatewayTrace(
+  headers: GatewayTraceHeaders | undefined,
+  fn: () => any
+): any {
+  if (!headers) return fn();
+  return gatewayTraceStore.run(headers, fn);
+}
+
+// ── Default client ────────────────────────────────────────────────────────────
 
 // 默认 client（使用环境变量配置）
 const defaultClientOptions: ConstructorParameters<typeof OpenAI>[0] = {
   apiKey: config.openaiApiKey,
   timeout: 180_000, // 180s timeout（DeepSeek-V4-Flash/Qwen2.5-72B API 有时需要 120s+）
 };
-if (config.openaiBaseUrl) {
+
+// TRST-2: When TRUSTOS_GATEWAY_URL is set, route through TrustOS Gateway.
+// Gateway is an OpenAI-compatible proxy that captures model_call events.
+if (config.trustosGatewayUrl) {
+  defaultClientOptions.baseURL = `${config.trustosGatewayUrl}/v1`;
+} else if (config.openaiBaseUrl) {
   defaultClientOptions.baseURL = config.openaiBaseUrl;
 }
+
 const defaultClient = new OpenAI(defaultClientOptions);
 
 // 判断是否是 OpenAI 兼容的模型（支持 gpt- 前缀及第三方 provider/model 格式）
@@ -30,16 +64,24 @@ async function callChat(
   messages: ChatMessage[],
   tools?: ToolParam[]
 ): Promise<ModelResponse> {
-  const response = await client.chat.completions.create({
-    model,
-    messages: messages.map((m) => ({
-      role: m.role as "system" | "user" | "assistant",
-      content: m.content,
-    })),
-    temperature: 0.3,
-    max_tokens: 4096,
-    ...(tools ? { tools, tool_choice: "auto" } : {}),
-  });
+  // TRST-2: Propagate Gateway trace headers for real caller correlation
+  const gatewayHeaders = config.trustosGatewayUrl
+    ? gatewayTraceStore.getStore()
+    : undefined;
+
+  const response = await client.chat.completions.create(
+    {
+      model,
+      messages: messages.map((m) => ({
+        role: m.role as "system" | "user" | "assistant",
+        content: m.content,
+      })),
+      temperature: 0.3,
+      max_tokens: 4096,
+      ...(tools ? { tools, tool_choice: "auto" } : {}),
+    },
+    gatewayHeaders ? { headers: gatewayHeaders } : undefined
+  );
 
   const choice = response.choices[0]?.message;
 
@@ -82,7 +124,12 @@ export async function callOpenAIWithOptions(
   tools?: ToolParam[]
 ): Promise<ModelResponse> {
   const opts: ConstructorParameters<typeof OpenAI>[0] = { apiKey, timeout: 180_000 };
-  if (baseURL) opts.baseURL = baseURL;
+  // TRST-2: When Gateway is enabled, route through Gateway instead of custom baseURL
+  if (config.trustosGatewayUrl) {
+    opts.baseURL = `${config.trustosGatewayUrl}/v1`;
+  } else if (baseURL) {
+    opts.baseURL = baseURL;
+  }
   const client = new OpenAI(opts);
   return callChat(client, model, messages, tools);
 }

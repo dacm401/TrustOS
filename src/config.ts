@@ -29,6 +29,8 @@ export const config = {
   compressorModel: process.env.COMPRESSOR_MODEL || "gpt-4o-mini",
   openaiApiKey: process.env.OPENAI_API_KEY || "",
   openaiBaseUrl: process.env.OPENAI_BASE_URL || "",
+  // TRST-2: Gateway URL for real caller correlation (feature-flagged, unset = direct upstream)
+  trustosGatewayUrl: process.env.TRUSTOS_GATEWAY_URL || "",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
   routerConfidenceThreshold: parseFloat(process.env.ROUTER_CONFIDENCE_THRESHOLD || "0.75"),
   qualityGateEnabled: process.env.QUALITY_GATE_ENABLED !== "false",
