@@ -9,10 +9,9 @@ import { config } from "../../config.js";
 // Set by chat.ts at the start of each /api/chat request.
 
 export interface GatewayTraceHeaders {
-  [key: string]: string;
-  "X-TrustOS-Trace-Id": string;
-  "X-TrustOS-Session-Id": string;
-  "X-TrustOS-Run-Id": string;
+  traceId: string;
+  sessionId: string;
+  runId: string;
 }
 
 export const gatewayTraceStore = new AsyncLocalStorage<GatewayTraceHeaders>();
@@ -27,6 +26,24 @@ export function runWithGatewayTrace(
 ): any {
   if (!headers) return fn();
   return gatewayTraceStore.run(headers, fn);
+}
+
+/**
+ * TRST-2: Module-level fallback for Worker async boundary.
+ *
+ * ALS context does not reliably propagate through Worker setInterval → 
+ * Promise.race → provider.chat in Node.js v24. This fallback allows the Worker
+ * to set explicit trace headers before model calls, and callChat will pick them
+ * up when gatewayTraceStore.getStore() returns undefined.
+ *
+ * Only stores IDs (traceId, sessionId, runId). No raw content.
+ */
+let _explicitGatewayTraceHeaders: GatewayTraceHeaders | undefined;
+
+export function setExplicitGatewayTraceHeaders(
+  headers: GatewayTraceHeaders | undefined
+): void {
+  _explicitGatewayTraceHeaders = headers;
 }
 
 // ── Default client ────────────────────────────────────────────────────────────
@@ -64,10 +81,23 @@ async function callChat(
   messages: ChatMessage[],
   tools?: ToolParam[]
 ): Promise<ModelResponse> {
-  // TRST-2: Propagate Gateway trace headers for real caller correlation
-  const gatewayHeaders = config.trustosGatewayUrl
-    ? gatewayTraceStore.getStore()
+  // TRST-2: Propagate Gateway trace headers for real caller correlation.
+  // ALS-based context (primary) + module-level fallback for Worker async boundary.
+  const storeVal = gatewayTraceStore.getStore();
+  const rawHeaders = config.trustosGatewayUrl
+    ? (storeVal ?? _explicitGatewayTraceHeaders as Record<string, string> | undefined)
     : undefined;
+
+  // Resolve trace headers — supports both key conventions (traceId / X-TrustOS-Trace-Id)
+  // for forward/backward compatibility across ALS and DB-stored paths.
+  const resolveTrace = (h: Record<string, string>) => h.traceId ?? h["X-TrustOS-Trace-Id"];
+  const resolveSession = (h: Record<string, string>) => h.sessionId ?? h["X-TrustOS-Session-Id"];
+  const resolveRun = (h: Record<string, string>) => h.runId ?? h["X-TrustOS-Run-Id"];
+
+  const traceId = rawHeaders ? resolveTrace(rawHeaders) : undefined;
+  const sessionId = rawHeaders ? resolveSession(rawHeaders) : undefined;
+  const runId = rawHeaders ? resolveRun(rawHeaders) : undefined;
+  const hasGatewayTrace = !!(traceId && sessionId && runId);
 
   const response = await client.chat.completions.create(
     {
@@ -80,7 +110,13 @@ async function callChat(
       max_tokens: 4096,
       ...(tools ? { tools, tool_choice: "auto" } : {}),
     },
-    gatewayHeaders ? { headers: gatewayHeaders } : undefined
+    hasGatewayTrace ? {
+      headers: {
+        "X-TrustOS-Trace-Id": traceId!,
+        "X-TrustOS-Session-Id": sessionId!,
+        "X-TrustOS-Run-Id": runId!,
+      },
+    } : undefined
   );
 
   const choice = response.choices[0]?.message;

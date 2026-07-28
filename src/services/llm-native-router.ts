@@ -42,6 +42,7 @@ import { parseAndValidate } from "./decision-validator.js";
 import { taskPlanner } from "./task-planner.js";
 import { DelegationLogRepo } from "../db/repositories.js";
 import { TaskArchiveRepo, TaskCommandRepo, TaskArchiveEventRepo } from "../db/task-archive-repo.js";
+import { gatewayTraceStore } from "../models/providers/openai.js";
 import { loadManagerPrompt, getManagerPromptVersion } from "../prompts/loader.js";
 import { circuitBreakers, CircuitBreakerError } from "./circuit-breaker.js";
 
@@ -1907,6 +1908,9 @@ async function writeTaskArchiveAndCommand(
   let commandRecord: { id: string } | null = null;
 
   try {
+    // TRST-2: Capture Gateway trace headers from ALS for worker correlation
+    const traceHeaders = gatewayTraceStore.getStore() ?? undefined;
+
     archiveRecord = await TaskArchiveRepo.create({
       task_id: taskId,
       user_id,
@@ -1917,6 +1921,8 @@ async function writeTaskArchiveAndCommand(
       goal: processedCommand?.goal,
       // Sprint 60P-H1: 存入 slow_execution，供 slow-worker-loop 读取 traceId
       slow_execution: { traceId },
+      // TRST-2: Persist Gateway trace identity so Worker can correlate model calls
+      gateway_trace_headers: traceHeaders ?? undefined,
     });
     await TaskArchiveEventRepo.create({
       archive_id: archiveRecord.id,

@@ -14,6 +14,11 @@ import { config } from "../../config.js";
 import { callModelFull, callOpenAIWithOptions } from "../../models/model-gateway.js";
 import { TaskArchiveRepo, TaskCommandRepo, TaskWorkerResultRepo } from "../../db/task-archive-repo.js";
 import type { ChatMessage, CommandPayload, TaskState, WorkerResult } from "../../types/index.js";
+// TRST-2: Worker trace correlation - restore Gateway trace headers from persisted identity
+import {
+  setExplicitGatewayTraceHeaders,
+  type GatewayTraceHeaders,
+} from "../../models/providers/openai.js";
 // Sprint 57: Artifact revision source resolver
 import { resolveArtifactRevisionSource } from "../artifacts/artifact-source-resolver.js";
 // Sprint 62P: Patch-first Revision
@@ -146,10 +151,13 @@ async function executeDelegateCommand(
     archive_id: string;
     user_id: string;
     payload_json: CommandPayload;
+    /** TRST-2: Persisted Gateway trace headers for worker correlation */
+    gateway_trace_headers?: GatewayTraceHeaders | null;
   }
 ): Promise<void> {
-  const { id, task_id, archive_id, user_id, payload_json } = commandRecord;
+  const { id, task_id, archive_id, user_id, payload_json, gateway_trace_headers } = commandRecord;
   const startTime = Date.now();
+
 
   // S90P: Check cancellation before starting — don't execute cancelled tasks
   if (await TaskArchiveRepo.isCancelled(archive_id)) {
@@ -1273,7 +1281,7 @@ async function pollLoop(): Promise<void> {
       // 查询 queued 的 delegate 命令（排除 execute_plan）
       const { query } = await import("../../db/connection.js");
       const result = await query(
-        `SELECT tc.*, ta.user_input
+        `SELECT tc.*, ta.user_input, ta.gateway_trace_headers
          FROM task_commands tc
          JOIN task_archives ta ON ta.id = tc.archive_id
          WHERE tc.status = 'queued'
@@ -1295,13 +1303,26 @@ async function pollLoop(): Promise<void> {
           ? JSON.parse(row.payload_json)
           : row.payload_json;
 
-        await executeDelegateCommand({
+        const cmdRecord = {
           id: row.id,
           task_id: row.task_id,
           archive_id: row.archive_id,
           user_id: row.user_id,
           payload_json,
-        });
+          gateway_trace_headers: row.gateway_trace_headers as GatewayTraceHeaders | null | undefined,
+        };
+
+        // TRST-2: Restore Gateway trace context for Worker model calls.
+        // Uses module-level setter (not ALS) because ALS does not reliably
+        // propagate through Promise.race in callProviderWithTimeout.
+        if (cmdRecord.gateway_trace_headers) {
+          setExplicitGatewayTraceHeaders(cmdRecord.gateway_trace_headers);
+        }
+        try {
+          await executeDelegateCommand(cmdRecord);
+        } finally {
+          setExplicitGatewayTraceHeaders(undefined);
+        }
       }
     } catch (err: any) {
       console.error("[slow-worker] Poll error:", err.message);

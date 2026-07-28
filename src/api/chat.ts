@@ -121,9 +121,9 @@ chatRouter.post("/chat", async (c) => {
   // Generated per /api/chat request; injected into OpenAI SDK calls via AsyncLocalStorage.
   const gatewayTrace: GatewayTraceHeaders | undefined = config.trustosGatewayUrl
     ? {
-        "X-TrustOS-Trace-Id": `${userId}_${sessionId}_${startTime}`,
-        "X-TrustOS-Session-Id": sessionId,
-        "X-TrustOS-Run-Id": uuid(),
+        traceId: `${userId}_${sessionId}_${startTime}`,
+        sessionId,
+        runId: uuid(),
       }
     : undefined;
 

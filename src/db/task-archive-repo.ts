@@ -32,15 +32,20 @@ export const TaskArchiveRepo = {
     goal?: string;
     /** Sprint 60P-H1: 初始 slow_execution 元数据（可选，用于传递 traceId） */
     slow_execution?: Record<string, unknown>;
+    /** TRST-2: Gateway trace headers for worker correlation (traceId, sessionId, runId) */
+    gateway_trace_headers?: Record<string, unknown> | null;
   }): Promise<{ id: string }> {
     const id = uuid();
     const slowExecJson = input.slow_execution ? JSON.stringify(input.slow_execution) : '{}';
+    const traceHeadersJson = input.gateway_trace_headers
+      ? JSON.stringify(input.gateway_trace_headers)
+      : null;
     await query(
       `INSERT INTO task_archives
         (id, session_id, user_id, manager_decision, command,
          user_input, task_brief, state, status, constraints,
-         fast_observations, slow_execution)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'delegated', 'pending', '{}', '[]', $8)`,
+         fast_observations, slow_execution, gateway_trace_headers)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'delegated', 'pending', '{}', '[]', $8, $9)`,
       [
         id,
         input.session_id,
@@ -50,6 +55,7 @@ export const TaskArchiveRepo = {
         input.user_input,
         input.task_brief ? JSON.stringify({ brief: input.task_brief, goal: input.goal }) : null,
         slowExecJson,
+        traceHeadersJson,
       ]
     );
     return { id };

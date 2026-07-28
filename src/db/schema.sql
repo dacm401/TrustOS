@@ -266,6 +266,10 @@ CREATE TABLE IF NOT EXISTS task_archives (
   slow_execution  JSONB DEFAULT '{}',
   -- {started_at: string, deviations: string[], result: string, errors: string[]}
 
+  -- TRST-2: Gateway trace identity for worker correlation
+  gateway_trace_headers JSONB,
+  -- {traceId: string, sessionId: string, runId: string} | null
+
   -- Phase 1.5: 状态机
   state           VARCHAR(20) DEFAULT 'chattering',
   -- chattering | clarifying | task_ready | executing | done | failed | cancelled
