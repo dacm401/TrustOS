@@ -9,12 +9,18 @@
 ## Current Gate
 
 ```text
-NONE OPEN
+TRST-2 Six-Phase Baseline Closure Report — READY_FOR_PM_FINAL_CLOSE
 
 Last Closed Gate:
-TRST-1C MCP Broker Passthrough Spike — PASS_ACCEPTED / CLOSED
+TRST-2 Prove Discovery — PROVE_BASELINE_CLOSED
 
-Previous Closed Gate:
+Previous Closed Gates:
+TRST-2 Control Dry-Run Baseline — CLOSED
+TRST-2 Assess Baseline — CLOSED
+TRST-2 Correlate Baseline — CLOSED
+TRST-2 Visualize Baseline — CLOSED
+TRST-2 Observe Baseline — CLOSED
+TRST-1C MCP Broker Passthrough Spike — PASS_ACCEPTED / CLOSED
 TRST-1A/1B Real Upstream Validation — PASS_FULL ACCEPTED / CLOSED
 ```
 
@@ -33,6 +39,13 @@ TRST-1A/1B Real Upstream Validation — PASS_FULL ACCEPTED / CLOSED
 | TRST-1C MCP Broker Passthrough Spike | PASS_ACCEPTED / CLOSED | `1906321` |
 | S101T-safe-ui-debt-cleanup | ACCEPTED | `ec702df` |
 | TRST-1B Gateway URL fix | ACCEPTED | `eef4f31` |
+| TRST-2 Observe Baseline | CLOSED | `2a91b0f` |
+| TRST-2 Visualize Baseline | CLOSED | `895d495` |
+| TRST-2 Correlate Baseline | CLOSED | `24f20f5` |
+| TRST-2 Assess Baseline | CLOSED | `fd15e1d` |
+| TRST-2 Control Dry-Run Baseline | CLOSED | `1ae31e7` |
+| TRST-2 Prove Baseline | PROVE_BASELINE_CLOSED | `7acc6fa` |
+| TRST-2 Closure Report | READY_FOR_PM_FINAL_CLOSE | `7acc6fa` |
 
 ---
 
@@ -131,6 +144,9 @@ All 6 original PM Smoke Test acceptance criteria met, plus response integrity an
 
 ## Latest PM Decisions
 
+- **2026-07-28**: PM Final Acceptance — Prove Evidence Bundle Baseline at `7acc6fa`. PROVE_BASELINE_CLOSED. Six-phase baseline complete. Next: TRST-2 Closure Report produced → awaiting PM final close. PM preference: TRST-2 Hardening & Release Candidate next.
+- **2026-07-28**: PM Final Acceptance — Control Dry-Run Baseline at `1ae31e7`. Control Discovery implemented: dry-run labels (allow/review/would_block), ControlBadge UI, computeControlRecommendation(). Next assigned: Prove Discovery.
+- **2026-07-28**: PM Final Acceptance — Assess Product Surface at `fd15e1d`. Assess completed (12/12 smoke PASS). Next assigned: Control Discovery — Dry-Run Control Boundary.
 - **2026-07-25**: TRST-1C MCP Broker Passthrough Spike FINAL CLOSE ACCEPTED at `1906321`. PASS_ACCEPTED / CLOSED. Validated MCP-style HTTP JSON-RPC tools/call passthrough with unified shadow evidence. Smoke 8/8 PASS. Build 0 errors project-wide. Event audit + privacy audit CLEAN. Next gate: TBD by PM.
 - **2026-07-24**: TRST-1C Planning approved with revisions. Endpoint corrected to `POST /trst1/mcp/tools/call`. HTTP JSON-RPC only, no SSE/stdio. Scope: mcp-passthrough-forwarder + fake-mcp-server + smoke test. No new npm dependencies. Shadow Report allowed to add tool_call stats only (no semantic changes).
 - **2026-07-24**: TRST-1A/1B Real Upstream Validation re-verified. User confirmed API key available in `.env`. Discovered URL double `/v1` bug: `openai-compatible-forwarder.ts` appended `/v1/chat/completions` to a base URL already containing `/v1`. Fixed at `eef4f31` — changed to `/chat/completions`. Re-ran validation: HTTP 200, real model response, all hashes present, Shadow Report regenerated. TRST-1A/1B PASS_FULL confirmed.
@@ -164,13 +180,26 @@ All 6 original PM Smoke Test acceptance criteria met, plus response integrity an
 ## Next Allowed Actions
 
 ```text
-No open gate. All TRST-1 gates closed.
-Next gate to be defined by PM.
+Current Gate: TRST-2 Six-Phase Baseline Closure Report
+Status: READY_FOR_PM_FINAL_CLOSE
 
-TRST-1A/1B: PASS_FULL ACCEPTED / CLOSED
-TRST-1C: PASS_ACCEPTED / CLOSED
+Report delivered at:
+  docs/strategy/TRST-2-closure-report.md
 
-Awaiting PM direction for next phase (e.g. TRST-2, production hardening, streaming, etc.)
+PM decision needed:
+  "TRST-2 CLOSED" → proceed to Hardening & Release Candidate
+
+All TRST-1 gates: CLOSED
+All TRST-2 six-phase gates: CLOSED
+
+Next recommended (per PM preference):
+  A) TRST-2 Hardening & Release Candidate
+     - Clean unstaged changes + untracked artifacts
+     - Merge to master
+     - Full smoke matrix re-run
+     - Tag v0.2-trst2-baseline
+
+Awaiting PM direction.
 ```
 
 ---
@@ -199,26 +228,39 @@ Awaiting PM direction for next phase (e.g. TRST-2, production hardening, streami
 ## Acceptance Criteria (Current Gate)
 
 ```text
-TRST-1A/1B Real Upstream Validation — 1 remaining:
+TRST-2 Six-Phase Baseline Closure Report — awaiting PM final close:
 
-1. Real /v1/chat/completions passthrough → upstream response returned unmodified
-   - model_call success event appended to .trustos/events.jsonl
-   - event_hash present
-   - session_id from header or UUID
-   - model, provider, latency_ms, cost_estimate, status = success
-   - raw prompt NOT stored in event log
-   - Shadow Report includes the successful model call
+Report delivered at:
+  docs/strategy/TRST-2-closure-report.md
+
+PM reviews report for:
+1. Phase-by-phase inventory completeness
+2. Commit→phase mapping accuracy
+3. E2E demo path reproducibility
+4. Validation matrix coverage
+5. Privacy/safety guarantee accuracy
+6. Repo readiness assessment
+7. Next track recommendation
+
+PM decision:
+  "TRST-2 CLOSED" → proceed to Hardening & Release Candidate
 ```
 
-### Already Validated (PASS_LOCAL)
+### Already Validated (TRST-2 Six-Phase Smoke Matrix)
 
 ```text
-✅ TypeScript check — 0 errors
-✅ Gateway startup — http://localhost:8787, Shadow mode
-✅ stream=true rejection — HTTP 400 + unsupported_feature + failure event
-✅ Tool Trace CLI — tool_call event, args_hash + result_hash + event_hash
-✅ Shadow Report — .trustos/shadow-report.md generated, all sections present
-✅ Event log audit — every event has event_hash, no raw content/args, privacy_flags empty
+✅ Observe:    Health metrics smoke       — 8/8 PASS
+✅ Visualize:  Events privacy smoke       — PASS
+✅ Correlate:  Trace correlation smoke    — 19/19 PASS
+✅ Correlate:  Agent chain validation     — PASS
+✅ Assess:     Risk signal smoke          — 12/12 PASS
+✅ Control:    Dry-run UI labels          — PASS (Frontend build)
+✅ Prove:      Evidence bundle smoke      — 13/13 PASS
+✅ Frontend:   Build                      — 6/6 static pages
+✅ Backend:    tsc --noEmit               — 0 errors
+✅ Privacy:    Forbidden-key scan         — 44 bundles clean
+✅ Deps:       package/lockfile unchanged — CLEAN
+✅ Config:     .env gitignored            — CLEAN
 ```
 
 ---
@@ -274,7 +316,7 @@ Current baseline:
 
 ---
 
-## File Manifest (TRST-1A/1B/1C)
+## File Manifest (TRST-1A/1B/1C + TRST-2)
 
 ```
 src/services/trst1/
@@ -284,8 +326,8 @@ src/services/trst1/
   cost-ledger-lite.ts          — Static price table, null for unknown models
   openai-compatible-forwarder.ts — Upstream OpenAI proxy
   mcp-passthrough-forwarder.ts   — MCP HTTP JSON-RPC tools/call forwarder (TRST-1C)
-  llm-gateway-server.ts        — Hono Gateway: POST /v1/chat/completions, POST /trst1/mcp/tools/call
-  shadow-report.ts             — JSONL → markdown report generator (tool_call stats TRST-1C)
+  llm-gateway-server.ts        — Hono Gateway: /chat/completions, /trst1/mcp/tools/call, /health, /events
+  shadow-report.ts             — JSONL → markdown report generator
   tool-trace-lite.ts           — Tool call event recorder
 
 scripts/trst1/
@@ -295,9 +337,26 @@ scripts/trst1/
   fake-mcp-server.ts           — Fake MCP JSON-RPC server for validation (TRST-1C)
   run-mcp-smoke.mjs            — MCP passthrough smoke test (TRST-1C)
 
+scripts/trst2/
+  run-health-metrics-smoke.mjs    — Gateway health endpoints smoke (Observe)
+  run-events-smoke.mjs            — Event privacy smoke (Visualize)
+  run-trace-correlation-smoke.mjs — Trace correlation validation (Correlate)
+  run-agent-chain-validation.mjs  — Agent chain identity validation (Correlate)
+  run-assess-signal-smoke.mjs     — Risk signal assessment smoke (Assess)
+  run-prove-evidence-smoke.mjs    — Privacy-safe evidence bundle smoke (Prove)
+
+frontend/src/
+  components/dashboard/
+    GatewayStatusCard.tsx         — Gateway health card (Observe)
+    EventChainViewer.tsx          — Event chain + RiskBadge + ControlBadge (Visualize/Assess/Control)
+  lib/
+    api.ts                        — Gateway + events API client
+    assess-utils.ts               — Assess + Control utilities (shared)
+
 docs/strategy/
-  TRST-1-mvp-test-plan.md      — Test plan + Charter deviation + acceptance criteria
-  TRST-execution-log.md        — This file (project state anchor)
+  TRST-1-mvp-test-plan.md         — TRST-1 test plan + Charter deviation
+  TRST-execution-log.md           — This file (project state anchor)
+  TRST-2-closure-report.md        — TRST-2 Six-Phase Baseline Closure Report
 ```
 
 ---
@@ -326,4 +385,4 @@ PM responsibilities:
 
 ---
 
-*Last updated: 2026-07-25 — TRST-1C FINAL CLOSE ACCEPTED. All TRST-1 gates closed. Next gate TBD by PM.*
+*Last updated: 2026-07-28 — TRST-2 Six-Phase Baseline Closure Report ready for PM final close. All TRST-2 gates closed. Awaiting PM decision.*
