@@ -16,7 +16,12 @@ export type TrstEventType =
   | "model_call"
   | "tool_call"
   | "session_lifecycle"
-  | "telemetry_failure";
+  | "telemetry_failure"
+  | "mcp_initialize"
+  | "mcp_proxy"
+  | "mcp_tool_proxy"
+  | "mcp_resource_proxy"
+  | "mcp_prompt_proxy";
 
 export type TrstEventStatus = "success" | "failure";
 

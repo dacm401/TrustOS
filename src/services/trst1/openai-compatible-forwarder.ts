@@ -70,6 +70,30 @@ export async function forwardChatCompletion(
 }
 
 /**
+ * Forward a streaming chat completion request to the upstream provider.
+ * Returns the raw upstream Response for SSE passthrough.
+ */
+export async function forwardChatCompletionStream(
+  upstreamBaseUrl: string,
+  upstreamApiKey: string,
+  body: ForwardRequest,
+): Promise<Response> {
+  const url = `${upstreamBaseUrl.replace(/\/$/, "")}/chat/completions`;
+  body.stream = true;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${upstreamApiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  return response;
+}
+
+/**
  * Check if the request has stream=true.
  */
 export function isStreamRequest(body: ForwardRequest): boolean {
