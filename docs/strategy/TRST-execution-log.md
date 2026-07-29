@@ -9,12 +9,17 @@
 ## Current Gate
 
 ```text
-TRST-2 Hardening & Release Candidate Prep — RC_READY
+NONE OPEN
 
 Last Closed Gate:
-TRST-2 Six-Phase Baseline — FINAL_ACCEPTED / CLOSED
+TRST-2 Release Candidate — FINAL_ACCEPTED / TAGGED_AND_PUSHED
+
+Release Tag:
+v0.2-trst2-baseline → 03d4d371111f5ce4c0fe80ba9fb531a1b11fd17c
 
 Previous Closed Gates:
+TRST-2 Hardening & RC Prep — ACCEPTED
+TRST-2 Six-Phase Baseline — FINAL_ACCEPTED / CLOSED
 TRST-2 Prove Discovery — PROVE_BASELINE_CLOSED
 TRST-2 Control Dry-Run Baseline — CLOSED
 TRST-2 Assess Baseline — CLOSED
@@ -48,7 +53,8 @@ TRST-1A/1B Real Upstream Validation — PASS_FULL ACCEPTED / CLOSED
 | TRST-2 Prove Baseline | PROVE_BASELINE_CLOSED | `7acc6fa` |
 | TRST-2 Closure Report | READY_FOR_PM_FINAL_CLOSE | `7acc6fa` |
 | TRST-2 Baseline | FINAL_ACCEPTED / CLOSED | `2d70dbf` |
-| TRST-2 Hardening & RC Prep | RC_READY | `2d70dbf` |
+| TRST-2 Hardening & RC Prep | ACCEPTED | `03d4d37` |
+| TRST-2 Release Candidate | TAGGED_AND_PUSHED | `03d4d37` → `v0.2-trst2-baseline` |
 
 ---
 
@@ -147,6 +153,7 @@ All 6 original PM Smoke Test acceptance criteria met, plus response integrity an
 
 ## Latest PM Decisions
 
+- **2026-07-29**: PM Final Close — TRST-2 Release Candidate at `03d4d37`. FINAL_ACCEPTED / TAGGED_AND_PUSHED. Tag `v0.2-trst2-baseline` created and pushed to GitHub. TRST-2 formally closed. Next track TBD by PM — recommend WIP isolation first, then TRST-1C MCP Spike or TRST-2B Dashboard Evidence Export.
 - **2026-07-29**: PM Final Close — TRST-2 Six-Phase Baseline at `2d70dbf`. FINAL_ACCEPTED / CLOSED. All six phases closed. Next assigned: TRST-2 Hardening & Release Candidate Prep.
 - **2026-07-28**: PM Final Acceptance — Prove Evidence Bundle Baseline at `7acc6fa`. PROVE_BASELINE_CLOSED. Next: TRST-2 Closure Report complete → awaiting PM final close. PM preference: TRST-2 Hardening & Release Candidate next.
 - **2026-07-28**: PM Final Acceptance — Control Dry-Run Baseline at `1ae31e7`. Control Discovery: dry-run labels (allow/review/would_block), ControlBadge UI, computeControlRecommendation(). Next: Prove Discovery.
@@ -184,28 +191,24 @@ All 6 original PM Smoke Test acceptance criteria met, plus response integrity an
 ## Next Allowed Actions
 
 ```text
-Current Gate: TRST-2 Hardening & Release Candidate Prep
-Status: RC_READY
+No open gate. All TRST-1 and TRST-2 gates closed.
+Next gate to be defined by PM.
 
-Hardening report delivered at:
-  docs/strategy/TRST-2-hardening-report.md
+All TRST-1 gates: CLOSED ✅
+All TRST-2 gates: CLOSED ✅
+TRST-2 RC: TAGGED_AND_PUSHED ✅
+Tag: v0.2-trst2-baseline → 03d4d37
 
-PM decision needed:
-  "Tag v0.2-trst2-baseline now" OR "Stash TRST-1C/2B diffs first" OR "Merge to master first"
-
-All TRST-1 gates: CLOSED
-All TRST-2 six-phase gates: CLOSED
-TRST-2 baseline: FINAL_ACCEPTED / CLOSED
-
-Tag command prepared (at commit 2d70dbf):
-  git tag -a v0.2-trst2-baseline -m "TRST-2 six-phase baseline"
+PM recommendation for next track:
+  1. WIP isolation / branch hygiene (stash TRST-1C/TRST-2B diffs)
+  2. Choose: A) TRST-1C MCP Spike, B) TRST-2B Dashboard Evidence Export, C) TRST-3 Productionization Discovery
 
 Repo state:
-  - 5 unstaged source files (TRST-1C/TRST-2B WIP) — preserved, not blocking
-  - ~40 untracked artifacts/docs — preserved, not blocking
-  - Working tree: NOT CLEAN but documented and non-TRST-2
+  - 5 unstaged source files (TRST-1C/TRST-2B WIP) — preserved
+  - ~40 untracked artifacts/docs — preserved
+  - Working tree: NOT CLEAN but documented and non-blocking
 
-Awaiting PM tag/merge decision.
+Awaiting PM direction for next track.
 ```
 
 ---
@@ -231,32 +234,43 @@ Awaiting PM tag/merge decision.
 
 ---
 
-## Acceptance Criteria (Current Gate)
+## Acceptance Criteria (Last Closed Gate)
 
 ```text
-TRST-2 Hardening & Release Candidate Prep — RC_READY:
+TRST-2 Release Candidate — FINAL_ACCEPTED / TAGGED_AND_PUSHED:
 
-Repo hygiene:
-✅ Generated cache files restored (3 files)
-✅ Root temp/log files deleted (22 files)
-✅ TRST-1C/TRST-2B source preserved (5 files, documented)
-✅ ~40 untracked docs/artifacts preserved and documented
+Tag:
+✅ Tag created: v0.2-trst2-baseline (annotated)
+✅ Target commit: 03d4d371111f5ce4c0fe80ba9fb531a1b11fd17c
+✅ Tag annotation: "TRST-2 six-phase baseline: Observe→Visualize→Correlate→Assess→Control(dry-run)→Prove. 16 commits, 6 phases, 0 deps, all validations PASS."
+✅ git show --stat: PASS
+✅ git rev-parse v0.2-trst2-baseline^{}: 03d4d37
 
-Validation matrix:
-✅ Frontend build — 5 static pages PASS
-✅ Backend tsc --noEmit — 0 errors
-✅ node --check all 6 smoke scripts — PASS
-⚠️ Runtime smoke — skipped (Gateway unavailable); last known: all PASS
+Push:
+✅ Pushed to origin (GitHub): ea43f57 → refs/tags/v0.2-trst2-baseline
+✅ Pushed to desktop: ea43f57 → refs/tags/v0.2-trst2-baseline
+✅ Branch s101t-typescript-debt-cleanup pushed: a104f02..03d4d37
 
-RC readiness:
-✅ Zero dependency changes in TRST-2 chain
-✅ 1 migration present (025_trst2_worker_trace_persistence.sql)
-✅ .env gitignored
-✅ Docs up to date (closure report + hardening report)
-✅ Tag command prepared
+Three-end sync:
+✅ WorkBuddy = origin/GitHub = Desktop = 03d4d37
 
-PM decision:
-  "Tag now" / "Stash first" / "Merge to master first"
+TRST-2 product state:
+✅ Observe: sanitized AI event capture
+✅ Visualize: dashboard / event chain viewing
+✅ Correlate: real caller multi-event trace grouping
+✅ Assess: metadata-only risk signal assessment
+✅ Control: dry-run allow/review/would_block recommendation
+✅ Prove: privacy-safe evidence bundle
+
+TRST-2 scope boundary held:
+✅ No raw content exposure
+✅ No runtime enforcement
+✅ No new dependencies
+✅ No policy/DLP
+✅ No signing/notarization
+✅ No auth/RBAC
+
+TRST-2 is CLOSED. Do not mutate baseline.
 ```
 
 ---
@@ -279,8 +293,10 @@ PM decision:
 ```text
 TRST-1A/1B → PASS_FULL ACCEPTED / CLOSED ✅
 TRST-1C   → PASS_ACCEPTED / CLOSED ✅
+TRST-2    → FINAL_ACCEPTED / TAGGED_AND_PUSHED ✅
 
-All TRST-1 gates closed. Next gate TBD by PM.
+All TRST-1 and TRST-2 gates closed.
+Tag v0.2-trst2-baseline → 03d4d37.
 
 Current baseline:
 - Real OpenAI-compatible LLM Gateway validated
@@ -288,7 +304,12 @@ Current baseline:
 - Real upstream forwarding validated
 - MCP HTTP JSON-RPC tools/call passthrough validated
 - Unified shadow event evidence: model_call + tool_call
-- Full project build clean: 0 errors
+- Observed, Visualized, Correlated, Assessed, dry-run Controlled, and Proved
+- Privacy-safe end-to-end AI audit baseline
+
+Full project build clean: 0 errors.
+
+Next track TBD by PM.
 ```
 
 ---
@@ -382,4 +403,4 @@ PM responsibilities:
 
 ---
 
-*Last updated: 2026-07-29 — TRST-2 FINAL_ACCEPTED / CLOSED. Hardening & RC Prep complete (RC_READY). Tag v0.2-trst2-baseline prepared. Awaiting PM tag/merge decision.*
+*Last updated: 2026-07-29 — TRST-2 FINAL_ACCEPTED / TAGGED_AND_PUSHED. v0.2-trst2-baseline → 03d4d37. All TRST gates closed. Awaiting PM next track direction.*
