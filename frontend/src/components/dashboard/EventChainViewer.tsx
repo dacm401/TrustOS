@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useGatewayEvents } from "@/hooks/useQueries";
 import type { GatewayEvent } from "@/lib/api";
 import {
@@ -13,6 +13,7 @@ import {
   type ControlRecommendation,
   type RiskLevel,
 } from "@/lib/assess-utils";
+import { buildEvidenceBundle } from "@/lib/evidence-bundle";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,11 @@ function formatEventType(type?: string | null): string {
     gateway_request: "网关请求",
     event: "事件",
     error: "错误",
+    mcp_initialize: "MCP 初始化",
+    mcp_proxy: "MCP 代理",
+    mcp_tool_proxy: "MCP 工具代理",
+    mcp_resource_proxy: "MCP 资源代理",
+    mcp_prompt_proxy: "MCP 提示词代理",
   };
   return map[type] ?? type;
 }
@@ -240,12 +246,16 @@ function GroupHeader({
   riskLevel,
   signalCount,
   controlAction,
+  onExport,
+  exportStatus,
 }: {
   label: string;
   count: number;
   riskLevel?: RiskLevel;
   signalCount?: number;
   controlAction?: ControlRecommendation;
+  onExport?: () => void;
+  exportStatus?: string | null;
 }) {
   return (
     <div
@@ -269,15 +279,44 @@ function GroupHeader({
           <ControlBadge recommendation={controlAction} />
         )}
       </div>
-      <span
-        className="text-xs rounded-full px-2 py-0.5"
-        style={{
-          backgroundColor: "rgba(59,130,246,0.15)",
-          color: "var(--accent-blue)",
-        }}
-      >
-        {count} 事件
-      </span>
+      <div className="flex items-center gap-2">
+        {onExport && (
+          <button
+            onClick={onExport}
+            className="text-xs rounded px-2 py-0.5 font-medium transition-colors"
+            style={{
+              backgroundColor: "rgba(100,116,139,0.10)",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border-subtle)",
+              cursor: "pointer",
+            }}
+            title="Generate privacy-safe evidence JSON &amp; copy to clipboard"
+          >
+            Export Evidence (dry-run)
+          </button>
+        )}
+        {exportStatus && (
+          <span
+            className="text-xs"
+            style={{
+              color: exportStatus.startsWith("Evidence copied")
+                ? "var(--accent-green)"
+                : "var(--text-muted)",
+            }}
+          >
+            {exportStatus}
+          </span>
+        )}
+        <span
+          className="text-xs rounded-full px-2 py-0.5"
+          style={{
+            backgroundColor: "rgba(59,130,246,0.15)",
+            color: "var(--accent-blue)",
+          }}
+        >
+          {count} 事件
+        </span>
+      </div>
     </div>
   );
 }
@@ -397,6 +436,41 @@ export default function EventChainViewer() {
     return { allow, review, wouldBlock };
   }, [controlByKey]);
 
+  // ── Evidence Export ────────────────────────────────────────────────────────
+  // Copy-only, frontend-only, privacy-safe evidence bundle per trace group.
+
+  const [exportStatus, setExportStatus] = useState<Record<string, string>>({});
+
+  const handleExport = useCallback(
+    async (groupKey: string, events: GatewayEvent[]) => {
+      try {
+        const bundle = buildEvidenceBundle(groupKey, events);
+        const json = JSON.stringify(bundle, null, 2);
+        await navigator.clipboard.writeText(json);
+        const ass = assessmentByKey.get(groupKey);
+        const riskLabel = ass?.riskLevel ?? "none";
+        setExportStatus((prev) => ({
+          ...prev,
+          [groupKey]: `Evidence copied — ${events.length} events, risk ${riskLabel}`,
+        }));
+      } catch {
+        setExportStatus((prev) => ({
+          ...prev,
+          [groupKey]: "Evidence export failed",
+        }));
+      }
+      // Clear status after 3s
+      setTimeout(() => {
+        setExportStatus((prev) => {
+          const next = { ...prev };
+          delete next[groupKey];
+          return next;
+        });
+      }, 3000);
+    },
+    [assessmentByKey]
+  );
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -425,6 +499,8 @@ export default function EventChainViewer() {
                 riskLevel={ass?.riskLevel}
                 signalCount={ass?.signals.length}
                 controlAction={ctrl}
+                onExport={() => handleExport(groupKey, events)}
+                exportStatus={exportStatus[groupKey] ?? null}
               />
               {events.map((event, idx) => (
                 <EventRow
