@@ -57,6 +57,11 @@ export interface TraceAssessment {
 
 // ── Event-level signal checks ─────────────────────────────────────────────────
 
+/** Hash is missing if undefined, null, or empty string. */
+function isMissingHash(value: unknown): boolean {
+  return value === undefined || value === null || value === "";
+}
+
 function computeEventSignals(ev: GatewayEvent): AssessSignalDef[] {
   const sigs: AssessSignalDef[] = [];
 
@@ -68,20 +73,20 @@ function computeEventSignals(ev: GatewayEvent): AssessSignalDef[] {
     sigs.push(SIGNALS.MODEL_PROVIDER_UNKNOWN);
   }
 
-  // Privacy — hash presence (use 'key' in ev to distinguish absent vs empty)
+  // Privacy — hash presence
   if (!ev.event_hash) {
     sigs.push(SIGNALS.MISSING_EVENT_HASH);
   }
-  if (ev.event_type === "model_call" && "input_hash" in ev && !ev.input_hash) {
+  if (ev.event_type === "model_call" && isMissingHash(ev.input_hash)) {
     sigs.push(SIGNALS.MISSING_INPUT_HASH);
   }
-  if (ev.event_type === "model_call" && ev.status === "success" && "output_hash" in ev && !ev.output_hash) {
+  if (ev.event_type === "model_call" && ev.status === "success" && isMissingHash(ev.output_hash)) {
     sigs.push(SIGNALS.MISSING_OUTPUT_HASH);
   }
-  if (ev.event_type === "tool_call" && "args_hash" in ev && !ev.args_hash) {
+  if (ev.event_type === "tool_call" && isMissingHash(ev.args_hash)) {
     sigs.push(SIGNALS.MISSING_ARGS_HASH);
   }
-  if (ev.event_type === "tool_call" && ev.status === "success" && "result_hash" in ev && !ev.result_hash) {
+  if (ev.event_type === "tool_call" && ev.status === "success" && isMissingHash(ev.result_hash)) {
     sigs.push(SIGNALS.MISSING_RESULT_HASH);
   }
 

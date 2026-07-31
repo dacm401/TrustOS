@@ -63,7 +63,7 @@ function buildIdentity(c: Context, projectId: string) {
   return {
     sessionId: getHeader(c, "X-TrustOS-Session-Id") ?? uuidv4(),
     traceId: getHeader(c, "X-TrustOS-Trace-Id") ?? uuidv4(),
-    agentId: getHeader(c, "X-TrustOS-Agent-Id") ?? "unknown-agent",
+    agentId: getHeader(c, "X-TrustOS-Agent-Id") ?? "direct-gateway-call",
     actorId: getHeader(c, "X-TrustOS-Actor-Id") ?? "local-user",
     runId: getHeader(c, "X-TrustOS-Run-Id") ?? uuidv4(),
     projectId,
@@ -483,6 +483,16 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       privacy_flags: [],
       status: result.status >= 200 && result.status < 300 ? "success" : "failure",
     };
+
+    // Compute output_hash for successful non-streaming model calls
+    if (event.status === "success") {
+      const choices = (result.body as Record<string, unknown>)?.choices as
+        Array<{ message?: { content?: string } }> | undefined;
+      const responseContent = choices?.[0]?.message?.content;
+      if (typeof responseContent === "string") {
+        event.output_hash = createHash("sha256").update(responseContent).digest("hex");
+      }
+    }
 
     // If upstream returned error status, add error info
     if (result.status >= 400) {

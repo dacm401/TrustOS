@@ -67,6 +67,11 @@ const SIGNALS = {
 
 // ── Signal Computation (mirror: run-assess-signal-smoke.mjs) ──────────────────
 
+/** Hash is missing if undefined, null, or empty string. */
+function isMissingHash(value) {
+  return value === undefined || value === null || value === '';
+}
+
 function computeEventSignals(ev) {
   const signals = [];
   if (typeof ev.latency_ms === 'number' && ev.latency_ms > 30000)
@@ -82,13 +87,13 @@ function computeEventSignals(ev) {
 
   if (!ev.event_hash)
     signals.push(SIGNALS.MISSING_EVENT_HASH);
-  if (ev.event_type === 'model_call' && 'input_hash' in ev && !ev.input_hash)
+  if (ev.event_type === 'model_call' && isMissingHash(ev.input_hash))
     signals.push(SIGNALS.MISSING_INPUT_HASH);
-  if (ev.event_type === 'model_call' && ev.status === 'success' && 'output_hash' in ev && !ev.output_hash)
+  if (ev.event_type === 'model_call' && ev.status === 'success' && isMissingHash(ev.output_hash))
     signals.push(SIGNALS.MISSING_OUTPUT_HASH);
-  if (ev.event_type === 'tool_call' && 'args_hash' in ev && !ev.args_hash)
+  if (ev.event_type === 'tool_call' && isMissingHash(ev.args_hash))
     signals.push(SIGNALS.MISSING_ARGS_HASH);
-  if (ev.event_type === 'tool_call' && ev.status === 'success' && 'result_hash' in ev && !ev.result_hash)
+  if (ev.event_type === 'tool_call' && ev.status === 'success' && isMissingHash(ev.result_hash))
     signals.push(SIGNALS.MISSING_RESULT_HASH);
 
   if (!ev.trace_id)
