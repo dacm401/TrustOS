@@ -451,17 +451,58 @@ export interface GatewayEventsResponse {
   status: string;
   service: string;
   mode: string;
+  page?: number;
   limit: number;
+  total?: number;
+  has_more?: boolean;
   events_count: number;
   returned_count: number;
   events: GatewayEvent[];
 }
 
-export async function fetchGatewayEvents(limit?: number): Promise<GatewayEventsResponse> {
-  const url = limit != null
-    ? `${GATEWAY_URL}/events?limit=${limit}`
-    : `${GATEWAY_URL}/events`;
+export interface GatewayEventsParams {
+  limit?: number;
+  page?: number;
+  session_id?: string;
+  event_type?: string;
+  agent_id?: string;
+}
+
+export async function fetchGatewayEvents(params: GatewayEventsParams = {}): Promise<GatewayEventsResponse> {
+  const sp = new URLSearchParams();
+  if (params.limit) sp.set("limit", String(params.limit));
+  if (params.page) sp.set("page", String(params.page));
+  if (params.session_id) sp.set("session_id", params.session_id);
+  if (params.event_type) sp.set("event_type", params.event_type);
+  if (params.agent_id) sp.set("agent_id", params.agent_id);
+  const qs = sp.toString();
+  const url = qs ? `${GATEWAY_URL}/events?${qs}` : `${GATEWAY_URL}/events`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`网关事件查询失败 (${res.status})`);
+  return res.json();
+}
+
+export interface GatewaySessionItem {
+  session_id: string;
+  first_event: string;
+  last_event: string;
+  event_count: number;
+  model_calls: number;
+  tool_calls: number;
+  total_tokens: number;
+  agents: string[];
+}
+
+export interface GatewaySessionsResponse {
+  status: string;
+  service: string;
+  mode: string;
+  returned_count: number;
+  sessions: GatewaySessionItem[];
+}
+
+export async function fetchGatewaySessions(limit = 20): Promise<GatewaySessionsResponse> {
+  const res = await fetch(`${GATEWAY_URL}/sessions?limit=${limit}`);
+  if (!res.ok) throw new Error(`会话查询失败 (${res.status})`);
   return res.json();
 }

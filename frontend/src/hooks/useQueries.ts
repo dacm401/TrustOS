@@ -12,7 +12,10 @@ import {
   fetchHealth,
   fetchGatewayHealth,
   fetchGatewayEvents,
-  getApiConfig,
+  fetchGatewaySessions,
+  type GatewayEventsResponse,
+  type GatewayEventsParams,
+  type GatewaySessionsResponse,
   type MemoryEntry,
   type CostStats,
   type HealthStatus,
@@ -138,15 +141,32 @@ export function useGatewayHealth() {
   });
 }
 
-// TRST-2E Gateway Events (polled)
-export function useGatewayEvents(limit: number = 50) {
+// TRST-4C Gateway Events (paginated, filterable)
+export function useGatewayEvents(params: GatewayEventsParams = {}) {
+  const key = ['gateway-events', params.page || 1, params.limit || 50, params.session_id, params.event_type, params.agent_id];
   return useQuery<GatewayEventsResponse>({
-    queryKey: ['gateway-events', limit],
-    queryFn: () => fetchGatewayEvents(limit),
+    queryKey: key,
+    queryFn: () => fetchGatewayEvents(params),
     staleTime: 10 * 1000,
     refetchInterval: 30000,
     retry: 2,
   });
+}
+
+// TRST-4C Gateway Sessions
+export function useGatewaySessions(limit = 20) {
+  return useQuery<GatewaySessionsResponse>({
+    queryKey: ['gateway-sessions', limit],
+    queryFn: () => fetchGatewaySessions(limit),
+    staleTime: 30 * 1000,
+    refetchInterval: 60000,
+    retry: 2,
+  });
+}
+
+// Legacy wrapper for components using old signature
+export function useGatewayEventsLegacy(limit: number = 50) {
+  return useGatewayEvents({ limit, page: 1 });
 }
 
 // Task summary (custom endpoint per task)

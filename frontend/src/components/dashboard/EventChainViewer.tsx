@@ -15,6 +15,76 @@ import {
 } from "@/lib/assess-utils";
 import { buildEvidenceBundle } from "@/lib/evidence-bundle";
 
+// ── Reviewer Explanation Panel ──────────────────────────────────────────────
+// Provides plain-language explanations for risk, control dry-run, and evidence
+// to make TrustOS governance output understandable to Private Beta reviewers.
+
+function ReviewerExplanation() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-xs font-medium transition-colors"
+        style={{
+          color: "var(--accent-blue)",
+          cursor: "pointer",
+          background: "none",
+          border: "none",
+          padding: 0,
+        }}
+      >
+        {open ? "▾ " : "▸ "}解释说明 (Reviewer Guide)
+      </button>
+      {open && (
+        <div
+          className="mt-2 rounded-lg p-3 text-xs space-y-2"
+          style={{
+            backgroundColor: "rgba(59,130,246,0.04)",
+            border: "1px solid rgba(59,130,246,0.12)",
+            color: "var(--text-secondary)",
+            lineHeight: 1.6,
+          }}
+        >
+          <div>
+            <strong style={{ color: "var(--text-primary)" }}>风险评估 (Risk Assessment)</strong>
+            <br />
+            基于治理信号自动评估。信号检测隐私泄露、操作异常和证据完整性。
+            <br />
+            <span style={{ color: RISK_EXPLANATION.low.fg }}>低风险</span> — 未检测到可疑信号
+            {" · "}
+            <span style={{ color: RISK_EXPLANATION.medium.fg }}>中风险</span> — 存在需关注的治理信号
+            {" · "}
+            <span style={{ color: RISK_EXPLANATION.high.fg }}>高风险</span> — 检测到隐私/安全敏感信号
+          </div>
+          <div>
+            <strong style={{ color: "var(--text-primary)" }}>控制建议 (Dry-Run Control)</strong>
+            <br />
+            TrustOS 提供控制建议，但<span style={{ color: "var(--accent-green)", fontWeight: 600 }}>不实际拦截、修改或修复任何请求</span> (dry-run)。
+            <br />
+            通过 — 无治理信号触发 · 复核 — 建议人工检查 · 拦截 — 建议阻止（dry-run only，未实际拦截）
+          </div>
+          <div>
+            <strong style={{ color: "var(--text-primary)" }}>证据导出 (Evidence Export)</strong>
+            <br />
+            证据包包含哈希值和元数据，<span style={{ fontWeight: 600 }}>不包含原始提示词、原始输出或原始模型响应</span>。
+            导出为前端复制到剪贴板，TrustOS 后端不持久化证据包。
+            哈希值可用于 reviewer 独立复核输出一致性。
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Risk explanation colors (same as RISK_COLORS but declared early for ReviewerExplanation)
+const RISK_EXPLANATION: Record<RiskLevel, { fg: string }> = {
+  none:   { fg: "#94a3b8" },
+  low:    { fg: "#16a34a" },
+  medium: { fg: "#ca8a04" },
+  high:   { fg: "#dc2626" },
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function truncateHash(hash?: string | null): string {
@@ -121,13 +191,20 @@ const RISK_COLORS: Record<RiskLevel, { bg: string; fg: string; label: string }> 
   high:  { bg: "rgba(239,68,68,0.10)",  fg: "#dc2626", label: "高" },
 };
 
+const RISK_TOOLTIPS: Record<RiskLevel, string> = {
+  none:   "无风险 — 未检测到治理信号",
+  low:    "低风险 — 检测到低严重性操作/完整性信号",
+  medium: "中风险 — 存在需 reviewer 关注的治理信号",
+  high:   "高风险 — 检测到隐私泄漏/安全敏感信号",
+};
+
 function RiskBadge({ level, signalCount }: { level: RiskLevel; signalCount: number }) {
   const c = RISK_COLORS[level];
   return (
     <span
       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium"
       style={{ backgroundColor: c.bg, color: c.fg }}
-      title={signalCount > 0 ? `${signalCount} 个信号` : "无信号"}
+      title={signalCount > 0 ? `${signalCount} 个信号: ${RISK_TOOLTIPS[level]}` : RISK_TOOLTIPS[level]}
     >
       <span>{c.label}</span>
       {signalCount > 0 && (
@@ -148,15 +225,14 @@ const CONTROL_LABELS: Record<ControlAction, { bg: string; fg: string; label: str
 
 function ControlBadge({ recommendation }: { recommendation: ControlRecommendation }) {
   const c = CONTROL_LABELS[recommendation.action];
+  const base = recommendation.reasons.length > 0
+    ? `理由: ${recommendation.reasons.join(", ")}。`
+    : "";
   return (
     <span
       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium"
       style={{ backgroundColor: c.bg, color: c.fg, border: `1px solid ${c.fg}20` }}
-      title={
-        recommendation.reasons.length > 0
-          ? `理由: ${recommendation.reasons.join(", ")} (dry-run)`
-          : "dry-run — 无控制信号"
-      }
+      title={`${base}Dry-run: TrustOS 未实际拦截、修改或修复任何请求。`}
     >
       <span>{c.label}</span>
       <span style={{ opacity: 0.5, fontSize: "0.65rem" }}>dry-run</span>
@@ -290,7 +366,7 @@ function GroupHeader({
               border: "1px solid var(--border-subtle)",
               cursor: "pointer",
             }}
-            title="Generate privacy-safe evidence JSON &amp; copy to clipboard"
+            title="生成隐私安全证据包 (哈希+元数据，不含原始内容)，复制到剪贴板。TrustOS 后端不持久化证据包。"
           >
             Export Evidence (dry-run)
           </button>
@@ -324,7 +400,8 @@ function GroupHeader({
 // ── EventChainViewer ─────────────────────────────────────────────────────────
 
 export default function EventChainViewer() {
-  const { data, isLoading, isError } = useGatewayEvents(50);
+  const [page, setPage] = useState(1);
+  const { data, isLoading, isError } = useGatewayEvents({ page, limit: 20 });
   const cardStyle = {
     backgroundColor: "var(--bg-surface)",
     border: "1px solid var(--border-subtle)",
@@ -451,7 +528,7 @@ export default function EventChainViewer() {
         const riskLabel = ass?.riskLevel ?? "none";
         setExportStatus((prev) => ({
           ...prev,
-          [groupKey]: `Evidence copied — ${events.length} events, risk ${riskLabel}`,
+          [groupKey]: `Evidence copied (privacy-safe, copy-only) — ${events.length} events, risk ${riskLabel}`,
         }));
       } catch {
         setExportStatus((prev) => ({
@@ -483,9 +560,11 @@ export default function EventChainViewer() {
           事件链
         </h3>
         <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-          {data.returned_count}/{data.events_count} 事件
+          第{page}页 · {data.total ?? data.events_count} 事件
         </span>
       </div>
+
+      <ReviewerExplanation />
 
       <div className="space-y-4">
         {groupEntries.map(([groupKey, events]) => {
@@ -522,7 +601,16 @@ export default function EventChainViewer() {
         }}
       >
         <span>{groupEntries.length} 个分组</span>
-        <span>{data.events_count} 个总事件</span>
+        <span>{data.total ?? data.events_count} 个总事件</span>
+        {data.has_more && (
+          <button
+            onClick={() => setPage(p => p + 1)}
+            className="px-3 py-1 rounded"
+            style={{ background: "var(--accent)", color: "#fff", cursor: "pointer", border: "none", fontSize: "0.75rem" }}
+          >
+            加载更多 (第{page + 1}页)
+          </button>
+        )}
         {(dist.low > 0 || dist.medium > 0 || dist.high > 0) && (
           <span className="flex items-center gap-1.5">
             风险:

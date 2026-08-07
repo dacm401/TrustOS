@@ -34,7 +34,8 @@
     "trst3:smoke": "node scripts/trst3/run-private-beta-smoke.mjs",
     "trst3:trace-demo": "node scripts/trst3/run-multi-event-trace-demo.mjs",
     "trst4:report-smoke": "npx tsx scripts/trst4/run-evidence-report-smoke.ts",
-    "trst4b:streaming-smoke": "npx tsx scripts/trst4b/run-streaming-smoke.ts"
+    "trst4b:streaming-smoke": "npx tsx scripts/trst4b/run-streaming-smoke.ts",
+    "trst4c:smoke": "node scripts/trst4c/run-smoke.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.0",
