@@ -22,7 +22,7 @@ Current Phase:
 
   TRST-4A Evidence Report UX: SEALED ✅
   TRST-4B Streaming Validation & Hardening: SEALED ✅
-  TRST-4X Console Surface Rebaseline: IMPLEMENTED_PENDING_VALIDATION ⚠️
+  TRST-4X Console Surface Rebaseline: COMPLETE ✅
 
   KEY OUTCOME: Streaming was already implemented (TRST-2 era). TRST-4B validated,
   hardened client disconnect, added request_mode field, fixed report labels, and
@@ -253,15 +253,17 @@ NOT Authorized:
   ❌ Architecture rewrite, new deps without justification
   ❌ TRST-4H implementation (Charter + PM approval required first)
 
-Current Milestone: TRST-4X validation → commit → agent selects TRST-4C charter
+Current Milestone: TRST-4X committed (cf4f6cf) → follow-up F1/F2/F3 decision → TRST-4C charter
 ```
 
 ---
 
-## Hold Items (Sequenced — TRST-4X validation in progress)
+## Hold Items (Sequenced — TRST-4X COMPLETE ✅, follow-up F1/F2/F3 pending)
 
 ```text
-- Console surface rebaseline → TRST-4X (IMPLEMENTED, pending validation)
+- Chat→Gateway integration decision → F1 (TRST-4Y charter candidate)
+- Streaming smoke 29/37 investigation → F2
+- Admin panel boundary disclaimer → F3
 - Durable evidence store → TRST-4C
 - Backend assessment API → TRST-4D
 - Policy enforcement / blocking → TRST-4F
@@ -275,7 +277,7 @@ Current Milestone: TRST-4X validation → commit → agent selects TRST-4C chart
 |---|---|---|---|---|---|
 | **4A** | Evidence Report UX | SEALED ✅ | COMPLETE | 14/14 smoke, 20/20 regression | 8 files, +814 lines |
 | **4B** | Streaming Validation & Hardening | SEALED ✅ | COMPLETE ✅ | tsc 0, build 6/6, TRST-4A 14/14, overclaim PASS | 9 files, +322/-12 lines |
-| **4X** | Console Surface Rebaseline | PENDING VALIDATION ⚠️ | COMPLETE ✅ | pending | ~20 files, dead UI cleanup + nav rebaseline |
+| **4X** | Console Surface Rebaseline | COMPLETE ✅ | COMPLETE ✅ | tsc 0, build 5/5, 20/20 trst3 smoke, 14/14 trst4a smoke | 30 files, +3114/-2203 lines, commit cf4f6cf |
 | 4C | Durable Evidence Store | Pending | ❌ | — | — |
 | 4D | Backend Assessment API | Pending | ❌ | — | — |
 | 4E | Authenticated Identity | Pending | ❌ | — | — |
