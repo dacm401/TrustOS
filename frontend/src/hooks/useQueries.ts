@@ -13,8 +13,6 @@ import {
   fetchGatewayHealth,
   fetchGatewayEvents,
   getApiConfig,
-  getDashboard,
-  getGrowth,
   type MemoryEntry,
   type CostStats,
   type HealthStatus,
@@ -109,26 +107,6 @@ export function useTraces(taskId: string | null, userId: string) {
   });
 }
 
-// Dashboard
-export function useDashboard(userId: string) {
-  return useQuery({
-    queryKey: ['dashboard', userId],
-    queryFn: () => getDashboard(userId),
-    staleTime: 1 * 60 * 1000,
-    refetchInterval: 30000, // 30 秒轮询
-    enabled: !!userId,
-  });
-}
-
-export function useGrowth(userId: string) {
-  return useQuery({
-    queryKey: ['growth', userId],
-    queryFn: () => getGrowth(userId),
-    staleTime: 2 * 60 * 1000,
-    enabled: !!userId,
-  });
-}
-
 // Decision (debug panel)
 export function useDecision(taskId: string | null, userId: string) {
   return useQuery({
@@ -186,16 +164,6 @@ export function useTaskSummary(taskId: string | null, userId: string) {
     },
     enabled: !!taskId,
     staleTime: 30 * 1000,
-  });
-}
-
-// Performance charts
-export function usePerformance(userId: string, range: string = "7d") {
-  return useQuery({
-    queryKey: ['performance', userId, range],
-    queryFn: () => fetchPerformance(userId, range),
-    enabled: !!userId,
-    staleTime: 1 * 60 * 1000,
   });
 }
 

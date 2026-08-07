@@ -1,48 +1,34 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/query-client';
 import { SettingsModal } from "@/components/chat/SettingsModal";
-import { TaskPanel } from "@/components/workbench/TaskPanel";
 import { EvidencePanel } from "@/components/workbench/EvidencePanel";
-import { TracePanel } from "@/components/workbench/TracePanel";
 import { HealthPanel } from "@/components/workbench/HealthPanel";
 import { DebugPanel } from "@/components/workbench/DebugPanel";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
-import MemoryView from "@/components/views/MemoryView";
-import DashboardView from "@/components/views/DashboardView";
-import BetaPanel from "@/components/dashboard/BetaPanel";
+import { ChatInterface } from "@/components/chat/ChatInterface";
+import OverviewView from "@/components/views/OverviewView";
 import AdminPanel from "@/components/dashboard/AdminPanel";
-import TasksView from "@/components/views/TasksView";
-import { ManagerWorkspace } from "@/components/manager-workspace/ManagerWorkspace";
+import EventChainViewer from "@/components/dashboard/EventChainViewer";
+import GatewayStatusCard from "@/components/dashboard/GatewayStatusCard";
+import EvidenceReportPanel from "@/components/dashboard/EvidenceReportPanel";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
-type NavView = "chat" | "tasks" | "memory" | "dashboard" | "beta" | "admin";
+type NavView = "chat" | "overview" | "evidence" | "events" | "gateway" | "advanced";
+type AdvancedTab = "diagnostics" | "admin";
 
 const DEFAULT_USER_ID = "dev-user";
-
-type WorkbenchTab = "evidence" | "trace" | "health" | "debug";
 
 export default function HomePage() {
   const [showSettings, setShowSettings] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [workbenchTab, setWorkbenchTab] = useState<WorkbenchTab>("evidence");
-  const [userId, setUserId] = useState(DEFAULT_USER_ID);
+  const [selectedTaskId] = useState<string | null>(null);
+  const [userId] = useState(DEFAULT_USER_ID);
   const [activeNav, setActiveNav] = useState<NavView>("chat");
-  const [adminKey, setAdminKey] = useState("admin-changeme");
-
-  useEffect(() => {
-    setAdminKey(localStorage?.getItem("trustos_admin_key") ?? "admin-changeme");
-  }, []);
-
-  const tabs: { id: WorkbenchTab; icon: string; label: string }[] = [
-    { id: "evidence", icon: "🔍", label: "证据" },
-    { id: "trace", icon: "⚡", label: "轨迹" },
-    { id: "health", icon: "💚", label: "健康" },
-    { id: "debug", icon: "🔧", label: "调试" },
-  ];
+  const [advancedTab, setAdvancedTab] = useState<AdvancedTab>("diagnostics");
+  const [adminKey] = useState("admin-changeme");
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -53,171 +39,183 @@ export default function HomePage() {
         {/* Header */}
         <Header
           userId={userId}
-          onUserIdChange={setUserId}
+          onUserIdChange={() => {}}
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen((v) => !v)}
         />
 
-        {/* Body: Sidebar + Chat + optional Workbench */}
+        {/* Body: Sidebar + Main View */}
         <div className="flex flex-1 overflow-hidden">
           {/* Left: Sidebar */}
-          <Sidebar activeNav={activeNav} onNavChange={(id) => setActiveNav(id as NavView)} onSettingsClick={() => setShowSettings(true)} />
+          <Sidebar
+            activeNav={activeNav}
+            onNavChange={(id) => setActiveNav(id as NavView)}
+            onSettingsClick={() => setShowSettings(true)}
+          />
 
-          {/* Center: View Area — 条件渲染，仅挂载当前 active view */}
-          <main
-            className="flex-1 overflow-hidden"
-            style={{ maxWidth: sidebarOpen ? undefined : "100%" }}
-          >
+          {/* Center: Main View Area */}
+          <main className="flex-1 overflow-hidden">
+            {/* Chat — primary interaction */}
             {activeNav === "chat" && (
-              <ErrorBoundary fallback={
-                <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  ⚠️ 聊天界面加载失败，请刷新页面重试
-                </div>
-              }>
-                <div style={{ height: "100%" }}>
-                  <ManagerWorkspace userId={userId} />
+              <ErrorBoundary>
+                <ChatInterface userId={userId} />
+              </ErrorBoundary>
+            )}
+
+            {/* Overview */}
+            {activeNav === "overview" && (
+              <ErrorBoundary>
+                <OverviewView />
+              </ErrorBoundary>
+            )}
+
+            {/* Evidence Report */}
+            {activeNav === "evidence" && (
+              <ErrorBoundary>
+                <div className="h-full overflow-y-auto p-6">
+                  <div className="max-w-5xl mx-auto space-y-6">
+                    <h1
+                      className="text-xl font-semibold"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      📋 Evidence Report
+                    </h1>
+                    <p
+                      className="text-sm"
+                      style={{ color: "var(--text-secondary)" }}
+                    >
+                      TRST-4A — Reviewer-facing evidence report with hash verification,
+                      privacy statement, and known limitations.
+                    </p>
+                    <EvidenceReportPanel />
+                    {/* Task-level evidence (when task selected) */}
+                    <EvidencePanel taskId={selectedTaskId} userId={userId} />
+                  </div>
                 </div>
               </ErrorBoundary>
             )}
 
-            {activeNav === "tasks" && (
-              <ErrorBoundary fallback={
-                <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  ⚠️ 任务视图加载失败，请刷新页面重试
-                </div>
-              }>
+            {/* Events & Traces */}
+            {activeNav === "events" && (
+              <ErrorBoundary>
                 <div style={{ height: "100%" }}>
-                  <TasksView userId={userId} />
+                  <EventChainViewer />
                 </div>
               </ErrorBoundary>
             )}
 
-            {activeNav === "memory" && (
-              <ErrorBoundary fallback={
-                <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  ⚠️ 记忆视图加载失败，请刷新页面重试
-                </div>
-              }>
-                <div style={{ height: "100%" }}>
-                  <MemoryView userId={userId} />
-                </div>
-              </ErrorBoundary>
-            )}
-
-            {activeNav === "dashboard" && (
-              <ErrorBoundary fallback={
-                <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  ⚠️ 数据面板加载失败，请刷新页面重试
-                </div>
-              }>
-                <div style={{ height: "100%" }}>
-                  <DashboardView userId={userId} />
-                </div>
-              </ErrorBoundary>
-            )}
-
-            {activeNav === "beta" && (
-              <ErrorBoundary fallback={
-                <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  ⚠️ 数据面板加载失败，请刷新页面重试
-                </div>
-              }>
-                <div style={{ height: "100%" }}>
-                  <BetaPanel userId={userId} />
+            {/* Gateway */}
+            {activeNav === "gateway" && (
+              <ErrorBoundary>
+                <div className="h-full overflow-y-auto p-6">
+                  <div className="max-w-5xl mx-auto space-y-6">
+                    <h1
+                      className="text-xl font-semibold"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      ⚙️ Gateway
+                    </h1>
+                    <GatewayStatusCard />
+                    <div className="rounded-xl border p-6" style={{
+                      backgroundColor: "var(--bg-surface)",
+                      borderColor: "var(--border-subtle)",
+                    }}>
+                      <h3 className="text-sm font-semibold mb-4" style={{ color: "var(--text-primary)" }}>
+                        System Health
+                      </h3>
+                      <HealthPanel />
+                    </div>
+                  </div>
                 </div>
               </ErrorBoundary>
             )}
 
-            {activeNav === "admin" && (
-              <ErrorBoundary fallback={
-                <div className="flex items-center justify-center h-full p-8 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  ⚠️ 数据面板加载失败，请刷新页面重试
-                </div>
-              }>
-                <div style={{ height: "100%" }}>
-                  <AdminPanel adminKey={adminKey} />
-                </div>
-              </ErrorBoundary>
-            )}
-          </main>
-
-          {/* Right: Workbench Sidebar — hidden when ManagerWorkspace (chat) is active */}
-          {sidebarOpen && activeNav !== "chat" && (
-            <aside
-              className="w-96 flex-shrink-0 flex flex-col overflow-hidden"
-              style={{
-                backgroundColor: "var(--bg-surface)",
-                borderLeft: "1px solid var(--border-subtle)",
-              }}
-            >
-              {/* Task Panel: top fixed height */}
-              <div
-                className="flex-shrink-0 overflow-hidden"
-                style={{ height: 220, borderBottom: "1px solid var(--border-subtle)" }}
-              >
-                <TaskPanel
-                  userId={userId}
-                  onTaskSelect={setSelectedTaskId}
-                  selectedTaskId={selectedTaskId}
-                />
-              </div>
-
-              {/* Tab content area: flex-1 */}
-              <div className="flex flex-col flex-1 overflow-hidden">
-                {/* Tab bar */}
-                <div
-                  className="flex flex-shrink-0"
-                  style={{ borderBottom: "1px solid var(--border-subtle)" }}
-                >
-                  {tabs.map((tab) => (
+            {/* Advanced */}
+            {activeNav === "advanced" && (
+              <ErrorBoundary>
+                <div className="h-full flex flex-col overflow-hidden">
+                  {/* Advanced tab bar */}
+                  <div
+                    className="flex flex-shrink-0 border-b px-4"
+                    style={{
+                      backgroundColor: "var(--bg-surface)",
+                      borderColor: "var(--border-subtle)",
+                    }}
+                  >
                     <button
-                      key={tab.id}
-                      onClick={() => setWorkbenchTab(tab.id)}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs transition-all relative"
+                      onClick={() => setAdvancedTab("diagnostics")}
+                      className="px-4 py-2.5 text-sm transition-all relative"
                       style={{
-                        color: workbenchTab === tab.id ? "var(--text-accent)" : "var(--text-muted)",
-                        backgroundColor: workbenchTab === tab.id ? "var(--bg-overlay)" : "transparent",
+                        color: advancedTab === "diagnostics" ? "var(--text-accent)" : "var(--text-muted)",
                       }}
                     >
-                      <span className="text-[11px]">{tab.icon}</span>
-                      <span className="hidden xl:inline">{tab.label}</span>
-                      {/* Active underline */}
-                      {workbenchTab === tab.id && (
+                      🔍 Diagnostics
+                      {advancedTab === "diagnostics" && (
                         <span
                           className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
                           style={{ backgroundColor: "var(--accent-blue)" }}
                         />
                       )}
                     </button>
-                  ))}
-                </div>
+                    <button
+                      onClick={() => setAdvancedTab("admin")}
+                      className="px-4 py-2.5 text-sm transition-all relative"
+                      style={{
+                        color: advancedTab === "admin" ? "var(--text-accent)" : "var(--text-muted)",
+                      }}
+                    >
+                      🛡️ Admin
+                      {advancedTab === "admin" && (
+                        <span
+                          className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
+                          style={{ backgroundColor: "var(--accent-blue)" }}
+                        />
+                      )}
+                    </button>
+                  </div>
 
-                {/* Tab content */}
-                <div className="flex-1 overflow-hidden">
-                  {workbenchTab === "evidence" && (
-                    <ErrorBoundary>
-                      <EvidencePanel taskId={selectedTaskId} userId={userId} />
-                    </ErrorBoundary>
-                  )}
-                  {workbenchTab === "trace" && (
-                    <ErrorBoundary>
-                      <TracePanel taskId={selectedTaskId} userId={userId} />
-                    </ErrorBoundary>
-                  )}
-                  {workbenchTab === "health" && (
-                    <ErrorBoundary>
-                      <HealthPanel />
-                    </ErrorBoundary>
-                  )}
-                  {workbenchTab === "debug" && (
-                    <ErrorBoundary>
-                      <DebugPanel taskId={selectedTaskId} userId={userId} />
-                    </ErrorBoundary>
-                  )}
+                  {/* Advanced tab content */}
+                  <div className="flex-1 overflow-y-auto">
+                    {advancedTab === "diagnostics" && (
+                      <div className="p-6 max-w-5xl mx-auto space-y-6">
+                        <div
+                          className="rounded-xl border p-4 mb-4"
+                          style={{
+                            backgroundColor: "var(--bg-warning-subtle, rgba(245,158,11,0.08))",
+                            borderColor: "var(--border-warning, var(--border-subtle))",
+                          }}
+                        >
+                          <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                            ⚠️ <strong>Developer Diagnostics</strong> — Local development only.
+                            Not authenticated RBAC. Not production admin.
+                          </p>
+                        </div>
+                        <DebugPanel taskId={selectedTaskId} userId={userId} />
+                        <HealthPanel />
+                      </div>
+                    )}
+                    {advancedTab === "admin" && (
+                      <div className="p-6 max-w-5xl mx-auto space-y-6">
+                        <div
+                          className="rounded-xl border p-4 mb-4"
+                          style={{
+                            backgroundColor: "var(--bg-warning-subtle, rgba(245,158,11,0.08))",
+                            borderColor: "var(--border-warning, var(--border-subtle))",
+                          }}
+                        >
+                          <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                            ⚠️ <strong>Local diagnostic only</strong> — Not production RBAC.
+                            Admin key: <code style={{ color: "var(--text-accent)" }}>admin-changeme</code>
+                          </p>
+                        </div>
+                        <AdminPanel adminKey={adminKey} />
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </aside>
-          )}
+              </ErrorBoundary>
+            )}
+          </main>
         </div>
 
         <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />

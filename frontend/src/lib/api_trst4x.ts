@@ -385,122 +385,83 @@ export async function fetchSessionEvents(userId: string, sessionId: string, limi
   return res.json();
 }
 
-/* ── Gateway Health ─────────────────────────────────────────────────────────── */
-
-const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:3000";
+// ── TRST-2: Gateway Health ──────────────────────────────────────────────────
 
 export interface GatewayHealth {
-  status: "online" | "offline" | "degraded" | "unknown";
+  status: "ok" | "degraded" | "error";
+  service: string;
+  mode?: string;
+  streaming: string;
+  mcp_lifecycle: string;
+  providers: string[] | Record<string, {
+    provider_id?: string;
+    models?: string[];
+    base_url?: string;
+    model_count?: number;
+  }>;
+  events_count?: number;
   uptime_seconds?: number;
-  request_count?: number;
-  error_count?: number;
-  last_check?: string;
+  gateway_overhead_ms?: number;
+  timestamp?: string;
 }
+
+/** Gateway port. Can be overridden via NEXT_PUBLIC_GATEWAY_URL env var. */
+const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8795";
 
 export async function fetchGatewayHealth(): Promise<GatewayHealth> {
-  try {
-    const res = await fetch(`${GATEWAY_URL}/health`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  } catch {
-    return { status: "offline" };
-  }
+  const res = await fetch(`${GATEWAY_URL}/health`);
+  if (!res.ok) throw new Error(`网关健康检查失败 (${res.status})`);
+  return res.json();
 }
 
-/* ── Gateway Events ────────────────────────────────────────────────────────── */
+// ── TRST-2E: Event Chain Viewer ──────────────────────────────────────────────
 
 export interface GatewayEvent {
-  event_id: string;
-  event_type: string;
-  timestamp: string;
-  status?: string;
-  agent_id?: string;
-  model?: string;
-  [key: string]: unknown;
+  event_id?: string | null;
+  event_type?: string | null;
+  timestamp?: string | null;
+  status?: string | null;
+  trace_id?: string | null;
+  session_id?: string | null;
+  run_id?: string | null;
+  source?: string | null;
+  destination?: string | null;
+  resource_type?: string | null;
+  resource_ref?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  tool_name?: string | null;
+  tool_id?: string | null;
+  event_hash?: string | null;
+  input_hash?: string | null;
+  output_hash?: string | null;
+  args_hash?: string | null;
+  result_hash?: string | null;
+  latency_ms?: number | null;
+  gateway_overhead_ms?: number | null;
+  privacy_flags?: string[] | null;
+  token_count?: number | null;
+  cost_estimate?: number | null;
+  actor_id?: string | null;
+  agent_id?: string | null;
+  project_id?: string | null;
 }
 
 export interface GatewayEventsResponse {
+  status: string;
+  service: string;
+  mode: string;
+  limit: number;
+  events_count: number;
+  returned_count: number;
   events: GatewayEvent[];
-  total: number;
 }
 
-export async function fetchGatewayEvents(limit = 50): Promise<GatewayEventsResponse> {
-  try {
-    const res = await fetch(`${GATEWAY_URL}/events?limit=${limit}`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  } catch {
-    return { events: [], total: 0 };
-  }
-}
-
-/* ── Evidence Report ───────────────────────────────────────────────────────── */
-
-export interface ReportSummary {
-  stats: {
-    model_calls: number;
-    tool_calls: number;
-    hash_coverage_pct: number;
-    failure_events: number;
-    total_tokens: number;
-    estimated_cost: number | null;
-    sessions: number;
-    control_decisions: {
-      allow: number;
-      warn: number;
-      block: number;
-      unknown: number;
-    };
-    top_models: Array<{
-      model: string;
-      calls: number;
-      tokens: number;
-      cost: number | null;
-    }>;
-  };
-  event_count: number;
-  generated_at: string | null;
-}
-
-export async function fetchGatewayReportSummary(): Promise<ReportSummary> {
-  try {
-    const res = await fetch(`${GATEWAY_URL}/report/summary`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  } catch {
-    return {
-      stats: {
-        model_calls: 0,
-        tool_calls: 0,
-        hash_coverage_pct: 0,
-        failure_events: 0,
-        total_tokens: 0,
-        estimated_cost: null,
-        sessions: 0,
-        control_decisions: { allow: 0, warn: 0, block: 0, unknown: 0 },
-        top_models: [],
-      },
-      event_count: 0,
-      generated_at: null,
-    };
-  }
-}
-
-export async function fetchGatewayReport(format: "html" | "download" | "md" = "html"): Promise<Response> {
-  const qs = format === "download" ? "" : `?format=${format}`;
-  const res = await fetch(`${GATEWAY_URL}/report${qs}`, {
-    cache: "no-store",
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res;
+export async function fetchGatewayEvents(limit?: number): Promise<GatewayEventsResponse> {
+  const url = limit != null
+    ? `${GATEWAY_URL}/events?limit=${limit}`
+    : `${GATEWAY_URL}/events`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`网关事件查询失败 (${res.status})`);
+  return res.json();
 }

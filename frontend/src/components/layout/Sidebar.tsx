@@ -8,11 +8,10 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { id: "chat", icon: "💬", label: "Chat" },
-  { id: "tasks", icon: "📋", label: "Tasks" },
-  { id: "memory", icon: "🧠", label: "Memory" },
-  { id: "dashboard", icon: "📊", label: "Dashboard" },
-  { id: "beta", icon: "🧪", label: "Beta" },
-  { id: "admin", icon: "🛡️", label: "Admin" },
+  { id: "overview", icon: "🏠", label: "Overview" },
+  { id: "evidence", icon: "📋", label: "Evidence" },
+  { id: "events", icon: "🔗", label: "Events" },
+  { id: "gateway", icon: "⚙️", label: "Gateway" },
 ];
 
 interface SidebarProps {
@@ -62,6 +61,42 @@ export function Sidebar({ activeNav, onNavChange, onSettingsClick }: SidebarProp
             </button>
           );
         })}
+
+        {/* Separator */}
+        <div
+          className="w-6 h-px my-1"
+          style={{ backgroundColor: "var(--border-subtle)" }}
+        />
+
+        {/* Advanced */}
+        {(() => {
+          const isActive = activeNav === "advanced";
+          return (
+            <button
+              onClick={() => onNavChange("advanced")}
+              title="Advanced"
+              className="relative w-full flex flex-col items-center justify-center py-2 rounded-lg text-xs transition-all"
+              style={{
+                backgroundColor: isActive ? "var(--bg-overlay)" : "transparent",
+                color: isActive ? "var(--text-primary)" : "var(--text-muted)",
+              }}
+            >
+              {isActive && (
+                <span
+                  className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r"
+                  style={{ backgroundColor: "var(--accent-blue)" }}
+                />
+              )}
+              <span className="text-sm leading-none mb-0.5">🔧</span>
+              <span
+                className="text-[9px] leading-none"
+                style={{ color: isActive ? "var(--text-accent)" : "var(--text-muted)" }}
+              >
+                Adv
+              </span>
+            </button>
+          );
+        })()}
       </div>
 
       {/* Bottom: Settings */}
@@ -73,7 +108,7 @@ export function Sidebar({ activeNav, onNavChange, onSettingsClick }: SidebarProp
           style={{ color: "var(--text-muted)" }}
         >
           <span className="text-sm leading-none mb-0.5">⚙️</span>
-          <span className="text-[9px] leading-none" style={{ color: "var(--text-muted)" }}>Settings</span>
+          <span className="text-[9px] leading-none" style={{ color: "var(--text-muted)" }}>Set</span>
         </button>
       </div>
     </aside>
