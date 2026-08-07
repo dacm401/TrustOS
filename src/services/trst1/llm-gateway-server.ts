@@ -24,9 +24,11 @@ import { v4 as uuidv4 } from "uuid";
 import { createHash } from "node:crypto";
 
 import { createEventId, type TrstEventEnvelope } from "./event-envelope.js";
-import { appendEvent, countEvents, readEvents } from "./jsonl-event-store.js";
+import { appendEvent, getStorePath } from "./jsonl-event-store.js";
+import { getEventIndex, type EventIndex } from "./event-index.js";
 import { extractContextBlocks } from "./context-trace-lite.js";
 import { estimateCost } from "./cost-ledger-lite.js";
+import { generateEvidenceReport } from "./evidence-report.js";
 import {
   forwardChatCompletion,
   forwardChatCompletionStream,
@@ -44,6 +46,23 @@ import { ModelRegistry } from "./model-registry.js";
 
 // ── Gateway runtime metrics ─────────────────────────────────────────────────
 const GATEWAY_STARTED_AT_MS = Date.now();
+
+// ── Event indexing (TRST-4C) ────────────────────────────────────────────────
+let _eventIndexInstance: EventIndex | null = null;
+
+function initEventIndex(): EventIndex {
+  if (!_eventIndexInstance) {
+    _eventIndexInstance = getEventIndex(getStorePath());
+    _eventIndexInstance.syncFromJsonl();
+  }
+  return _eventIndexInstance;
+}
+
+/** Append event to JSONL + SQLite index */
+function persistEvent(e: TrstEventEnvelope): void {
+  appendEvent(e);
+  try { initEventIndex().appendEvent(e); } catch { /* index failure is non-fatal */ }
+}
 
 // ── Gateway Config ──────────────────────────────────────────────────────────
 
@@ -87,7 +106,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
   // Health check
   app.get("/health", (c) => {
     const uptimeSeconds = Math.floor((Date.now() - GATEWAY_STARTED_AT_MS) / 1000);
-    const eventsCount = countEvents();
+    const eventsCount = initEventIndex().getEventCount();
     return c.json({
       status: "ok",
       service: "trst2-gateway",
@@ -98,6 +117,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       uptime_seconds: uptimeSeconds,
       events_count: eventsCount,
       gateway_overhead_ms: null,
+      index: "sqlite", // TRST-4C
     });
   });
 
@@ -137,29 +157,125 @@ export function createGatewayApp(config: GatewayConfig): Hono {
     return safe;
   }
 
-  // GET /events — read-only event metadata viewer
+  // GET /events — paginated event metadata viewer (TRST-4C: SQLite-backed)
   app.get("/events", (c) => {
-    const rawLimit = c.req.query("limit");
-    let limit = 50;
-    if (rawLimit !== undefined) {
-      const parsed = Number(rawLimit);
-      if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
-        limit = Math.max(1, Math.min(200, Math.floor(parsed)));
-      }
+    const idx = initEventIndex();
+    const q: Record<string, string> = {};
+    for (const k of ["page", "limit", "session_id", "event_type", "agent_id", "from", "to", "request_mode"]) {
+      const v = c.req.query(k);
+      if (v) q[k] = v;
     }
 
-    const totalCount = countEvents();
-    const rawEvents = readEvents(limit);
-    const safeEvents = rawEvents.map(toSafeEventMetadata);
+    const page = Math.max(1, parseInt(q.page) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(q.limit) || 50));
+
+    const result = idx.queryEvents({ page, limit, session_id: q.session_id, event_type: q.event_type, agent_id: q.agent_id, from: q.from, to: q.to, request_mode: q.request_mode });
+    const safeEvents = result.events.map(e => {
+      const r: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(e)) {
+        if (ALLOWED_EVENT_FIELDS.has(k) && !FORBIDDEN_KEYS.has(k)) r[k] = v ?? null;
+      }
+      return r;
+    });
 
     return c.json({
       status: "ok",
       service: "trst2-gateway",
       mode: "shadow",
-      limit,
-      events_count: totalCount,
+      page: result.page,
+      limit: result.limit,
+      total: result.total,
+      has_more: result.hasMore,
       returned_count: safeEvents.length,
       events: safeEvents,
+    });
+  });
+
+  // GET /sessions — session listing with summary stats (TRST-4C)
+  app.get("/sessions", (c) => {
+    const idx = initEventIndex();
+    const limit = Math.min(100, Math.max(1, parseInt(c.req.query("limit") || "") || 50));
+    const sessions = idx.listSessions(limit);
+    return c.json({
+      status: "ok",
+      service: "trst2-gateway",
+      mode: "shadow",
+      limit,
+      returned_count: sessions.length,
+      sessions,
+    });
+  });
+
+  // GET /report — human-readable evidence report (HTML)
+  app.get("/report", (c) => {
+    const fmt = c.req.query("format") ?? "html";
+    const eventLogPath = getStorePath();
+
+    if (!eventLogPath) {
+      return c.json({
+        error: "Event store not initialized. Start the gateway with an event log path first.",
+        type: "not_initialized",
+      }, 503);
+    }
+
+    const report = generateEvidenceReport({ eventLogPath });
+
+    if (fmt === "md" || fmt === "markdown") {
+      return new Response(report.markdown, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/markdown; charset=utf-8",
+          "X-TrustOS-Report-Events": String(report.eventCount),
+          "X-TrustOS-Report-Generated": report.generatedAt,
+        },
+      });
+    }
+
+    if (fmt === "download" || fmt === "export") {
+      return new Response(report.html, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Disposition": `attachment; filename="trustos-evidence-report-${new Date().toISOString().slice(0, 10)}.html"`,
+          "X-TrustOS-Report-Events": String(report.eventCount),
+          "X-TrustOS-Report-Generated": report.generatedAt,
+        },
+      });
+    }
+
+    // Default: inline HTML
+    return new Response(report.html, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-TrustOS-Report-Events": String(report.eventCount),
+        "X-TrustOS-Report-Generated": report.generatedAt,
+      },
+    });
+  });
+
+  // GET /report/summary — aggregated stats from SQLite index (TRST-4C: fast, no full scan)
+  app.get("/report/summary", (c) => {
+    const idx = initEventIndex();
+    const s = idx.getStats();
+    return c.json({
+      status: "ok",
+      generated_at: new Date().toISOString(),
+      event_count: s.total_events,
+      stats: {
+        model_calls: s.model_calls,
+        streaming_model_calls: s.streaming_calls,
+        non_streaming_model_calls: s.non_streaming_calls,
+        tool_calls: s.tool_calls,
+        success_count: s.success_count,
+        failure_count: s.failure_count,
+        total_tokens: s.total_tokens,
+        estimated_cost: s.total_cost,
+        unique_sessions: s.unique_sessions,
+        unique_agents: s.unique_agents,
+        hash_coverage_pct: s.hash_coverage_pct,
+      },
+      source: "sqlite_index", // TRST-4C: signals fast path
     });
   });
 
@@ -216,6 +332,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
           destination: provider.baseUrl,
           resource_type: "model",
           model,
+          request_mode: "streaming",
           input_hash: inputHash ?? undefined,
           context_block_refs: blocks.map((b) => b.block_id),
           latency_ms: Date.now() - t0,
@@ -224,7 +341,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
           error_code: "STREAM_UPSTREAM_ERROR",
           error_message: errorMsg.slice(0, 500),
         };
-        appendEvent(event);
+        persistEvent(event);
         return new Response(
           JSON.stringify({ error: { message: `Stream upstream error: ${errorMsg.slice(0, 200)}`, type: "upstream_error" } }),
           { status: 502, headers: { "Content-Type": "application/json" } },
@@ -247,6 +364,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
           destination: provider.baseUrl,
           resource_type: "model",
           model,
+          request_mode: "streaming",
           input_hash: inputHash ?? undefined,
           context_block_refs: blocks.map((b) => b.block_id),
           latency_ms: Date.now() - t0,
@@ -255,7 +373,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
           error_code: `STREAM_HTTP_${streamResponse.status}`,
           error_message: errText.slice(0, 500),
         };
-        appendEvent(event);
+        persistEvent(event);
         return new Response(
           errText || JSON.stringify({ error: { message: "Upstream stream error", type: "upstream_error" } }),
           { status: 502, headers: { "Content-Type": "application/json" } },
@@ -268,6 +386,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       let fullText = "";
       let streamUsage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
       let firstChunkAt = 0;
+      let cancelled = false;
 
       const passthroughStream = new ReadableStream({
         async start(controller) {
@@ -305,10 +424,15 @@ export function createGatewayApp(config: GatewayConfig): Hono {
             const gatewayOverheadMs = Math.max(0, totalLatencyMs - upstreamLatencyMs);
             const cost = estimateCost(model, streamUsage ?? undefined);
 
-            const outputHash = fullText.length > 0
+            // Per PM TRST-4B Decision 1: output_hash absent on cancelled/incomplete streams
+            const outputHash = (!cancelled && fullText.length > 0)
               ? createHash("sha256").update(fullText).digest("hex")
               : undefined;
 
+            // Privacy hardening: clear accumulated text after hashing
+            fullText = "";
+
+            const isCancelled = cancelled;
             const event: Omit<TrstEventEnvelope, "event_hash"> = {
               event_id: createEventId(),
               event_type: "model_call",
@@ -325,21 +449,28 @@ export function createGatewayApp(config: GatewayConfig): Hono {
               resource_ref: model,
               model,
               provider: new URL(provider.baseUrl).hostname,
+              request_mode: "streaming",
               context_block_refs: blocks.map((b) => b.block_id),
               input_hash: inputHash ?? undefined,
               output_hash: outputHash,
-              token_count: cost.totalTokens,
-              cost_estimate: cost.estimatedCostUsd,
+              token_count: isCancelled ? undefined : cost.totalTokens,
+              cost_estimate: isCancelled ? null : cost.estimatedCostUsd,
               latency_ms: totalLatencyMs,
-              gateway_overhead_ms: gatewayOverheadMs,
+              gateway_overhead_ms: isCancelled ? undefined : gatewayOverheadMs,
               privacy_flags: [],
-              status: "success",
+              status: isCancelled ? "failure" : "success",
+              ...(isCancelled ? {
+                error_code: "STREAM_CANCELLED" as const,
+                error_message: "Client disconnected before stream completion",
+              } : {}),
             };
-            appendEvent(event);
+            persistEvent(event);
 
             controller.close();
           } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err);
+            // Privacy hardening: clear accumulated text on error
+            fullText = "";
             const event: Omit<TrstEventEnvelope, "event_hash"> = {
               event_id: createEventId(),
               event_type: "model_call",
@@ -354,6 +485,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
               destination: provider.baseUrl,
               resource_type: "model",
               model,
+              request_mode: "streaming",
               input_hash: inputHash ?? undefined,
               context_block_refs: blocks.map((b) => b.block_id),
               latency_ms: Date.now() - t0,
@@ -362,9 +494,15 @@ export function createGatewayApp(config: GatewayConfig): Hono {
               error_code: "STREAM_ERROR",
               error_message: errorMsg.slice(0, 500),
             };
-            appendEvent(event);
+            persistEvent(event);
             controller.error(err);
           }
+        },
+        cancel(reason) {
+          cancelled = true;
+          reader.cancel(reason).catch(() => {
+            // Upstream reader cancellation is best-effort
+          });
         },
       });
 
@@ -418,6 +556,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
         destination: provider.baseUrl,
         resource_type: "model",
         model,
+        request_mode: "non_streaming",
         input_hash: inputHash,
         context_block_refs: blocks.map((b) => b.block_id),
         latency_ms: Date.now() - t0,
@@ -427,7 +566,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
         error_message: errorMsg.slice(0, 500),
       };
 
-      appendEvent(event);
+      persistEvent(event);
 
       return new Response(
         JSON.stringify({
@@ -472,6 +611,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       resource_ref: model,
       model,
       provider: new URL(provider.baseUrl).hostname,
+      request_mode: "non_streaming",
 
       context_block_refs: blocks.map((b) => b.block_id),
       input_hash: inputHash,
@@ -501,7 +641,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       event.error_message = JSON.stringify(errBody).slice(0, 500);
     }
 
-    appendEvent(event);
+    persistEvent(event);
 
     // Return upstream response as-is
     return new Response(JSON.stringify(result.body), {
@@ -562,7 +702,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
         error_code: "INVALID_REQUEST",
         error_message: validationError,
       };
-      appendEvent(event);
+      persistEvent(event);
       return c.json({ error: { message: validationError, type: "invalid_request" } }, 400);
     }
 
@@ -604,7 +744,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
         error_code: "UPSTREAM_ERROR",
         error_message: errorMsg.slice(0, 500),
       };
-      appendEvent(failEvent);
+      persistEvent(failEvent);
       return new Response(
         JSON.stringify({ error: { message: `MCP upstream error: ${errorMsg.slice(0, 200)}`, type: "upstream_error" } }),
         { status: 502, headers: { "Content-Type": "application/json" } },
@@ -652,7 +792,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       event.error_message = JSON.stringify(errPayload).slice(0, 500);
     }
 
-    appendEvent(event);
+    persistEvent(event);
 
     return new Response(JSON.stringify(fwdResult.body), {
       status: fwdResult.status,
