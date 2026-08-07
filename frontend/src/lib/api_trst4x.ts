@@ -11,7 +11,7 @@ async function getCachedApiKey(): Promise<string> {
 
 /** 同步获取 API 配置（API Key 取自缓存，首次调用触发懒解密） */
 export async function getApiConfig() {
-  const DEFAULT_API_BASE = "http://localhost:3001";
+  const DEFAULT_API_BASE = "http://localhost:3002";
   if (typeof window !== "undefined") {
     return {
       apiBase: DEFAULT_API_BASE,
