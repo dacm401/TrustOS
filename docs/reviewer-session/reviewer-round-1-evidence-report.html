@@ -1,0 +1,1215 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TrustOS Evidence Report — 2026-08-05T07:58:23.702Z</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: #f8fafc; color: #1e293b; line-height: 1.6;
+  padding: 0; margin: 0;
+}
+.container { max-width: 900px; margin: 0 auto; padding: 32px 24px 64px; }
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  color: white; padding: 40px 32px; border-radius: 16px;
+  margin-bottom: 32px; position: relative; overflow: hidden;
+}
+.header::after {
+  content: ''; position: absolute; top: -50%; right: -10%;
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.header h1 { font-size: 28px; font-weight: 700; position: relative; z-index: 1; }
+.header .subtitle { font-size: 13px; color: #94a3b8; margin-top: 6px; position: relative; z-index: 1; }
+.header .badge {
+  display: inline-block; background: rgba(99,102,241,0.2); color: #a5b4fc;
+  padding: 4px 12px; border-radius: 99px; font-size: 11px; font-weight: 600;
+  margin-top: 12px; position: relative; z-index: 1;
+}
+.header .meta { font-size: 12px; color: #64748b; margin-top: 12px; position: relative; z-index: 1; }
+
+/* Sections */
+.section {
+  background: white; border-radius: 12px; padding: 24px;
+  margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  border: 1px solid #e2e8f0;
+}
+.section h2 {
+  font-size: 18px; font-weight: 600; color: #0f172a;
+  margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid #e2e8f0;
+}
+.section h3 { font-size: 15px; font-weight: 600; color: #334155; margin: 16px 0 8px; }
+
+/* Metrics Grid */
+.metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.metric-card {
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+  padding: 16px; text-align: center;
+}
+.metric-card .value { font-size: 28px; font-weight: 700; color: #0f172a; }
+.metric-card .label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+.metric-card.good .value { color: #059669; }
+.metric-card.warn .value { color: #d97706; }
+.metric-card.bad .value { color: #dc2626; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 8px 12px; background: #f1f5f9; color: #475569; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; }
+tr:last-child td { border-bottom: none; }
+
+/* Event Timeline */
+.timeline { position: relative; padding-left: 24px; }
+.timeline::before {
+  content: ''; position: absolute; left: 8px; top: 0; bottom: 0;
+  width: 2px; background: #e2e8f0;
+}
+.timeline-item {
+  position: relative; margin-bottom: 16px; padding: 14px 16px;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+}
+.timeline-item::before {
+  content: ''; position: absolute; left: -20px; top: 16px;
+  width: 10px; height: 10px; border-radius: 50%; border: 2px solid #94a3b8;
+  background: white;
+}
+.timeline-item.model_call::before { border-color: #3b82f6; background: #dbeafe; }
+.timeline-item.tool_call::before { border-color: #8b5cf6; background: #ede9fe; }
+.timeline-item.failure::before { border-color: #ef4444; background: #fee2e2; }
+.timeline-item .event-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+}
+.timeline-item .event-type {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 2px 8px; border-radius: 4px;
+}
+.event-type.model_call { background: #dbeafe; color: #1d4ed8; }
+.event-type.tool_call { background: #ede9fe; color: #6d28d9; }
+.event-type.telemetry_failure { background: #fee2e2; color: #991b1b; }
+.timeline-item .event-time { font-size: 11px; color: #94a3b8; }
+.timeline-item .event-detail { font-size: 12px; color: #475569; }
+.timeline-item .event-detail code { font-size: 11px; background: #e2e8f0; padding: 1px 6px; border-radius: 3px; color: #0f172a; }
+
+/* Hash badge */
+.hash-badge { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 9px; background: #f1f5f9; padding: 2px 6px; border-radius: 3px; color: #64748b; word-break: break-all; }
+
+/* Risk / Control Cards */
+.control-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.control-card { border-radius: 10px; padding: 14px 16px; text-align: center; border: 1px solid #e2e8f0; }
+.control-card.allow { background: #ecfdf5; border-color: #a7f3d0; }
+.control-card.block { background: #fef2f2; border-color: #fecaca; }
+.control-card.warn { background: #fffbeb; border-color: #fde68a; }
+.control-card.unknown { background: #f8fafc; border-color: #e2e8f0; }
+.control-card .count { font-size: 26px; font-weight: 700; }
+.control-card.allow .count { color: #059669; }
+.control-card.block .count { color: #dc2626; }
+.control-card.warn .count { color: #d97706; }
+.control-card.unknown .count { color: #94a3b8; }
+.control-card .clabel { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+/* Explanation box */
+.explanation {
+  background: #f0f9ff; border-left: 4px solid #3b82f6; border-radius: 6px;
+  padding: 14px 18px; margin-top: 16px; font-size: 13px; color: #1e40af; line-height: 1.6;
+}
+.explanation strong { color: #1e3a5f; }
+.explanation.warning { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
+.explanation.success { background: #f0fdf4; border-color: #22c55e; color: #166534; }
+.explanation.danger { background: #fef2f2; border-color: #ef4444; color: #991b1b; }
+
+/* Hash verification */
+.verify-box {
+  background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;
+  padding: 16px 20px; margin-top: 12px;
+}
+.verify-box h4 { font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px; }
+.verify-box p { font-size: 12px; color: #64748b; margin-bottom: 6px; }
+.verify-box code { font-size: 11px; background: #e2e8f0; padding: 2px 8px; border-radius: 3px; }
+
+/* Footer */
+.footer {
+  text-align: center; padding: 24px; font-size: 11px; color: #94a3b8;
+  border-top: 1px solid #e2e8f0; margin-top: 32px;
+}
+
+/* Progress bar */
+.progress-bar { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+.progress-fill.good { background: #22c55e; }
+.progress-fill.warn { background: #f59e0b; }
+.progress-fill.bad { background: #ef4444; }
+
+/* Status badges */
+.status-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 99px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+}
+.status-badge.success { background: #d1fae5; color: #065f46; }
+.status-badge.failure { background: #fee2e2; color: #991b1b; }
+
+/* Summary banner */
+.summary-banner {
+  background: linear-gradient(135deg, #ecfdf5 0%, #dbeafe 100%);
+  border-radius: 12px; padding: 20px 24px; margin-bottom: 24px;
+  border: 1px solid #a7f3d0;
+}
+.summary-banner p { font-size: 14px; color: #334155; margin: 0; }
+.summary-banner strong { color: #0f172a; }
+
+/* Responsive */
+@media (max-width: 600px) {
+  .container { padding: 16px 12px 32px; }
+  .header { padding: 24px 20px; }
+  .header h1 { font-size: 22px; }
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  .control-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- Header -->
+<div class="header">
+  <h1>TrustOS Evidence Report</h1>
+  <div class="subtitle">TRST-4A Human-Readable AI Activity Evidence</div>
+  <div class="badge">Shadow Mode (Dry-Run) — No Enforcement</div>
+  <div class="meta">
+    Generated: 2026-08-05T07:58:23.702Z<br>
+    Source: TrustOS Gateway Event Log (.trustos/events.jsonl)<br>
+    Report ID: TRST4A-MSFSOZX5
+  </div>
+</div>
+
+<!-- Safety Summary -->
+<div class="summary-banner">
+  <div class="explanation warning">
+    <strong>Overall Safety Signal:</strong> 51 failure event(s) observed. Review the failure details below for potential issues.
+    <br><br><strong>Note:</strong> TrustOS operates in shadow mode (dry-run only). No AI requests were blocked or modified.
+  </div>
+</div>
+
+<!-- Key Metrics -->
+<div class="section">
+  <h2>Executive Summary</h2>
+  <div class="metrics">
+    <div class="metric-card">
+      <div class="value">183</div>
+      <div class="label">Model Calls</div>
+    </div>
+    <div class="metric-card">
+      <div class="value">1</div>
+      <div class="label">Streaming</div>
+    </div>
+    <div class="metric-card">
+      <div class="value">11</div>
+      <div class="label">Non-Streaming</div>
+    </div>
+    <div class="metric-card">
+      <div class="value">16</div>
+      <div class="label">Tool Calls</div>
+    </div>
+    <div class="metric-card">
+      <div class="value">150,932</div>
+      <div class="label">Total Tokens</div>
+    </div>
+    <div class="metric-card">
+      <div class="value">$0.033722</div>
+      <div class="label">Est. Cost</div>
+    </div>
+    <div class="metric-card warn">
+      <div class="value">51</div>
+      <div class="label">Failures</div>
+    </div>
+    <div class="metric-card bad">
+      <div class="value">34%</div>
+      <div class="label">Hash Coverage</div>
+    </div>
+    <div class="metric-card">
+      <div class="value">126</div>
+      <div class="label">Sessions</div>
+    </div>
+    <div class="metric-card">
+      <div class="value">201</div>
+      <div class="label">Events</div>
+    </div>
+  </div>
+</div>
+
+<!-- Hash Integrity -->
+<div class="section">
+  <h2>Evidence Integrity</h2>
+  <table>
+    <tr><th>Metric</th><th>Value</th></tr>
+    <tr><td>Model calls with output hash</td><td>63 / 183 (34%)</td></tr>
+    <tr><td>Model calls with input hash</td><td>182 / 183 (99%)</td></tr>
+    <tr><td>Context blocks recorded</td><td>239</td></tr>
+    <tr><td>Sessions observed</td><td>126</td></tr>
+    <tr><td>Agent IDs</td><td>direct-gateway-call, e2e-demo-agent, fresh-e2e-agent-a, fresh-e2e-agent-b, fresh-e2e-agent-c, lifecycle-smoke-agent, mcp-smoke-agent, real-upstream-agent, stream-smoke-agent, test, trst2c-ac13, trst2c-validation, trst3-demo-agent, trst3-smoke-agent, unknown-agent, validate</td></tr>
+  </table>
+
+  <div class="explanation">
+    <strong>What this means:</strong> TrustOS computes SHA-256 hashes of AI inputs and outputs at observation time.
+    These hashes are stored in the event log instead of raw content — preserving privacy while creating a verifiable
+    chain of evidence. Anyone with the original input/output can verify the hash matches using a standard SHA-256
+    calculator. High hash coverage (&gt;90%) means most AI interactions are fully verifiable.
+  </div>
+</div>
+
+<!-- Control Decisions -->
+<div class="section">
+  <h2>Control Decisions</h2>
+  <div class="control-grid">
+    <div class="control-card allow">
+      <div class="count">0</div>
+      <div class="clabel">Allowed</div>
+    </div>
+    <div class="control-card warn">
+      <div class="count">0</div>
+      <div class="clabel">Warnings</div>
+    </div>
+    <div class="control-card block">
+      <div class="count">0</div>
+      <div class="clabel">Blocked</div>
+    </div>
+    <div class="control-card unknown">
+      <div class="count">201</div>
+      <div class="clabel">No Decision</div>
+    </div>
+  </div>
+
+  <div class="explanation success">
+    <strong>Important:</strong> TrustOS is currently in <strong>Shadow Mode</strong> (dry-run).
+    Control decisions are <em>recommended actions only</em> — they are logged for review but
+    <strong>not enforced</strong>. No AI requests were actually blocked or modified by TrustOS.
+    <br><br>All events received "allow" decisions — no suspicious activity detected.
+  </div>
+</div>
+
+<!-- Top Models -->
+<div class="section">
+  <h2>Model Usage</h2>
+  
+  <table>
+    <tr><th>Model</th><th>Calls</th><th>Tokens</th><th>Est. Cost</th></tr>
+    
+    <tr>
+      <td><code>deepseek-ai/DeepSeek-V4-Flash</code></td>
+      <td>169</td>
+      <td>150,932</td>
+      <td>$0.033722</td>
+    </tr>
+    <tr>
+      <td><code>nonexistent-model-xyz</code></td>
+      <td>13</td>
+      <td>0</td>
+      <td>$0.000000</td>
+    </tr>
+    <tr>
+      <td><code>unknown</code></td>
+      <td>1</td>
+      <td>0</td>
+      <td>$0.000000</td>
+    </tr>
+  </table>
+
+  
+  <h3>Gateway Performance</h3>
+  <table>
+    <tr><th>Metric</th><th>Value</th></tr>
+    <tr><td>Average overhead</td><td>1877.69 ms</td></tr>
+    <tr><td>P50 latency</td><td>2 ms</td></tr>
+    <tr><td>P99 latency</td><td>27696 ms</td></tr>
+  </table>
+
+  
+</div>
+
+<!-- Event Timeline -->
+<div class="section">
+  <h2>Recent Activity Timeline <span style="font-size:11px;color:#94a3b8;font-weight:400;">(last 30 events)</span></h2>
+  
+  <div class="timeline">
+    
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:33:49</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 1,352 tokens
+         · 1ms overhead
+        <br><span class="hash-badge">output: b44870cbd05c43c6...</span>
+         <span class="hash-badge">input: 5b1d6a0a069efdeb...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:33:55</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 386 tokens
+         · 1ms overhead
+        <br><span class="hash-badge">output: 5b0492e8f565aa90...</span>
+         <span class="hash-badge">input: 9248ba22683c74d6...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:33:55</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 199 tokens
+         · 1ms overhead
+        <br><span class="hash-badge">output: 48228784b6a1dbe1...</span>
+         <span class="hash-badge">input: 667d3fce50c76d4a...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:34:08</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 212 tokens
+         · 1ms overhead
+        <br><span class="hash-badge">output: 48228784b6a1dbe1...</span>
+         <span class="hash-badge">input: 667d3fce50c76d4a...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:35:13</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 307 tokens
+         · 2ms overhead
+        <br><span class="hash-badge">output: 5b0492e8f565aa90...</span>
+         <span class="hash-badge">input: 9248ba22683c74d6...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call failure">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:35:34</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge failure">failure</span>
+         · 0 tokens
+         · 1ms overhead
+        
+         <span class="hash-badge">input: 667d3fce50c76d4a...</span>
+        
+        <br>Error: <code>UPSTREAM_503</code> — {&quot;code&quot;:50508,&quot;message&quot;:&quot;System is too busy now. Please try again later.&quot;,&quot;data&quot;:null}
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:35:42</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 366 tokens
+         · 1ms overhead
+        <br><span class="hash-badge">output: f8a51704e4a6b09e...</span>
+         <span class="hash-badge">input: 667d3fce50c76d4a...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:36:34</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 405 tokens
+         · 1ms overhead
+        <br><span class="hash-badge">output: bff0be0ea4d87330...</span>
+         <span class="hash-badge">input: 667d3fce50c76d4a...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:37:42</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 364 tokens
+         · 0ms overhead
+        <br><span class="hash-badge">output: 3d01c53db2ed54d3...</span>
+         <span class="hash-badge">input: 667d3fce50c76d4a...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:38:43</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 291 tokens
+         · 0ms overhead
+        <br><span class="hash-badge">output: 5b0492e8f565aa90...</span>
+         <span class="hash-badge">input: 9248ba22683c74d6...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:48:24</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 1,971 tokens
+         · 9ms overhead
+        <br><span class="hash-badge">output: b44870cbd05c43c6...</span>
+         <span class="hash-badge">input: 5b1d6a0a069efdeb...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:49:54</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 220 tokens
+         · 0ms overhead
+        <br><span class="hash-badge">output: 4810d7cae5a6e204...</span>
+         <span class="hash-badge">input: 667d3fce50c76d4a...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:50:50</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 333 tokens
+         · 1ms overhead
+        <br><span class="hash-badge">output: 5b0492e8f565aa90...</span>
+         <span class="hash-badge">input: 9248ba22683c74d6...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:51:27</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 351 tokens
+         · 1ms overhead
+        <br><span class="hash-badge">output: 35fc3aafdbeddffd...</span>
+         <span class="hash-badge">input: 667d3fce50c76d4a...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:53:05</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 200 tokens
+         · 0ms overhead
+        <br><span class="hash-badge">output: 48228784b6a1dbe1...</span>
+         <span class="hash-badge">input: 667d3fce50c76d4a...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:53:16</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 356 tokens
+         · 1ms overhead
+        <br><span class="hash-badge">output: 850a4f19b8fd3635...</span>
+         <span class="hash-badge">input: 667d3fce50c76d4a...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/04 11:54:13</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 320 tokens
+         · 1ms overhead
+        <br><span class="hash-badge">output: 5b0492e8f565aa90...</span>
+         <span class="hash-badge">input: 9248ba22683c74d6...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 11:57:07</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 965 tokens
+         · 6ms overhead
+        <br><span class="hash-badge">output: b44870cbd05c43c6...</span>
+         <span class="hash-badge">input: 5b1d6a0a069efdeb...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call failure">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 15:25:15</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge failure">failure</span>
+         · 0 tokens
+         · 8ms overhead
+        
+         <span class="hash-badge">input: 5b1d6a0a069efdeb...</span>
+        
+        <br>Error: <code>UPSTREAM_404</code> — &quot;Not Found&quot;
+      </div>
+    </div>
+    <div class="timeline-item model_call failure">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 15:25:32</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge failure">failure</span>
+         · 0 tokens
+         · 1ms overhead
+        
+         <span class="hash-badge">input: 5b1d6a0a069efdeb...</span>
+        
+        <br>Error: <code>UPSTREAM_404</code> — &quot;Not Found&quot;
+      </div>
+    </div>
+    <div class="timeline-item model_call failure">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 15:25:38</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge failure">failure</span>
+         · 0 tokens
+         · 1ms overhead
+        
+         <span class="hash-badge">input: 5b1d6a0a069efdeb...</span>
+        
+        <br>Error: <code>UPSTREAM_404</code> — &quot;Not Found&quot;
+      </div>
+    </div>
+    <div class="timeline-item model_call failure">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 15:50:24</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge failure">failure</span>
+         · 0 tokens
+         · 1ms overhead
+        
+         <span class="hash-badge">input: 3f38a73b6afc2111...</span>
+        
+        <br>Error: <code>UPSTREAM_404</code> — &quot;Not Found&quot;
+      </div>
+    </div>
+    <div class="timeline-item model_call failure">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 15:50:25</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge failure">failure</span>
+         · 0 tokens
+         · 1ms overhead
+        
+         <span class="hash-badge">input: 87b7cfc775d6bb38...</span>
+        
+        <br>Error: <code>UPSTREAM_404</code> — &quot;Not Found&quot;
+      </div>
+    </div>
+    <div class="timeline-item model_call failure">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 15:50:34</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge failure">failure</span>
+         · 0 tokens
+         · 0ms overhead
+        
+         <span class="hash-badge">input: e507d257b764505f...</span>
+        
+        <br>Error: <code>UPSTREAM_404</code> — &quot;Not Found&quot;
+      </div>
+    </div>
+    <div class="timeline-item model_call failure">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 15:51:04</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge failure">failure</span>
+         · 0 tokens
+         · 2ms overhead
+        
+         <span class="hash-badge">input: 3639efcd08abb273...</span>
+        
+        <br>Error: <code>UPSTREAM_404</code> — &quot;Not Found&quot;
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 15:52:39</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 992 tokens
+         · 4ms overhead
+        <br><span class="hash-badge">output: 160698f4a31a275f...</span>
+         <span class="hash-badge">input: 87b7cfc775d6bb38...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 15:54:16</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 5,939 tokens
+         · 57ms overhead
+        <br><span class="hash-badge">output: a035d9fb964ebca5...</span>
+         <span class="hash-badge">input: 79898eb2f03edd4c...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call failure">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 15:57:22</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge failure">failure</span>
+        
+        
+        
+         <span class="hash-badge">input: 3f38a73b6afc2111...</span>
+        
+        <br>Error: <code>UPSTREAM_ERROR</code> — fetch failed
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 15:57:38</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 210 tokens
+         · 1ms overhead
+        <br><span class="hash-badge">output: a1b7eb2ee7a6aded...</span>
+         <span class="hash-badge">input: d58aabac70794a3d...</span>
+        
+        
+      </div>
+    </div>
+    <div class="timeline-item model_call">
+      <div class="event-header">
+        <span class="event-type model_call">model call</span>
+        <span class="event-time">2026/08/05 15:58:04</span>
+      </div>
+      <div class="event-detail">
+        Model: <code>deepseek-ai/DeepSeek-V4-Flash</code> · 
+        Status: <span class="status-badge success">success</span>
+         · 1,111 tokens
+         · 20868ms overhead
+        <br><span class="hash-badge">output: c09704d24ffd4be6...</span>
+         <span class="hash-badge">input: 4c7c10b29f7ddeec...</span>
+        
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Failures Detail -->
+<div class="section">
+  <h2>Failure Details</h2>
+  <table>
+    <tr><th>Time</th><th>Type</th><th>Error</th><th>Details</th></tr>
+    
+    <tr>
+      <td>2026/07/15 11:06:09</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UNSUPPORTED_STREAMING</code></td>
+      <td>stream=true is not supported in TRST-1 MVP. Set stream=false.</td>
+    </tr>
+    <tr>
+      <td>2026/07/24 10:22:17</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/24 10:22:31</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/24 10:22:54</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/24 11:31:01</td>
+      <td><span class="status-badge failure">tool_call</span></td>
+      <td><code>-32602</code></td>
+      <td>{&quot;code&quot;:-32602,&quot;message&quot;:&quot;Unknown tool: nonexistent_tool&quot;}</td>
+    </tr>
+    <tr>
+      <td>2026/07/24 11:31:01</td>
+      <td><span class="status-badge failure">tool_call</span></td>
+      <td><code>INVALID_REQUEST</code></td>
+      <td>jsonrpc must be &quot;2.0&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/24 11:31:01</td>
+      <td><span class="status-badge failure">tool_call</span></td>
+      <td><code>INVALID_REQUEST</code></td>
+      <td>Request body must be a JSON-RPC 2.0 object (batch not supported)</td>
+    </tr>
+    <tr>
+      <td>2026/07/24 11:31:01</td>
+      <td><span class="status-badge failure">tool_call</span></td>
+      <td><code>INVALID_REQUEST</code></td>
+      <td>JSON-RPC id is required (notifications not supported)</td>
+    </tr>
+    <tr>
+      <td>2026/07/24 11:31:11</td>
+      <td><span class="status-badge failure">tool_call</span></td>
+      <td><code>-32602</code></td>
+      <td>{&quot;code&quot;:-32602,&quot;message&quot;:&quot;Unknown tool: nonexistent_tool&quot;}</td>
+    </tr>
+    <tr>
+      <td>2026/07/24 11:31:11</td>
+      <td><span class="status-badge failure">tool_call</span></td>
+      <td><code>INVALID_REQUEST</code></td>
+      <td>jsonrpc must be &quot;2.0&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/24 11:31:11</td>
+      <td><span class="status-badge failure">tool_call</span></td>
+      <td><code>INVALID_REQUEST</code></td>
+      <td>Request body must be a JSON-RPC 2.0 object (batch not supported)</td>
+    </tr>
+    <tr>
+      <td>2026/07/24 11:31:11</td>
+      <td><span class="status-badge failure">tool_call</span></td>
+      <td><code>INVALID_REQUEST</code></td>
+      <td>JSON-RPC id is required (notifications not supported)</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 14:27:56</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 14:28:21</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 14:29:00</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_ERROR</code></td>
+      <td>Invalid state: Controller is already closed</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 14:31:09</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 14:31:17</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 14:31:44</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 14:32:11</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 14:32:20</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 14:33:05</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 14:33:56</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 15:33:47</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 15:34:17</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 15:50:48</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 15:58:29</td>
+      <td><span class="status-badge failure">tool_call</span></td>
+      <td><code>INVALID_REQUEST</code></td>
+      <td>Unknown MCP method: &quot;nonexistent_method&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/25 15:59:06</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>STREAM_HTTP_400</code></td>
+      <td>{&quot;code&quot;:20012,&quot;message&quot;:&quot;Model does not exist. Please check it carefully.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 09:53:15</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 09:54:04</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 09:54:04</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 09:54:21</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 09:54:22</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 10:04:24</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 10:04:24</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 10:05:22</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 10:05:22</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 10:06:58</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 10:06:58</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 10:08:09</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 10:08:09</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 10:08:39</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/07/31 10:08:39</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/08/04 11:35:34</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_503</code></td>
+      <td>{&quot;code&quot;:50508,&quot;message&quot;:&quot;System is too busy now. Please try again later.&quot;,&quot;data&quot;:null}</td>
+    </tr>
+    <tr>
+      <td>2026/08/05 15:25:15</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/08/05 15:25:32</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/08/05 15:25:38</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/08/05 15:50:24</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/08/05 15:50:25</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/08/05 15:50:34</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/08/05 15:51:04</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_404</code></td>
+      <td>&quot;Not Found&quot;</td>
+    </tr>
+    <tr>
+      <td>2026/08/05 15:57:22</td>
+      <td><span class="status-badge failure">model_call</span></td>
+      <td><code>UPSTREAM_ERROR</code></td>
+      <td>fetch failed</td>
+    </tr>
+  </table>
+
+  <div class="explanation warning" style="margin-top:12px;">
+    <strong>Review guidance:</strong> Failures in this report may be caused by upstream API issues
+    (network, rate limiting, model unavailability) rather than TrustOS itself.
+    TrustOS records failures as evidence of what happened — they do not indicate TrustOS malfunction.
+    Cross-reference with the gateway's health status for diagnosis.
+  </div>
+</div>
+
+<!-- Hash Verification Guide -->
+<div class="section">
+  <h2>How to Verify This Report</h2>
+  <div class="verify-box">
+    <h4>1. Locate the Output Hash</h4>
+    <p>Find an event in the timeline above that has an <code>output</code> hash (e.g., <code>a3f2b8c1d4e5...</code>).</p>
+  </div>
+  <div class="verify-box">
+    <h4>2. Compute SHA-256 of the Original Output</h4>
+    <p>Take the original AI response text (as you received it from the AI application).<br>
+    Using any SHA-256 tool (openssl, sha256sum, online calculator), compute: <code>SHA-256(original_output_text)</code></p>
+  </div>
+  <div class="verify-box">
+    <h4>3. Compare Hashes</h4>
+    <p>If the computed hash matches the hash in this report, the output is <strong>verifiably the same</strong> as what was observed by TrustOS. This proves the AI response was not tampered with after observation.</p>
+  </div>
+  <div class="verify-box">
+    <h4>4. Trust but Verify</h4>
+    <p>TrustOS records are tamper-evident, not tamper-proof. Hash verification provides a <em>reasonable assurance</em> that the evidence has not been altered post-observation. For compliance-grade evidence, a hash chain (Merkle tree) or digital signature would be required — these are planned for future releases.</p>
+  </div>
+
+  <div class="explanation">
+    <strong>Privacy note:</strong> This report does not contain any raw AI inputs or outputs.
+    Only SHA-256 hashes are stored. TrustOS is designed for governance without surveillance —
+    reviewers can verify evidence without accessing private conversation content.
+  </div>
+</div>
+
+<!-- Privacy Statement -->
+<div class="section">
+  <h2>Privacy &amp; Scope</h2>
+  <table>
+    <tr><th>Aspect</th><th>What TrustOS Records</th><th>What TrustOS Does NOT Record</th></tr>
+    <tr><td>Model Input</td><td>SHA-256 hash only</td><td>Raw prompt text, user messages, context</td></tr>
+    <tr><td>Model Output</td><td>SHA-256 hash only</td><td>Raw response text</td></tr>
+    <tr><td>Tool Calls</td><td>Tool name + SHA-256 hash of args/result</td><td>Raw arguments or result content</td></tr>
+    <tr><td>Metadata</td><td>Model name, token count, cost, latency, session ID</td><td>IP addresses, user identity, geolocation</td></tr>
+    <tr><td>Failures</td><td>Error code + message</td><td>Stack traces, API keys, credentials</td></tr>
+  </table>
+
+  <div class="explanation success" style="margin-top:16px;">
+    <strong>Design principle:</strong> TrustOS observes AI activity at the protocol level — it does not inspect,
+    scan, or analyze content. This is "governance without surveillance" — organizations get verifiable evidence
+    of what happened without compromising user privacy.
+  </div>
+</div>
+
+<!-- Limitations -->
+<div class="section">
+  <h2>Known Limitations</h2>
+  <table>
+    <tr><th>Limitation</th><th>Status</th><th>Impact</th></tr>
+    <tr><td>Streaming mode</td><td><span class="status-badge good">supported (SSE)</span></td><td>Streaming SSE responses are supported and validated for completed streams in this beta. Completed streams produce verifiable output_hash. Failed or interrupted streams are recorded without output_hash by design. Not production-grade — no delivery guarantee, no chunk-level evidence.</td></tr>
+    <tr><td>Hash chain</td><td><span class="status-badge failure">not implemented</span></td><td>Events are individually hashed but not chained. Tamper-evident per-event, not across events.</td></tr>
+    <tr><td>Digital signatures</td><td><span class="status-badge failure">not implemented</span></td><td>Reports are not cryptographically signed. For compliance-grade evidence, this is planned (TRST-4E).</td></tr>
+    <tr><td>Enforcement</td><td><span class="status-badge failure">shadow mode</span></td><td>All control decisions are recommendations only. No requests are actually blocked.</td></tr>
+    <tr><td>Database storage</td><td><span class="status-badge failure">JSONL file</span></td><td>Events stored in flat file. Durable database storage is planned (TRST-4C).</td></tr>
+  </table>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <p>Generated by TrustOS Gateway v0.1 — TRST-4A Evidence Report (MVP)</p>
+  <p>This report is for internal review purposes only. Not a compliance or certification artifact.</p>
+  <p>TrustOS operates in Shadow Mode. No AI activity was intercepted, blocked, or modified.</p>
+</div>
+
+</div>
+</body>
+</html>

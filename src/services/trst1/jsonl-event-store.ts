@@ -23,6 +23,11 @@ export function initEventStore(eventLogPath: string): void {
   }
 }
 
+/** Return the currently configured event log file path. */
+export function getStorePath(): string | undefined {
+  return storePath;
+}
+
 function writeLine(path: string, line: string): boolean {
   try {
     appendFileSync(path, line + "\n", "utf8");
@@ -44,6 +49,7 @@ function emitTelemetryFailure(
     session_id: affectedEvent.session_id ?? "unknown",
     run_id: affectedEvent.run_id ?? "unknown",
     project_id: affectedEvent.project_id ?? "unknown",
+    task_id: null,
     resource_type: affectedEvent.resource_type ?? "model",
     status: "failure",
     latency_ms: 0,
@@ -124,6 +130,32 @@ export function readEvents(limit: number): Record<string, unknown>[] {
       try {
         const parsed = JSON.parse(lines[i]);
         events.unshift(parsed);
+      } catch {
+        // skip malformed lines silently
+      }
+    }
+    return events;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Read ALL events from the JSONL store (chronological order, oldest first).
+ * Returns parsed event objects. Skips malformed lines silently.
+ * Returns [] if the file is missing, empty, or unreadable.
+ * WARNING: For large event logs (>100K lines), use readEvents(limit) instead.
+ */
+export function readAllEvents(): Record<string, unknown>[] {
+  if (!storePath) return [];
+  if (!existsSync(storePath)) return [];
+  try {
+    const content = readFileSync(storePath, "utf-8");
+    const lines = content.split("\n").filter((line) => line.trim().length > 0);
+    const events: Record<string, unknown>[] = [];
+    for (const line of lines) {
+      try {
+        events.push(JSON.parse(line));
       } catch {
         // skip malformed lines silently
       }

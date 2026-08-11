@@ -35,7 +35,8 @@
     "trst3:trace-demo": "node scripts/trst3/run-multi-event-trace-demo.mjs",
     "trst4:report-smoke": "npx tsx scripts/trst4/run-evidence-report-smoke.ts",
     "trst4b:streaming-smoke": "npx tsx scripts/trst4b/run-streaming-smoke.ts",
-    "trst4c:smoke": "node scripts/trst4c/run-smoke.mjs"
+    "trst4c:smoke": "node scripts/trst4c/run-smoke.mjs",
+    "validate": "npx tsx scripts/trst/run-validation.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.0",
@@ -55,6 +56,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^20.14.0",
     "@types/pg": "^8.11.0",
     "@types/uuid": "^10.0.0",

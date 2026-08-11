@@ -121,7 +121,7 @@ function mapProviderError(error: any, model: string): ProviderError {
 // Manager 调用使用较短超时（路由决策应快），Worker 调用使用较长超时（代码生成耗时）。
 // 这些超时通过 Promise.race 实现，覆盖 OpenAI SDK 的 180s timeout。
 
-const MANAGER_TIMEOUT_MS = 30_000;  // 30s for Manager routing decisions
+const MANAGER_TIMEOUT_MS = Number(process.env["MANAGER_TIMEOUT_MS"]) || 30_000;  // 30s for Manager routing decisions (env-overridable)
 const WORKER_TIMEOUT_MS = Number(process.env["WORKER_TIMEOUT_MS"]) || 120_000;  // 120s for Worker code generation (env-overridable)
 const DELEGATED_TASK_TIMEOUT_MS = Number(process.env["DELEGATED_TASK_TIMEOUT_MS"]) || 600_000;  // 600s (10min) for delegated task execution (full webpage/code generation)
 
@@ -728,7 +728,7 @@ export async function* callModelStream(
     if (config.trustosGatewayUrl) {
       const headers = gatewayTraceStore.getStore();
       if (headers) {
-        clientOptions.defaultHeaders = headers;
+        clientOptions.defaultHeaders = headers as Record<string, string>;
       }
     }
     const openaiClient = new OpenAI(clientOptions);

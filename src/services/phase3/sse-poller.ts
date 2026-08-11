@@ -32,7 +32,8 @@ export interface SSEEvent {
        | "manager_synthesized" // Phase 3.0
        | "cycle_event" // Sprint 76P: Cycle Runtime SSE Events
        | "progress" // S88P: Runtime Progress & Wait Visibility
-       | "partial_result"; // S89P: Partial Result Streaming & Early Display
+       | "partial_result" // S89P: Partial Result Streaming & Early Display
+       | "worker_status"; // MWT-2: Worker lifecycle state + cycle progress
   /** Sprint 76P: cycle event payload */
   cycleEvent?: Record<string, unknown>;
   /** S88P: progress event payload — safe metadata only, no prompt/content */
@@ -41,6 +42,23 @@ export interface SSEEvent {
   partialResult?: Record<string, unknown>;
   /** S92P: terminal summary payload — safe metadata, additive only */
   terminalSummary?: Record<string, unknown>;
+  /**
+   * MWT-2: worker lifecycle state — SSE wire format (snake_case).
+   * Emitted as worker_status SSE events with snake_case payload fields.
+   */
+  worker_status?: {
+    completed_cycles: number;
+    max_cycles: number | null;
+    current_state: string;
+    total_elapsed_ms: number;
+    terminal_status?: "success" | "cancelled" | "timeout" | "max_cycles_exceeded" | "error";
+    error_stage?: string;
+    error_message?: string;
+    reason?: string;
+    at_cycle_index?: number;
+  };
+  /** @deprecated MWT-2: use worker_status (snake_case wire). Kept for backward-compat during transition. */
+  workerStatus?: Record<string, unknown>;
   /** S97P: token/cost usage from worker execution — safe metadata, additive only */
   usage?: {
     tokens: { input: number; output: number; total: number };
@@ -377,6 +395,12 @@ export async function* pollArchiveAndYield(
   // S89P: Track emitted partial result indices to avoid duplicates
   let lastEmittedPartialIndex = -1;
 
+  // MWT-2: Track emitted cycle event indices to emit in real-time during execution
+  let lastEmittedCycleEventIndex = -1;
+
+  // MWT-2: Track if worker_started already emitted for this poll session
+  let workerStartedEmitted = false;
+
   // S88P: Progress event — throttle to every 5s to avoid flooding
   const PROGRESS_INTERVAL_MS = 5000;
 
@@ -442,6 +466,32 @@ export async function* pollArchiveAndYield(
       elapsed - lastProgressTime >= PROGRESS_INTERVAL_MS
     ) {
       lastProgressTime = elapsed;
+
+      // MWT-2: Emit worker_started once when first entering active execution
+      if (!workerStartedEmitted) {
+        workerStartedEmitted = true;
+        try {
+          const cycleEvents = Array.isArray(task.slow_execution?.cycleEvents)
+            ? (task.slow_execution.cycleEvents as Record<string, unknown>[])
+            : [];
+          const startedMaxCycles = (task.slow_execution?.maxCycles as number) ??
+            ((task as unknown as Record<string, unknown>).params as Record<string, unknown> | undefined)?.max_cycles as number | undefined;
+          yield {
+            type: "worker_status",
+            stream: lang === "zh" ? "🔵 Worker 已启动" : "🔵 Worker started",
+            routing_layer: "L2",
+            worker_status: {
+              completed_cycles: 0,
+              max_cycles: startedMaxCycles ?? null,
+              current_state: "executing",
+              total_elapsed_ms: elapsed,
+            },
+            // MWT-2: camelCase alias preserved for backward-compat during transition
+            // (frontend maps snake_case wire → camelCase TS internally)
+          };
+        } catch (_) { /* ignore */ }
+      }
+
       // Refresh progress elapsed timestamps from trace
       refreshProgressElapsed();
       const progress = getCurrentProgress();
@@ -465,6 +515,22 @@ export async function* pollArchiveAndYield(
         if (progress.isWaitingOnSlowCall) {
           progressPayload.waitingOnSlowCall = true;
         }
+        // MWT-2: Add cycle progress into progress heartbeat
+        try {
+          const cycleEvents = Array.isArray(task.slow_execution?.cycleEvents)
+            ? (task.slow_execution.cycleEvents as Record<string, unknown>[])
+            : [];
+          const completedCycles = cycleEvents.filter(
+            (e) => e.event === "cycle.completed" || e.event === "cycle_artifact_delivered"
+          ).length;
+          const maxCycles = (task.slow_execution?.maxCycles as number) ??
+            ((task as unknown as Record<string, unknown>).params as Record<string, unknown> | undefined)?.max_cycles as number | undefined;
+          (progressPayload as Record<string, unknown>).worker_status = {
+            completed_cycles: completedCycles,
+            max_cycles: maxCycles ?? null,
+            current_state: currentState,
+          };
+        } catch (_) { /* ignore */ }
         yield {
           type: "progress",
           stream: lang === "zh"
@@ -521,12 +587,52 @@ export async function* pollArchiveAndYield(
       }
     }
 
+    // MWT-2: Emit new cycle events in real-time during active execution
+    // (Previously only emitted at terminal state — now visible as they are stored)
+    if (
+      (currentState === "executing" || currentState === "delegated" ||
+       currentState === "waiting_result" || currentState === "synthesizing")
+    ) {
+      try {
+        const cycleEvents = Array.isArray(task.slow_execution?.cycleEvents)
+          ? (task.slow_execution.cycleEvents as Record<string, unknown>[])
+          : [];
+        if (cycleEvents.length > lastEmittedCycleEventIndex + 1) {
+          for (let i = lastEmittedCycleEventIndex + 1; i < cycleEvents.length; i++) {
+            yield {
+              type: "cycle_event",
+              cycleEvent: cycleEvents[i],
+              routing_layer: "L2" as RoutingLayer,
+            };
+          }
+          lastEmittedCycleEventIndex = cycleEvents.length - 1;
+        }
+      } catch (_) {
+        // Silently ignore cycle event detection errors
+      }
+    }
+
     // Phase 3.4: 处理 slow-worker 超时/失败情况
     if (currentState === "failed") {
       console.warn(`[pollArchiveAndYield] Task ${taskId} failed, sending error event`);
       const failedExec: Record<string, unknown> = task.slow_execution ?? {};
       // S92P: Build terminal summary for failed state
       const failedTerminalSummary = buildTerminalSummary({ status: "failed", execution: failedExec });
+      // MWT-2: Explicit worker_status for terminal state visibility
+      yield {
+        type: "worker_status",
+        stream: "Worker failed",
+        routing_layer: "L2",
+        worker_status: {
+          completed_cycles: 0,
+          max_cycles: null,
+          current_state: "failed",
+          total_elapsed_ms: elapsed,
+          terminal_status: "error",
+          error_stage: "worker_execution",
+          error_message: "Task archive state set to failed",
+        },
+      };
       yield { type: "error", stream: "⚠️ 任务执行失败（请求超时或模型错误）", routing_layer: "L2", terminalSummary: failedTerminalSummary as unknown as Record<string, unknown> };
       yield { type: "done", routing_layer: "L2", terminalSummary: failedTerminalSummary as unknown as Record<string, unknown> };
       if (delegation_log_id) {
@@ -556,6 +662,23 @@ export async function* pollArchiveAndYield(
 
         // S92P: Build terminal summary for cancelled state
         const cancelledTerminalSummary = buildTerminalSummary({ status: "cancelled", execution });
+        // MWT-2: Explicit worker_status for terminal state visibility
+        const cancelledCycleCount = cycleEvents.filter(
+          (e) => e.event === "cycle.completed" || e.event === "cycle_artifact_delivered"
+        ).length;
+        yield {
+          type: "worker_status",
+          stream: "Worker cancelled",
+          routing_layer: "L2",
+          worker_status: {
+            completed_cycles: cancelledCycleCount,
+            max_cycles: null,
+            current_state: "cancelled",
+            total_elapsed_ms: elapsed,
+            terminal_status: "cancelled",
+            reason: cancelReason,
+          },
+        };
         yield {
           type: "error",
           stream: lang === "zh"
@@ -600,6 +723,23 @@ export async function* pollArchiveAndYield(
         const thresholdSec = Math.round(thresholdMs / 1000);
         // S92P: Build terminal summary for timed_out state
         const timedOutTerminalSummary = buildTerminalSummary({ status: "timed_out", execution });
+        // MWT-2: Explicit worker_status for terminal state visibility
+        const timedOutCycleCount = cycleEvents.filter(
+          (e) => e.event === "cycle.completed" || e.event === "cycle_artifact_delivered"
+        ).length;
+        yield {
+          type: "worker_status",
+          stream: "Worker timed out",
+          routing_layer: "L2",
+          worker_status: {
+            completed_cycles: timedOutCycleCount,
+            max_cycles: null,
+            current_state: "timed_out",
+            total_elapsed_ms: elapsed,
+            terminal_status: "timeout",
+            at_cycle_index: timedOutCycleCount > 0 ? timedOutCycleCount : 0,
+          },
+        };
         yield {
           type: "error",
           stream: lang === "zh"
@@ -639,6 +779,23 @@ export async function* pollArchiveAndYield(
             for (const event of cycleEvents) {
               yield { type: "cycle_event", cycleEvent: event, routing_layer: "L2" as RoutingLayer };
             }
+
+            // MWT-2: Explicit worker_status for terminal state visibility (success)
+            const completedCycleCount = cycleEvents.filter(
+              (e) => e.event === "cycle.completed" || e.event === "cycle_artifact_delivered"
+            ).length;
+            yield {
+              type: "worker_status",
+              stream: "Worker completed",
+              routing_layer: "L2",
+              worker_status: {
+                completed_cycles: completedCycleCount,
+                max_cycles: null,
+                current_state: "completed",
+                total_elapsed_ms: elapsed,
+                terminal_status: "success",
+              },
+            };
 
             // Sprint 75: Detect empty results to prevent "silent success"
             if (!workerResult.trim()) {

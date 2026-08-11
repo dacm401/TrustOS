@@ -27,6 +27,8 @@ export interface EventIndexRow {
   input_hash: string | null;
   output_hash: string | null;
   error_code: string | null;
+  /** MWT-3B1: nullable task correlation ID (null = unassigned / pre-task). */
+  task_id: string | null;
 }
 
 export interface PaginatedEvents {
@@ -97,6 +99,11 @@ export class EventIndex {
       );
     `);
 
+    // MWT-3B1: Migration — add nullable task_id column (idempotent).
+    // Existing rows default to NULL. Safe to re-run on dev mismatch.
+    this.db.exec(`ALTER TABLE events ADD COLUMN task_id TEXT;`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_events_task_id ON events(task_id);`);
+
     // Track last synced line number
     this.db
       .prepare("INSERT OR IGNORE INTO index_meta (key, value) VALUES (?, ?)")
@@ -111,7 +118,7 @@ export class EventIndex {
     if (!fs.existsSync(this.jsonlPath)) return 0;
 
     const lastSync = parseInt(
-      this.db.prepare("SELECT value FROM index_meta WHERE key = ?").get("last_synced_line")?.value || "0",
+      (this.db.prepare("SELECT value FROM index_meta WHERE key = ?").get("last_synced_line") as { value?: string } | undefined)?.value || "0",
       10
     );
 
@@ -122,10 +129,10 @@ export class EventIndex {
     const insert = this.db.prepare(`
       INSERT OR REPLACE INTO events
         (event_id, event_type, timestamp, session_id, agent_id, status,
-         request_mode, model, token_count, input_hash, output_hash, error_code, cost_estimate)
+         request_mode, model, token_count, input_hash, output_hash, error_code, cost_estimate, task_id)
       VALUES
         (@event_id, @event_type, @timestamp, @session_id, @agent_id, @status,
-         @request_mode, @model, @token_count, @input_hash, @output_hash, @error_code, @cost_estimate)
+         @request_mode, @model, @token_count, @input_hash, @output_hash, @error_code, @cost_estimate, @task_id)
     `);
 
     const insertMany = this.db.transaction((newLines: string[]) => {
@@ -146,6 +153,7 @@ export class EventIndex {
             output_hash: e.output_hash || null,
             error_code: e.error_code || null,
             cost_estimate: e.cost_estimate || null,
+            task_id: e.task_id ?? null,
           });
         } catch {
           // Skip malformed lines
@@ -172,19 +180,19 @@ export class EventIndex {
       .prepare(
         `INSERT OR REPLACE INTO events
         (event_id, event_type, timestamp, session_id, agent_id, status,
-         request_mode, model, token_count, input_hash, output_hash, error_code, cost_estimate)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         request_mode, model, token_count, input_hash, output_hash, error_code, cost_estimate, task_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         e.event_id, e.event_type, e.timestamp, e.session_id, e.agent_id || null,
         e.status || "success", e.request_mode || null, e.model || null,
         e.token_count || null, e.input_hash || null, e.output_hash || null,
-        e.error_code || null, e.cost_estimate || null
+        e.error_code || null, e.cost_estimate || null, e.task_id ?? null
       );
 
     // Update line count for sync position
     const currentLine = parseInt(
-      this.db.prepare("SELECT value FROM index_meta WHERE key = ?").get("last_synced_line")?.value || "0",
+      (this.db.prepare("SELECT value FROM index_meta WHERE key = ?").get("last_synced_line") as { value?: string } | undefined)?.value || "0",
       10
     );
     this.db.prepare("UPDATE index_meta SET value = ? WHERE key = ?").run(
@@ -204,8 +212,15 @@ export class EventIndex {
     from?: string; // ISO timestamp
     to?: string;
     request_mode?: string;
+    /**
+     * MWT-3B1 task correlation filter (PM R4/R6).
+     * - string value → exact match WHERE task_id = ?
+     * - null literal (explicit) → WHERE task_id IS NULL (unassigned)
+     * - undefined → no task_id filter (existing behavior unchanged)
+     */
+    task_id?: string | null;
   } = {}): PaginatedEvents {
-    const { page = 1, limit = 50, session_id, event_type, agent_id, from, to, request_mode } = options;
+    const { page = 1, limit = 50, session_id, event_type, agent_id, from, to, request_mode, task_id } = options;
 
     const conditions: string[] = [];
     const params: any[] = [];
@@ -216,6 +231,16 @@ export class EventIndex {
     if (from) { conditions.push("timestamp >= ?"); params.push(from); }
     if (to) { conditions.push("timestamp <= ?"); params.push(to); }
     if (request_mode) { conditions.push("request_mode = ?"); params.push(request_mode); }
+
+    // MWT-3B1: task_id filter — exact match or null (unassigned) only
+    if (task_id !== undefined) {
+      if (task_id === null) {
+        conditions.push("task_id IS NULL");
+      } else {
+        conditions.push("task_id = ?");
+        params.push(task_id);
+      }
+    }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 

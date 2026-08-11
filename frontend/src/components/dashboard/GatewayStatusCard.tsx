@@ -107,18 +107,20 @@ function GatewayDot({ online }: { online: boolean }) {
 
 // ── Provider Detail ──────────────────────────────────────────────────────────
 
-function ProviderDetail({
-  providers,
-}: {
-  providers: GatewayHealth["providers"];
-}) {
+interface ProviderInfo {
+  provider_id?: string;
+  models?: string[];
+  model_count?: number;
+}
+
+function ProviderDetail({ providers }: { providers: unknown }) {
   if (Array.isArray(providers)) {
-    // Flat string list (e.g. ["default"])
+    // Flat list (e.g. ["default"] or list of provider objects)
     return (
       <div className="flex flex-wrap gap-1.5">
-        {providers.map((key) => (
+        {providers.map((key, i) => (
           <span
-            key={key}
+            key={String(i)}
             className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs"
             style={{
               backgroundColor: "var(--bg-elevated)",
@@ -126,14 +128,14 @@ function ProviderDetail({
               border: "1px solid var(--border-subtle)",
             }}
           >
-            {key}
+            {String(key)}
           </span>
         ))}
       </div>
     );
   }
 
-  const entries = Object.entries(providers ?? {});
+  const entries = Object.entries((providers as Record<string, unknown>) ?? {});
   if (entries.length === 0) {
     return (
       <p className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -144,47 +146,50 @@ function ProviderDetail({
 
   return (
     <div className="space-y-2">
-      {entries.map(([key, p]) => (
-        <div
-          key={key}
-          className="rounded-lg p-3"
-          style={{ backgroundColor: "var(--bg-elevated)" }}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <span
-              className="text-xs font-semibold uppercase tracking-wide"
-              style={{ color: "var(--accent-blue)" }}
-            >
-              {p.provider_id ?? key}
-            </span>
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-              {(p.models?.length ?? p.model_count ?? 0)} models
-            </span>
-          </div>
-          {p.models && p.models.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {p.models.slice(0, 5).map((m) => (
-                <span
-                  key={m}
-                  className="text-xs rounded px-1.5 py-0.5"
-                  style={{
-                    backgroundColor: "var(--bg-surface)",
-                    color: "var(--text-secondary)",
-                    border: "1px solid var(--border-subtle)",
-                  }}
-                >
-                  {m}
-                </span>
-              ))}
-              {p.models.length > 5 && (
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  +{p.models.length - 5} more
-                </span>
-              )}
+      {entries.map(([key, raw]) => {
+        const p = raw as ProviderInfo;
+        return (
+          <div
+            key={key}
+            className="rounded-lg p-3"
+            style={{ backgroundColor: "var(--bg-elevated)" }}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span
+                className="text-xs font-semibold uppercase tracking-wide"
+                style={{ color: "var(--accent-blue)" }}
+              >
+                {p.provider_id ?? key}
+              </span>
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                {(p.models?.length ?? p.model_count ?? 0)} models
+              </span>
             </div>
-          )}
-        </div>
-      ))}
+            {p.models && p.models.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {p.models.slice(0, 5).map((m) => (
+                  <span
+                    key={m}
+                    className="text-xs rounded px-1.5 py-0.5"
+                    style={{
+                      backgroundColor: "var(--bg-surface)",
+                      color: "var(--text-secondary)",
+                      border: "1px solid var(--border-subtle)",
+                    }}
+                  >
+                    {m}
+                  </span>
+                ))}
+                {p.models.length > 5 && (
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    +{p.models.length - 5} more
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -194,7 +199,7 @@ function ProviderDetail({
 export default function GatewayStatusCard() {
   const { data, isLoading, isError } = useGatewayHealth();
 
-  const online = data?.status === "ok";
+  const online = data?.status === "online";
   const cardStyle = {
     backgroundColor: "var(--bg-surface)",
     border: `1px solid ${online ? "var(--border-subtle)" : "rgba(239,68,68,0.3)"}`,
@@ -263,11 +268,20 @@ export default function GatewayStatusCard() {
   }
 
   // ── Online ───────────────────────────────────────────────────────────────
-  const streamingName = data.streaming === "sse_passthrough" ? "SSE" : data.streaming;
-  const mcpEnabled = data.mcp_lifecycle === "enabled";
+  const streamingName =
+    data.streaming === "sse_passthrough"
+      ? "SSE"
+      : typeof data.streaming === "string"
+        ? data.streaming
+        : data.streaming?.supported
+          ? "已启用"
+          : "—";
+  const mcpEnabled =
+    data.mcp_lifecycle === "enabled" ||
+    (typeof data.mcp_lifecycle === "object" && data.mcp_lifecycle?.supported === true);
   const providerKeys = Array.isArray(data.providers)
     ? data.providers
-    : Object.keys(data.providers ?? {});
+    : Object.keys((data.providers as Record<string, unknown>) ?? {});
 
   return (
     <div className="rounded-xl p-5" style={cardStyle}>

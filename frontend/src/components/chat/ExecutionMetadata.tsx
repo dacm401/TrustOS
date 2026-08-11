@@ -11,6 +11,14 @@ interface ExecutionMetadataProps {
   terminalSummary?: unknown;
   /** S101P: Execution progress persisted on the message */
   executionProgress?: ExecutionProgress;
+  /** MWT-1: Current session ID for Trust correlation display */
+  sessionId?: string;
+  /** MWT-2 TODO: Trust trace ID from Gateway observation — data not yet available.
+   *  Will be wired when Worker lifecycle events emit per-execution trace_id.
+   *  Prop defined for forward compatibility; currently always undefined. */
+  traceId?: string;
+  /** MWT-1: Number of Gateway events captured for this session */
+  eventsCaptured?: number;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -60,14 +68,37 @@ export function formatTerminalSummary(raw: unknown): { title: string; detail?: s
  *
  * Returns null when all props are empty — safe to unconditionally render.
  */
-export function ExecutionMetadata({ usage, terminalSummary, executionProgress }: ExecutionMetadataProps) {
+export function ExecutionMetadata({ usage, terminalSummary, executionProgress, sessionId, traceId, eventsCaptured }: ExecutionMetadataProps) {
   const [summaryExpanded, setSummaryExpanded] = useState(false);
 
+  const hasContext = !!(sessionId || traceId || (eventsCaptured !== undefined && eventsCaptured > 0));
+
   // Nothing to render
-  if (!usage && !terminalSummary && !executionProgress) return null;
+  if (!usage && !terminalSummary && !executionProgress && !hasContext) return null;
 
   return (
     <>
+      {/* MWT-1: Session / Trust context header */}
+      {hasContext && (
+        <div className="flex items-center gap-2 mt-1 px-1 flex-wrap" style={{ color: "var(--text-muted)" }}>
+          {sessionId && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.03)" }}>
+              sess:{sessionId.slice(0, 8)}…
+            </span>
+          )}
+          {traceId && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(59,130,246,0.06)", color: "var(--accent-blue)" }}>
+              trace:{traceId.slice(0, 8)}…
+            </span>
+          )}
+          {eventsCaptured !== undefined && eventsCaptured > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(16,185,129,0.06)", color: "var(--accent-green)" }}>
+              📊 {eventsCaptured} events
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Usage: model + token breakdown + cost */}
       {usage && (
         <div className="flex items-center gap-3 mt-1 px-1 flex-wrap" style={{ color: "var(--text-muted)" }}>
@@ -124,24 +155,79 @@ export function ExecutionMetadata({ usage, terminalSummary, executionProgress }:
           style={{
             backgroundColor: executionProgress.status === "completed"
               ? "rgba(16,185,129,0.06)"
-              : "rgba(59,130,246,0.06)",
+              : executionProgress.status === "error"
+                ? "rgba(239,68,68,0.06)"
+                : executionProgress.status === "cancelled"
+                  ? "rgba(245,158,11,0.06)"
+                  : "rgba(59,130,246,0.06)",
             color: "var(--text-muted)",
           }}
         >
-          <span>{executionProgress.status === "completed" ? "✅" : "⚙️"}</span>
-          <span>{executionProgress.status === "completed" ? "已完成" : "执行中"}</span>
-          {executionProgress.stage && (
+          <span>{
+            executionProgress.status === "completed" ? "✅"
+              : executionProgress.status === "error" ? "❌"
+              : executionProgress.status === "cancelled" ? "⏹️"
+              : "⚙️"
+          }</span>
+          <span>{
+            executionProgress.status === "completed" ? "已完成"
+              : executionProgress.status === "error" ? "失败"
+              : executionProgress.status === "cancelled" ? "已取消"
+              : "执行中"
+          }</span>
+          {executionProgress.workerStatus && executionProgress.workerStatus.maxCycles && (
             <>
               <span>·</span>
-              <span>{executionProgress.stage}</span>
+              <span style={{
+                color: executionProgress.workerStatus.completedCycles >= executionProgress.workerStatus.maxCycles
+                  ? "var(--accent-green)" : "var(--accent-blue)",
+              }}>
+                Cycle {executionProgress.workerStatus.completedCycles}/{executionProgress.workerStatus.maxCycles}
+              </span>
             </>
           )}
-          {executionProgress.message && !executionProgress.stage && (
+          {executionProgress.workerStatus && !executionProgress.workerStatus.maxCycles && executionProgress.workerStatus.completedCycles > 0 && (
+            <>
+              <span>·</span>
+              <span>Cycles: {executionProgress.workerStatus.completedCycles}</span>
+            </>
+          )}
+          {executionProgress.message && !executionProgress.workerStatus && (
             <>
               <span>·</span>
               <span>{executionProgress.message}</span>
             </>
           )}
+          {/* MWT-2: Show terminalStatus badge (strict enum — more precise than currentState) */}
+          {executionProgress.workerStatus?.terminalStatus && executionProgress.workerStatus.terminalStatus !== "success" && (
+            <>
+              <span>·</span>
+              <span style={{
+                color: executionProgress.workerStatus.terminalStatus === "cancelled" ? "var(--accent-amber)"
+                  : executionProgress.workerStatus.terminalStatus === "timeout" ? "var(--accent-orange)"
+                  : executionProgress.workerStatus.terminalStatus === "max_cycles_exceeded" ? "var(--accent-orange)"
+                  : "var(--accent-red)",
+              }}>
+                {executionProgress.workerStatus.terminalStatus === "cancelled" ? "Cancelled"
+                  : executionProgress.workerStatus.terminalStatus === "timeout" ? "Timed Out"
+                  : executionProgress.workerStatus.terminalStatus === "max_cycles_exceeded" ? "Max Cycles"
+                  : executionProgress.workerStatus.terminalStatus === "error" ? "Error"
+                  : executionProgress.workerStatus.terminalStatus}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+      {/* MWT-2: Extra detail — cancellation reason */}
+      {executionProgress?.workerStatus?.reason && (
+        <div className="mt-0.5 px-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
+          Reason: {executionProgress.workerStatus.reason}
+        </div>
+      )}
+      {/* MWT-2: Extra detail — error stage + message */}
+      {executionProgress?.workerStatus?.errorStage && (
+        <div className="mt-0.5 px-2 text-[10px]" style={{ color: "var(--accent-red)" }}>
+          Error in {executionProgress.workerStatus.errorStage}: {executionProgress.workerStatus.errorMessage ?? "Unknown error"}
         </div>
       )}
     </>

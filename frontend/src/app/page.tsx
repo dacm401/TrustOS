@@ -14,9 +14,10 @@ import AdminPanel from "@/components/dashboard/AdminPanel";
 import EventChainViewer from "@/components/dashboard/EventChainViewer";
 import GatewayStatusCard from "@/components/dashboard/GatewayStatusCard";
 import EvidenceReportPanel from "@/components/dashboard/EvidenceReportPanel";
+import { ManagerWorkspace } from "@/components/manager-workspace/ManagerWorkspace";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
-type NavView = "chat" | "overview" | "evidence" | "events" | "gateway" | "advanced";
+type NavView = "chat" | "tasks" | "overview" | "evidence" | "events" | "gateway" | "advanced";
 type AdvancedTab = "diagnostics" | "admin";
 
 const DEFAULT_USER_ID = "dev-user";
@@ -59,6 +60,13 @@ export default function HomePage() {
             {activeNav === "chat" && (
               <ErrorBoundary>
                 <ChatInterface userId={userId} />
+              </ErrorBoundary>
+            )}
+
+            {/* Tasks — MWT-3A: read-only session/task discovery via ManagerWorkspace */}
+            {activeNav === "tasks" && (
+              <ErrorBoundary>
+                <ManagerWorkspace userId={userId} />
               </ErrorBoundary>
             )}
 

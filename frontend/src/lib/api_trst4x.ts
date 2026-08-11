@@ -1,10 +1,10 @@
 ﻿import { getSecureApiKey } from "./crypto-utils";
 
 // 模块级缓存：解密后的 API Key（避免每次请求都解密）
-let _cachedApiKey: string | null = undefined; // undefined = 未加载，null = 未存储
+let _cachedApiKey: string | null | undefined = undefined; // undefined = 未加载，null = 未存储
 
 async function getCachedApiKey(): Promise<string> {
-  if (_cachedApiKey !== undefined) return _cachedApiKey;
+  if (_cachedApiKey !== undefined) return _cachedApiKey ?? "";
   _cachedApiKey = (await getSecureApiKey()) ?? "";
   return _cachedApiKey;
 }

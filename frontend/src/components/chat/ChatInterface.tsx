@@ -5,6 +5,7 @@ import { MessageBubble } from "./MessageBubble";
 import { ModelSwitchAnim } from "./ModelSwitchAnim";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { getApiConfig } from "@/lib/api";
+import { useGatewayHealth, useGatewayEvents } from "@/hooks/useQueries";
 import type { Decision, StreamEvent, ProvenanceMeta, UsageInfo, ExecutionProgress } from "@/types/dashboard";
 
 interface Message {
@@ -40,6 +41,8 @@ interface Message {
 
 interface ChatInterfaceProps {
   onTaskIdChange?: (taskId: string) => void;
+  /** MWT-1: Navigate to Evidence view with session context */
+  onEvidenceClick?: (sessionId: string) => void;
   userId?: string;
 }
 
@@ -49,12 +52,25 @@ const QUICK_PROMPTS = [
   { label: "💻 写一个排序算法", text: "用Python写一个快速排序算法" },
 ];
 
-export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterfaceProps) {
+export function ChatInterface({ onTaskIdChange, onEvidenceClick, userId: propUserId }: ChatInterfaceProps) {
   const userId = propUserId ?? "dev-user";
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sessionId] = useState(() => uuid());
+  const [sessionId, setSessionId] = useState("");
+  // MWT-1: Gateway observation status from TRST-4C APIs (zero backend work)
+  const { data: gwHealth } = useGatewayHealth();
+  const { data: gwEvents } = useGatewayEvents(sessionId ? { session_id: sessionId } : {});
+
+  // Generate session ID only on client to avoid SSR hydration mismatch
+  useEffect(() => {
+    if (!sessionId) setSessionId(uuid());
+  }, [sessionId]);
+  const gatewayOnline = gwHealth?.status === "online";
+  const eventsCaptured = gwEvents?.total ?? 0;
+  const observationStatus: string = gatewayOnline
+    ? (eventsCaptured > 0 ? "Active" : "No events yet")
+    : "Not available";
   const [showFallbackAnim, setShowFallbackAnim] = useState<{ fromModel: string; toModel: string; reason: string } | null>(null);
   // Phase 1.5/2.0: 临时状态消息（status/clarifying 不写入 messages）
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -210,6 +226,53 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
                   : m
               )
             );
+          } else if (data.type === "worker_status") {
+            // MWT-2: Worker lifecycle event — SSE wire is snake_case, map to internal camelCase
+            const wire = (data as Record<string, unknown>).worker_status as Record<string, unknown> | undefined;
+            const ws = wire ? {
+              completedCycles: (wire.completed_cycles as number) ?? 0,
+              maxCycles: (wire.max_cycles as number | null) ?? null,
+              currentState: (wire.current_state as string) ?? "executing",
+              totalElapsedMs: (wire.total_elapsed_ms as number) ?? 0,
+              terminalStatus: wire.terminal_status as ("success" | "cancelled" | "timeout" | "max_cycles_exceeded" | "error") | undefined,
+              errorStage: wire.error_stage as string | undefined,
+              errorMessage: wire.error_message as string | undefined,
+              reason: wire.reason as string | undefined,
+              atCycleIndex: wire.at_cycle_index as number | undefined,
+            } : undefined;
+            // Use terminalStatus (strict enum) when available, fall back to currentState
+            const terminalState = ws?.terminalStatus ?? ws?.currentState;
+            setStatusMsg(data.stream ?? null);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === placeholderId
+                  ? {
+                      ...m,
+                      executionProgress: {
+                        ...m.executionProgress,
+                        status: terminalState === "success" || terminalState === "completed" ? "completed"
+                          : terminalState === "error" || terminalState === "failed" || terminalState === "timed_out" || terminalState === "timeout" || terminalState === "max_cycles_exceeded" ? "error"
+                          : terminalState === "cancelled" ? "cancelled"
+                          : "executing",
+                        message: data.stream ?? m.executionProgress?.message,
+                        workerStatus: ws,
+                        updatedAt: new Date().toISOString(),
+                      },
+                    }
+                  : m
+              )
+            );
+          } else if (data.type === "cycle_event") {
+            // MWT-2: Cycle event — show cycle-level detail as status message
+            const evt = data.cycleEvent;
+            if (evt) {
+              const eventName = String(evt.event ?? "");
+              if (eventName === "cycle.started" || eventName === "cycle_started") {
+                setStatusMsg("🔄 Starting cycle...");
+              } else if (eventName === "cycle.completed" || eventName === "cycle_completed") {
+                setStatusMsg(null);
+              }
+            }
           } else if (data.type === "thinking") {
             // Stream V2: thinking 状态可视化
             const state = (data.thinking_state || data.state || "thinking") as typeof thinkingState;
@@ -492,6 +555,92 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
 
   return (
     <div className="flex flex-col h-full">
+      {/* MWT-1: Manager Shell observation header — Gateway status + session + Evidence */}
+      <div
+        className="flex items-center gap-3 px-4 py-2 border-b text-xs shrink-0"
+        style={{
+          background: "var(--bg-secondary)",
+          borderColor: "var(--border-color, rgba(255,255,255,0.06))",
+          color: "var(--text-muted)",
+        }}
+      >
+        {/* Session ID */}
+        <span className="flex items-center gap-1.5">
+          <span style={{ color: "var(--text-muted)" }}>Session</span>
+          <code
+            className="px-1.5 py-0.5 rounded text-[11px]"
+            style={{
+              background: "var(--bg-tertiary, rgba(255,255,255,0.05))",
+              color: "var(--text-primary)",
+              fontFamily: "var(--font-mono, monospace)",
+            }}
+          >
+            {sessionId.slice(0, 8)}…
+          </code>
+        </span>
+
+        {/* Separator */}
+        <span style={{ color: "var(--border-color, rgba(255,255,255,0.1))" }}>|</span>
+
+        {/* Gateway status */}
+        <span className="flex items-center gap-1.5">
+          <span
+            className="w-1.5 h-1.5 rounded-full shrink-0"
+            style={{
+              background: gatewayOnline ? "var(--accent-green, #22c55e)" : "var(--accent-red, #ef4444)",
+              boxShadow: gatewayOnline
+                ? "0 0 6px rgba(34,197,94,0.5)"
+                : "0 0 6px rgba(239,68,68,0.5)",
+            }}
+          />
+          <span>Gateway: {gatewayOnline ? "Online" : "Offline"}</span>
+        </span>
+
+        {/* Separator */}
+        <span style={{ color: "var(--border-color, rgba(255,255,255,0.1))" }}>|</span>
+
+        {/* Observation status */}
+        <span className="flex items-center gap-1.5">
+          <span
+            className="w-1.5 h-1.5 rounded-full shrink-0"
+            style={{
+              background: eventsCaptured > 0 ? "var(--accent-green, #22c55e)" : "var(--accent-amber, #f59e0b)",
+              boxShadow: eventsCaptured > 0
+                ? "0 0 6px rgba(34,197,94,0.5)"
+                : "0 0 6px rgba(245,158,11,0.5)",
+            }}
+          />
+          <span>Observation: {observationStatus}</span>
+          {eventsCaptured > 0 && (
+            <span style={{ color: "var(--text-muted)" }}>
+              · Events: {eventsCaptured}
+            </span>
+          )}
+        </span>
+
+        {/* Spacer */}
+        <span className="flex-1" />
+
+        {/* Evidence link — MWT-1: carries session context to Evidence view */}
+        <a
+          href="#evidence"
+          className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] transition-colors hover:underline"
+          style={{
+            background: "var(--bg-tertiary, rgba(255,255,255,0.05))",
+            color: "var(--accent-blue, #3b82f6)",
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            // Pass session context to Evidence view
+            onEvidenceClick?.(sessionId);
+            window.location.hash = "evidence";
+          }}
+          title={`View evidence for session ${sessionId}`}
+        >
+          🔍 Evidence
+        </a>
+      </div>
+
       {/* Message area */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
         {/* Empty state */}
@@ -561,6 +710,8 @@ export function ChatInterface({ onTaskIdChange, userId: propUserId }: ChatInterf
               usage={msg.usage}
               terminalSummary={msg.terminalSummary}
               executionProgress={msg.executionProgress}
+              sessionId={sessionId}
+              eventsCaptured={eventsCaptured}
             />
             {/* Streaming cursor — new design */}
             {msg.streaming && (

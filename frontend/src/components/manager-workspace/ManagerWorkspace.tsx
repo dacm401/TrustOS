@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo } from "react";
 import { SessionList } from "./SessionList";
 import { ManagerConversation } from "./ManagerConversation";
 import { SessionDetail } from "./SessionDetail";
+import { TaskPanel } from "@/components/workbench/TaskPanel";
 
 interface ManagerWorkspaceProps {
   userId: string;
@@ -64,6 +65,14 @@ export function ManagerWorkspace({ userId }: ManagerWorkspaceProps) {
           sessionId={selectedSessionId}
           refreshKey={sessionDetailRefreshKey}
         />
+      </div>
+
+      {/* Far Right: Task Panel + Task Evidence (MWT-4A) */}
+      <div
+        className="w-80 flex-shrink-0 h-full"
+        style={{ backgroundColor: "var(--bg-surface)", borderLeft: "1px solid var(--border-subtle)" }}
+      >
+        <TaskPanel userId={userId} sessionId={selectedSessionId ?? undefined} />
       </div>
     </div>
   );

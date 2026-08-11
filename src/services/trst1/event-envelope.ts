@@ -53,6 +53,21 @@ export interface TrstEventEnvelope {
   run_id: string;
   project_id: string;
 
+  // ── Request mode (reserved OS primitive; runtime-populated, e.g. "streaming") ──
+  // Type declaration alignment only — already written by Gateway at runtime.
+  // ADDITIVE ONLY: no removal/redefinition per schema evolution policy.
+  request_mode?: string;
+
+  // ── MWT-3B1: Task correlation (nullable by design) ──
+  /**
+   * Nullable task correlation ID. Manager-assigned or caller-provided.
+   * Gateway NEVER creates task_id — it only observes and attaches it from a
+   * trusted X-TrustOS-Task-Id header. Pre-task / unassigned events = null.
+   *
+   * Wire format: snake_case `task_id`. NEVER `taskId`.
+   */
+  task_id: string | null;
+
   // ── Source / Destination ──
   source?: string;
   destination?: string;
@@ -117,4 +132,22 @@ export function computeEventHash(event: Omit<TrstEventEnvelope, "event_hash">): 
 export function sealEvent(event: Omit<TrstEventEnvelope, "event_hash">): TrstEventEnvelope {
   const event_hash = computeEventHash(event);
   return { ...event, event_hash };
+}
+
+/**
+ * MWT-3B1: Extract a valid task_id from a trusted request header context.
+ *
+ * Rules (PM R2/R3):
+ * - missing header → null
+ * - empty/whitespace-only header → null (never a valid task_id)
+ * - present non-empty trimmed string → that value
+ *
+ * Gateway MUST NOT generate, infer, or default task_id. This function only
+ * normalizes a caller-supplied trusted value; it never fabricates one.
+ */
+export function extractTaskId(rawTaskId: string | undefined | null): string | null {
+  if (rawTaskId === undefined || rawTaskId === null) return null;
+  const trimmed = rawTaskId.trim();
+  if (trimmed.length === 0) return null;
+  return trimmed;
 }

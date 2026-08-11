@@ -23,7 +23,7 @@ import type { Context } from "hono";
 import { v4 as uuidv4 } from "uuid";
 import { createHash } from "node:crypto";
 
-import { createEventId, type TrstEventEnvelope } from "./event-envelope.js";
+import { createEventId, extractTaskId, type TrstEventEnvelope } from "./event-envelope.js";
 import { appendEvent, getStorePath } from "./jsonl-event-store.js";
 import { getEventIndex, type EventIndex } from "./event-index.js";
 import { extractContextBlocks } from "./context-trace-lite.js";
@@ -78,13 +78,28 @@ function getHeader(c: Context, name: string): string | undefined {
   return c.req.header(name) ?? undefined;
 }
 
+/**
+ * MWT-3B1: Normalize the `task_id` query param.
+ * - "null" → null (filter unassigned events)
+ * - "" → null (treat empty as unassigned, never a valid task_id)
+ * - non-empty trimmed string → exact task_id
+ * Empty/whitespace is never a valid task_id, matching ingestion semantics (R2).
+ */
+function normalizeTaskIdFilter(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === "" || trimmed.toLowerCase() === "null") return null;
+  return trimmed;
+}
+
 function buildIdentity(c: Context, projectId: string) {
+  // Gateway NEVER fabricates task_id — extractTaskId returns null when absent/empty.
   return {
     sessionId: getHeader(c, "X-TrustOS-Session-Id") ?? uuidv4(),
     traceId: getHeader(c, "X-TrustOS-Trace-Id") ?? uuidv4(),
     agentId: getHeader(c, "X-TrustOS-Agent-Id") ?? "direct-gateway-call",
     actorId: getHeader(c, "X-TrustOS-Actor-Id") ?? "local-user",
     runId: getHeader(c, "X-TrustOS-Run-Id") ?? uuidv4(),
+    taskId: extractTaskId(getHeader(c, "X-TrustOS-Task-Id")),
     projectId,
   };
 }
@@ -124,7 +139,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
   // ── Whitelist Sanitizer ──────────────────────────────────────────────────
   const ALLOWED_EVENT_FIELDS = new Set([
     "event_id", "event_type", "timestamp", "status",
-    "trace_id", "session_id", "run_id",
+    "trace_id", "session_id", "run_id", "task_id",
     "source", "destination",
     "resource_type", "resource_ref",
     "provider", "model", "tool_name", "tool_id",
@@ -166,10 +181,20 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       if (v) q[k] = v;
     }
 
+    // MWT-3B1: task_id filter — exact match (string) or unassigned (null literal).
+    // `task_id=null` or `unassigned=true` → filter unassigned events (task_id IS NULL).
+    let taskIdFilter: string | null | undefined = undefined;
+    const rawTaskId = c.req.query("task_id");
+    if (rawTaskId !== undefined) {
+      taskIdFilter = normalizeTaskIdFilter(rawTaskId);
+    } else if (c.req.query("unassigned") === "true") {
+      taskIdFilter = null;
+    }
+
     const page = Math.max(1, parseInt(q.page) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(q.limit) || 50));
 
-    const result = idx.queryEvents({ page, limit, session_id: q.session_id, event_type: q.event_type, agent_id: q.agent_id, from: q.from, to: q.to, request_mode: q.request_mode });
+    const result = idx.queryEvents({ page, limit, session_id: q.session_id, event_type: q.event_type, agent_id: q.agent_id, from: q.from, to: q.to, request_mode: q.request_mode, task_id: taskIdFilter });
     const safeEvents = result.events.map(e => {
       const r: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(e)) {
@@ -326,6 +351,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
           session_id: identity.sessionId,
           run_id: identity.runId,
           project_id: identity.projectId,
+          task_id: identity.taskId,
           agent_id: identity.agentId,
           actor_id: identity.actorId,
           source: "gateway",
@@ -358,6 +384,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
           session_id: identity.sessionId,
           run_id: identity.runId,
           project_id: identity.projectId,
+          task_id: identity.taskId,
           agent_id: identity.agentId,
           actor_id: identity.actorId,
           source: "gateway",
@@ -443,6 +470,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
               project_id: identity.projectId,
               agent_id: identity.agentId,
               actor_id: identity.actorId,
+              task_id: identity.taskId,
               source: "gateway",
               destination: provider.baseUrl,
               resource_type: "model",
@@ -481,6 +509,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
               project_id: identity.projectId,
               agent_id: identity.agentId,
               actor_id: identity.actorId,
+              task_id: identity.taskId,
               source: "gateway",
               destination: provider.baseUrl,
               resource_type: "model",
@@ -550,6 +579,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
         session_id: identity.sessionId,
         run_id: identity.runId,
         project_id: identity.projectId,
+        task_id: identity.taskId,
         agent_id: identity.agentId,
         actor_id: identity.actorId,
         source: "gateway",
@@ -604,6 +634,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       project_id: identity.projectId,
       agent_id: identity.agentId,
       actor_id: identity.actorId,
+      task_id: identity.taskId,
 
       source: "gateway",
       destination: provider.baseUrl,
@@ -691,6 +722,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
         session_id: identity.sessionId,
         run_id: identity.runId,
         project_id: identity.projectId,
+        task_id: identity.taskId,
         agent_id: identity.agentId,
         actor_id: identity.actorId,
         source: "gateway",
@@ -731,6 +763,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
         session_id: identity.sessionId,
         run_id: identity.runId,
         project_id: identity.projectId,
+        task_id: identity.taskId,
         agent_id: identity.agentId,
         actor_id: identity.actorId,
         source: "gateway",
@@ -772,6 +805,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       session_id: identity.sessionId,
       run_id: identity.runId,
       project_id: identity.projectId,
+      task_id: identity.taskId,
       agent_id: identity.agentId,
       actor_id: identity.actorId,
       source: "gateway",

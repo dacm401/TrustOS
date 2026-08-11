@@ -27,6 +27,12 @@ interface MessageBubbleProps {
   terminalSummary?: unknown;
   /** S101P: execution progress persisted on the message */
   executionProgress?: ExecutionProgress;
+  /** MWT-1: Current session ID for Trust context display */
+  sessionId?: string;
+  /** MWT-2 TODO: Trust trace ID from Gateway observation — not yet wired */
+  traceId?: string;
+  /** MWT-1: Number of Gateway events captured for this session */
+  eventsCaptured?: number;
 }
 
 // S93P: 路由分层标签产品化 — 隐藏 L0/L1/L2/L3 内部术语，改用进度描述
@@ -41,7 +47,7 @@ function initials(name: string): string {
   return name.substring(0, 2).toUpperCase();
 }
 
-export function MessageBubble({ role, content, decision, userId = "dev-user", delegation, routingLayer, usage, terminalSummary, executionProgress }: MessageBubbleProps) {
+export function MessageBubble({ role, content, decision, userId = "dev-user", delegation, routingLayer, usage, terminalSummary, executionProgress, sessionId, traceId, eventsCaptured }: MessageBubbleProps) {
   const isUser = role === "user";
   const [feedbackGiven, setFeedbackGiven] = useState<string | null>(null);
   const [showReasonInput, setShowReasonInput] = useState(false);
@@ -150,7 +156,7 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
         })()}
 
         {/* AI: Decision card + metadata */}
-        {!isUser && (decision || routingLayer || usage || terminalSummary || executionProgress) && (
+        {!isUser && (decision || routingLayer || usage || terminalSummary || executionProgress || sessionId || traceId || (eventsCaptured !== undefined && eventsCaptured > 0)) && (
           <>
             {decision && <DecisionCard decision={decision} />}
             {/* AI metadata: model + routing layer + legacy decision.execution tokens/cost */}
@@ -193,11 +199,14 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
                 )}
               </div>
             )}
-            {/* S101P Phase B: Shared execution metadata (usage, terminalSummary, executionProgress) */}
+            {/* S101P Phase B: Shared execution metadata (usage, terminalSummary, executionProgress) + MWT-1 context */}
             <ExecutionMetadata
               usage={usage}
               terminalSummary={terminalSummary}
               executionProgress={executionProgress}
+              sessionId={sessionId}
+              traceId={traceId}
+              eventsCaptured={eventsCaptured}
             />
           </>
         )}

@@ -26,7 +26,7 @@ export const managerRouteRouter = new Hono();
 
 // POST /v1/manager/route-message
 managerRouteRouter.post("/route-message", async (c) => {
-  const userId = getContextUserId(c)!;
+  const userId = getContextUserId(c) || "dev-user";
 
   let body: Record<string, unknown>;
   try {
@@ -71,10 +71,10 @@ managerRouteRouter.post("/route-message", async (c) => {
     });
 
     // 2a. TRST-4H-III: explicit clarification short-circuit.
-    // ask_clarification is deterministic, produced by the hybrid router. It must NOT
-    // reach the LLM call, Worker, session creation, or any DB write. Return the shaped
-    // API response directly: clarificationRequired=true, assistant managerMessage with
-    // non-empty content, no createdSession, no fake task id.
+    // ask_clarification is deterministic and produced by the hybrid router. It must
+    // NOT reach the LLM call, Worker, session creation, or any DB write. Return the
+    // shaped API response directly: clarificationRequired=true, assistant managerMessage
+    // with non-empty content, no createdSession, no fake task id.
     if (routing.route_type === "ask_clarification") {
       const shaped = shapeManagerRouteResponse(routing, userId);
       return c.json(shaped, 200);
@@ -94,7 +94,25 @@ managerRouteRouter.post("/route-message", async (c) => {
         routing.manager_message_content = reply;
       } catch (err: any) {
         console.error("[manager-route] LLM call failed for normal_conversation:", err.message);
-        routing.manager_message_content = "抱歉，我暂时无法回答这个问题。请尝试输入一个委托任务，如「帮我修登录页UI」。";
+        // Fallback: re-route as delegated task with longer timeout (600s)
+        // Catches complex math/reasoning/code-gen requests that don't match
+        // delegation keywords but are too heavy for fast-path LLM
+        const title = message.trim().split(/[，。,.!！?？\n]/)[0].trim();
+        const shortTitle = title.length > 60 ? title.substring(0, 60) : title;
+        (routing as any).route_type = "new_delegated_task";
+        (routing as any).created_session = {
+          title: shortTitle || "Untitled Task",
+          goal: message.trim(),
+          status: "planning",
+          risk_level: "low",
+          delegation_contract: {
+            source: "manager_routing_fallback",
+            original_message: message.trim(),
+            created_at: new Date().toISOString(),
+          },
+        };
+        (routing as any).reason = "Normal conversation LLM failed, falling back to delegated task";
+        routing.manager_message_content = `这个问题有点复杂，我创建一个独立任务来慢慢处理...`;
       }
     }
 

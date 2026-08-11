@@ -133,6 +133,22 @@ export interface ExecutionProgress {
   message?: string;
   elapsedMs?: number;
   updatedAt?: string;
+  /** MWT-2: Worker lifecycle state — cycle progress on the executing message */
+  workerStatus?: {
+    completedCycles: number;
+    maxCycles: number | null;
+    currentState: string;
+    totalElapsedMs: number;
+    /** MWT-2: Strict terminal state enum */
+    terminalStatus?: "success" | "cancelled" | "timeout" | "max_cycles_exceeded" | "error";
+    /** MWT-2: Error details when terminalStatus is "error" */
+    errorStage?: string;
+    errorMessage?: string;
+    /** MWT-2: Cancellation reason when terminalStatus is "cancelled" */
+    reason?: string;
+    /** MWT-2: Cycle index at which timeout occurred */
+    atCycleIndex?: number;
+  };
 }
 
 /** SSE stream event — union of all event types emitted by /api/chat */
@@ -161,6 +177,25 @@ export interface StreamEvent {
   terminalSummary?: Record<string, unknown>;
   /** S97P: token/cost usage */
   usage?: UsageInfo;
+  /** S76P/MWT-2: cycle event payload from Worker execution */
+  cycleEvent?: Record<string, unknown>;
+  /**
+   * MWT-2: worker lifecycle state — SSE wire format (snake_case).
+   * Frontend maps this to ExecutionProgress.workerStatus (camelCase) at parse time.
+   */
+  worker_status?: {
+    completed_cycles: number;
+    max_cycles: number | null;
+    current_state: string;
+    total_elapsed_ms: number;
+    terminal_status?: "success" | "cancelled" | "timeout" | "max_cycles_exceeded" | "error";
+    error_stage?: string;
+    error_message?: string;
+    reason?: string;
+    at_cycle_index?: number;
+  };
+  /** @deprecated MWT-2: use worker_status (snake_case wire format) */
+  workerStatus?: Record<string, unknown>;
 }
 
 // ── S100P: Manager Workspace types ─────────────────────────────────────────────

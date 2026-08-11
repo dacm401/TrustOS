@@ -13,6 +13,7 @@ import {
   fetchGatewayHealth,
   fetchGatewayEvents,
   fetchGatewaySessions,
+  getApiConfig,
   type GatewayEventsResponse,
   type GatewayEventsParams,
   type GatewaySessionsResponse,
@@ -20,7 +21,6 @@ import {
   type CostStats,
   type HealthStatus,
   type GatewayHealth,
-  type GatewayEventsResponse,
 } from '@/lib/api';
 
 // Tasks

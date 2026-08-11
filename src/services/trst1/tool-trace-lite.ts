@@ -79,6 +79,7 @@ export async function executeAndRecordToolCall(
     session_id: sessionId,
     run_id: runId,
     project_id: options.projectId,
+    task_id: null,
     agent_id: options.agentId ?? "unknown-agent",
     actor_id: options.actorId ?? "local-user",
 

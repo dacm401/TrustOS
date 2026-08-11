@@ -1,10 +1,10 @@
 ﻿import { getSecureApiKey } from "./crypto-utils";
 
 // 模块级缓存：解密后的 API Key（避免每次请求都解密）
-let _cachedApiKey: string | null = undefined; // undefined = 未加载，null = 未存储
+let _cachedApiKey: string | null | undefined = undefined; // undefined = 未加载，null = 未存储
 
 async function getCachedApiKey(): Promise<string> {
-  if (_cachedApiKey !== undefined) return _cachedApiKey;
+  if (_cachedApiKey !== undefined) return _cachedApiKey ?? "";
   _cachedApiKey = (await getSecureApiKey()) ?? "";
   return _cachedApiKey;
 }
@@ -116,6 +116,21 @@ export async function fetchTraces(taskId: string, userId: string) {
   );
   if (!res.ok) throw new Error(`加载执行轨迹失败 (${res.status})`);
   return res.json();
+}
+
+// MWT-4B — download a task's evidence export as a JSON file.
+export function downloadEvidenceExport(taskId: string, artifact: unknown): void {
+  const blob = new Blob([JSON.stringify(artifact, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `evidence-export-${taskId}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // H1: Runtime Health Dashboard
@@ -395,6 +410,16 @@ export interface GatewayHealth {
   request_count?: number;
   error_count?: number;
   last_check?: string;
+  // Backend /health may also return operational detail (optional, not required).
+  service?: string;
+  mode?: "shadow" | "enforce" | string;
+  timestamp?: string;
+  gateway_overhead_ms?: number;
+  events_count?: number;
+  index?: string;
+  providers?: unknown;
+  streaming?: string | { supported?: boolean; error?: string | null } | null;
+  mcp_lifecycle?: string | { supported?: boolean; error?: string | null } | null;
 }
 
 export async function fetchGatewayHealth(): Promise<GatewayHealth> {
@@ -425,11 +450,31 @@ export interface GatewayEvent {
 export interface GatewayEventsResponse {
   events: GatewayEvent[];
   total: number;
+  // Optional backend metadata (not all responses include these).
+  status?: string;
+  service?: string;
+  mode?: string;
+  returned_count?: number;
+  has_more?: boolean;
+  page?: number;
+  limit?: number;
+  events_count?: number;
 }
 
-export async function fetchGatewayEvents(limit = 50): Promise<GatewayEventsResponse> {
+export async function fetchGatewayEvents(
+  params: GatewayEventsParams = {}
+): Promise<GatewayEventsResponse> {
+  const { limit = 50, page = 1, session_id, event_type, agent_id, task_id, unassigned } = params;
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
+  qs.set("page", String(page));
+  if (session_id) qs.set("session_id", session_id);
+  if (event_type) qs.set("event_type", event_type);
+  if (agent_id) qs.set("agent_id", agent_id);
+  if (task_id != null) qs.set("task_id", task_id);
+  if (unassigned) qs.set("unassigned", "true");
   try {
-    const res = await fetch(`${GATEWAY_URL}/events?limit=${limit}`, {
+    const res = await fetch(`${GATEWAY_URL}/events?${qs.toString()}`, {
       cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });
@@ -437,6 +482,73 @@ export async function fetchGatewayEvents(limit = 50): Promise<GatewayEventsRespo
     return res.json();
   } catch {
     return { events: [], total: 0 };
+  }
+}
+
+// MWT-4A: task-correlated event projection (frontend-only; reuses MWT-3B1 endpoint).
+export async function fetchGatewayEventsByTask(
+  taskId: string,
+  limit = 200
+): Promise<GatewayEventsResponse> {
+  if (!taskId) return { events: [], total: 0 };
+  try {
+    const res = await fetch(`${GATEWAY_URL}/events?task_id=${encodeURIComponent(taskId)}&limit=${limit}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  } catch {
+    return { events: [], total: 0 };
+  }
+}
+
+// Query params accepted by the Gateway events endpoint (optional, frontend-only typing).
+export interface GatewayEventsParams {
+  limit?: number;
+  page?: number;
+  session_id?: string;
+  event_type?: string;
+  agent_id?: string;
+  task_id?: string | null;
+  unassigned?: boolean;
+}
+
+// ── Gateway Sessions ─────────────────────────────────────────────────────────
+
+export interface GatewaySession {
+  session_id: string;
+  user_id?: string;
+  started_at?: string;
+  last_active_at?: string;
+  status?: string;
+  task_count?: number;
+  request_count?: number;
+  agents?: string[];
+  event_count?: number;
+  model_calls?: number;
+  total_tokens?: number;
+}
+
+export interface GatewaySessionsResponse {
+  status?: string;
+  service?: string;
+  mode?: string;
+  limit?: number;
+  returned_count?: number;
+  sessions: GatewaySession[];
+}
+
+export async function fetchGatewaySessions(limit = 50): Promise<GatewaySessionsResponse> {
+  try {
+    const res = await fetch(`${GATEWAY_URL}/sessions?limit=${limit}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  } catch {
+    return { sessions: [] };
   }
 }
 
@@ -448,6 +560,8 @@ export interface ReportSummary {
     tool_calls: number;
     hash_coverage_pct: number;
     failure_events: number;
+    failure_count?: number;
+    unique_sessions?: number;
     total_tokens: number;
     estimated_cost: number | null;
     sessions: number;

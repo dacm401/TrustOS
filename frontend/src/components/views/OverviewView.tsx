@@ -3,6 +3,7 @@
 import GatewayStatusCard from "@/components/dashboard/GatewayStatusCard";
 import EvidenceReportPanel from "@/components/dashboard/EvidenceReportPanel";
 import { useGatewayEvents, useGatewayHealth, useGatewaySessions } from "@/hooks/useQueries";
+import type { GatewaySession } from "@/lib/api";
 
 export default function OverviewView() {
   const { data: eventsData } = useGatewayEvents({ limit: 1, page: 1 });
@@ -78,7 +79,7 @@ export default function OverviewView() {
               💬 Recent Sessions (TRST-4C)
             </h3>
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {sessions.map((s) => (
+              {sessions.map((s: GatewaySession) => (
                 <div
                   key={s.session_id}
                   className="flex items-center justify-between py-2 px-3 rounded"
@@ -95,7 +96,7 @@ export default function OverviewView() {
                       {s.session_id.slice(0, 12)}...
                     </div>
                     <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                      {s.agents.slice(0, 3).join(", ")}
+                      {(s.agents ?? []).slice(0, 3).join(", ")}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 text-xs flex-shrink-0">
@@ -106,7 +107,7 @@ export default function OverviewView() {
                       {s.model_calls} calls
                     </span>
                     <span style={{ color: "var(--text-muted)" }}>
-                      {s.total_tokens.toLocaleString()} tokens
+                      {(s.total_tokens ?? 0).toLocaleString()} tokens
                     </span>
                   </div>
                 </div>

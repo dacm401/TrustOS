@@ -5,6 +5,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  name?: string;
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
 }
 
@@ -23,7 +24,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    console.error(`ErrorBoundary[${this.props.name ?? 'unnamed'}] caught:`, error.message, errorInfo.componentStack);
     
     if (this.props.onError) {
       this.props.onError(error, errorInfo);
@@ -35,6 +36,9 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) {
         return this.props.fallback;
       }
+
+      const stackLines = this.state.error?.stack?.split('\n') ?? [];
+      const relevantStack = stackLines.slice(0, 8).join('\n    ');
 
       return (
         <div
@@ -48,11 +52,21 @@ export class ErrorBoundary extends Component<Props, State> {
             <span className="text-lg">⚠️</span>
             <div>
               <h3 className="text-sm font-semibold mb-1" style={{ color: 'var(--accent-red)' }}>
-                组件加载失败
+                组件加载失败 {this.props.name ? `[${this.props.name}]` : ''}
               </h3>
-              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
                 {this.state.error?.message || '发生未知错误'}
               </p>
+              {relevantStack.length > 0 && (
+                <pre className="text-[10px] mt-1 mb-2 p-2 rounded overflow-auto max-h-32" style={{
+                  backgroundColor: 'rgba(0,0,0,0.15)',
+                  color: 'var(--text-muted)',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-all',
+                }}>
+                  {relevantStack}
+                </pre>
+              )}
               <button
                 onClick={() => {
                   this.setState({ hasError: false, error: undefined });
@@ -74,6 +88,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return this.props.children;
   }
+
 }
 
 // Fallback component for empty/error states

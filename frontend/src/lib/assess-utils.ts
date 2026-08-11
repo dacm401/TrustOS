@@ -130,7 +130,7 @@ function computeTraceSignals(events: GatewayEvent[]): AssessSignalDef[] {
   }
 
   // High latency per event
-  const maxLatency = Math.max(...events.map((e) => e.latency_ms ?? 0));
+  const maxLatency = Math.max(...events.map((e) => Number(e.latency_ms ?? 0)));
   if (maxLatency > 30000) {
     sigs.push(SIGNALS.HIGH_LATENCY);
   }

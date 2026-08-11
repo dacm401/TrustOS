@@ -269,24 +269,24 @@ function EventRow({ event }: { event: GatewayEvent }) {
 
       {/* Metadata row */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-        {event.provider && (
+        {event.provider != null && (
           <span style={{ color: "var(--text-secondary)" }}>
-            <span style={{ color: "var(--text-muted)" }}>provider:</span> {event.provider}
+            <span style={{ color: "var(--text-muted)" }}>provider:</span> {String(event.provider)}
           </span>
         )}
-        {event.model && (
+        {event.model != null && (
           <span style={{ color: "var(--text-secondary)" }}>
-            <span style={{ color: "var(--text-muted)" }}>model:</span> {event.model}
+            <span style={{ color: "var(--text-muted)" }}>model:</span> {String(event.model)}
           </span>
         )}
-        {event.tool_name && (
+        {event.tool_name != null && (
           <span style={{ color: "var(--text-secondary)" }}>
-            <span style={{ color: "var(--text-muted)" }}>tool:</span> {event.tool_name}
+            <span style={{ color: "var(--text-muted)" }}>tool:</span> {String(event.tool_name)}
           </span>
         )}
-        {event.resource_ref && (
+        {event.resource_ref != null && (
           <span style={{ color: "var(--text-secondary)" }}>
-            <span style={{ color: "var(--text-muted)" }}>ref:</span> {event.resource_ref}
+            <span style={{ color: "var(--text-muted)" }}>ref:</span> {String(event.resource_ref)}
           </span>
         )}
       </div>
@@ -294,7 +294,7 @@ function EventRow({ event }: { event: GatewayEvent }) {
       {/* Hash row */}
       <div className="flex items-center gap-2 mt-1.5">
         <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-          {truncateHash(event.event_hash)}
+          {truncateHash(event.event_hash != null ? String(event.event_hash) : "")}
         </span>
         {/* Hash presence dots */}
         <span className="flex items-center gap-1" title="input / output / args / result hashes">
@@ -306,7 +306,10 @@ function EventRow({ event }: { event: GatewayEvent }) {
         {/* Latency */}
         {(event.latency_ms != null || event.gateway_overhead_ms != null) && (
           <span className="text-xs ml-auto" style={{ color: "var(--text-muted)" }}>
-            {formatLatency(event.latency_ms, event.gateway_overhead_ms)}
+            {formatLatency(
+              event.latency_ms != null ? Number(event.latency_ms) : null,
+              event.gateway_overhead_ms != null ? Number(event.gateway_overhead_ms) : null
+            )}
           </span>
         )}
       </div>

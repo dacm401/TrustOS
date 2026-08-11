@@ -35,17 +35,15 @@ export function ManagerConversation({
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [initLoading, setInitLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load existing messages on mount
-  useEffect(() => {
-    let cancelled = false;
-    setInitLoading(true);
+  // Load history on demand (not auto on mount) so refresh gives a clean slate
+  const loadHistory = useCallback(() => {
+    setHistoryLoading(true);
     fetchManagerMessages(userId, conversationId, 100)
       .then((data) => {
-        if (cancelled) return;
         const list: ManagerMessage[] = data.messages ?? [];
         setMessages(
           list.map((m) => ({
@@ -56,13 +54,13 @@ export function ManagerConversation({
             createdAt: m.created_at,
           }))
         );
-        setInitLoading(false);
       })
       .catch(() => {
-        if (cancelled) return;
-        setInitLoading(false);
+        // silent fail
+      })
+      .finally(() => {
+        setHistoryLoading(false);
       });
-    return () => { cancelled = true; };
   }, [userId, conversationId]);
 
   // Auto-scroll
@@ -148,21 +146,33 @@ export function ManagerConversation({
     <div className="flex flex-col h-full overflow-hidden">
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
-        {initLoading && (
+        {historyLoading && (
           <div className="flex items-center justify-center h-full text-xs" style={{ color: "var(--text-muted)" }}>
-            加载对话...
+            加载历史消息...
           </div>
         )}
 
-        {!initLoading && messages.length === 0 && (
+        {!historyLoading && messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
             <span className="text-3xl mb-3">💬</span>
             <div className="text-sm font-medium mb-1" style={{ color: "var(--text-primary)" }}>
               Manager 对话
             </div>
-            <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+            <div className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
               输入消息开始对话，或发起委托任务
             </div>
+            <button
+              onClick={loadHistory}
+              disabled={historyLoading}
+              className="text-xs px-3 py-1.5 rounded-md transition-opacity disabled:opacity-40"
+              style={{
+                backgroundColor: "var(--bg-overlay)",
+                color: "var(--text-secondary)",
+                border: "1px solid var(--border-subtle)",
+              }}
+            >
+              📜 加载历史消息
+            </button>
           </div>
         )}
 

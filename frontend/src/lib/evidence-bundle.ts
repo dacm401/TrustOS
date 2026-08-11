@@ -104,23 +104,31 @@ export interface EvidenceBundle {
 // Extract only the 13 hash-only metadata fields from a GatewayEvent.
 // Mirrors: scripts/trst2/run-prove-evidence-smoke.mjs:164-183
 
+// Coerce open-record unknown values into the typed EvidenceEvent slots.
+function asStr(v: unknown): string | null {
+  return typeof v === "string" ? v : v == null ? null : String(v);
+}
+function asNum(v: unknown): number | null {
+  return typeof v === "number" ? v : v == null ? null : Number(v);
+}
+
 export function sanitizeEventForEvidence(ev: GatewayEvent): EvidenceEvent {
   return {
-    event_id: ev.event_id ?? null,
-    event_type: ev.event_type ?? null,
-    timestamp: ev.timestamp ?? null,
-    agent_id: ev.agent_id ?? null,
-    provider: ev.provider ?? null,
-    model: ev.model ?? null,
-    status: ev.status ?? null,
-    latency_ms: ev.latency_ms ?? null,
-    token_count: ev.token_count ?? null,
+    event_id: asStr(ev.event_id),
+    event_type: asStr(ev.event_type),
+    timestamp: asStr(ev.timestamp),
+    agent_id: asStr(ev.agent_id),
+    provider: asStr(ev.provider),
+    model: asStr(ev.model),
+    status: asStr(ev.status),
+    latency_ms: asNum(ev.latency_ms),
+    token_count: asNum(ev.token_count),
     hashes: {
-      event_hash: ev.event_hash ?? null,
-      input_hash: ev.input_hash ?? null,
-      output_hash: ev.output_hash ?? null,
-      args_hash: ev.args_hash ?? null,
-      result_hash: ev.result_hash ?? null,
+      event_hash: asStr(ev.event_hash),
+      input_hash: asStr(ev.input_hash),
+      output_hash: asStr(ev.output_hash),
+      args_hash: asStr(ev.args_hash),
+      result_hash: asStr(ev.result_hash),
     },
   };
 }
