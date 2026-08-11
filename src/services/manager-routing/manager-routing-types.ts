@@ -41,6 +41,27 @@ export interface ActiveSessionSummary {
 
 // ── Routing Output ───────────────────────────────────────────────────────────
 
+/**
+ * API/UI response shape for /v1/manager/route-message.
+ * Produced by the TRST-4H-II response-shaping helper so the HTTP handler and
+ * frontend share one contract for clarification + other routes.
+ */
+export interface RouteMessageApiResponse {
+  routeType: RouteType;
+  targetSessionId: string | null;
+  clarificationRequired: boolean;
+  managerMessage: {
+    id: string;
+    role: "assistant" | "system";
+    content: string;
+    related_session_id: string | null;
+    created_at: string;
+  } | null;
+  createdSession: NewSessionSuggestion | null;
+  userId: string;
+  reason: string;
+}
+
 export interface ManagerRoutingResult {
   route_type: RouteType;
   /** Set when route targets a specific session */
