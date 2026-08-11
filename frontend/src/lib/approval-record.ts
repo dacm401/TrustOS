@@ -19,6 +19,18 @@
 // pulling the full frontend api module (mirrors evidence-export.ts design).
 export type ApprovalDecision = "approved" | "rejected" | "noted";
 
+/**
+ * MWT-4E v0 — signature envelope (ADDITIVE; optional).
+ * Absent on legacy MWT-5 records (pre-4E). When present, the approval's
+ * approver_id is cryptographically bound to a local identity (Ed25519).
+ */
+export interface ApprovalSignatureEnvelope {
+  signer_id: string;
+  public_key_fingerprint: string;
+  algo: "Ed25519";
+  signature: string; // base64url over canonical body
+}
+
 export interface ApprovalRecord {
   schema_version: string;
   seq: number;
@@ -29,6 +41,8 @@ export interface ApprovalRecord {
   ts: string; // ISO-8601; pinned in tests for determinism
   prev_hash: string; // "" for the first record (genesis)
   record_hash: string;
+  // ── MWT-4E (ADDITIVE, optional) ──
+  signature?: ApprovalSignatureEnvelope;
 }
 
 export const APPROVAL_SCHEMA_VERSION = "mwt5.approval.v0";
@@ -58,7 +72,7 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 /** Canonical body used for hashing — excludes record_hash itself. */
-function canonicalBody(r: Omit<ApprovalRecord, "record_hash">): string {
+export function canonicalBody(r: Omit<ApprovalRecord, "record_hash">): string {
   return stableStringify({
     schema_version: r.schema_version,
     seq: r.seq,
@@ -225,4 +239,102 @@ export function parseJsonl(text: string): ApprovalRecord[] {
     .map((l) => l.trim())
     .filter((l) => l.length > 0)
     .map((l) => JSON.parse(l) as ApprovalRecord);
+}
+
+// ── MWT-4E — Signature verification hook (ADDITIVE) ──────────────────────────
+
+/**
+ * Verification result for a single approval record's signature envelope.
+ * - "unsigned": legacy MWT-5 record, no envelope. Readable, NOT an error.
+ * - "verified": envelope present and signature matches the canonical body.
+ * - "invalid": envelope present but signature mismatch / tamper detected.
+ */
+export type ApprovalSignatureStatus = "unsigned" | "verified" | "invalid";
+
+export interface ApprovalSignatureCheck {
+  seq: number;
+  status: ApprovalSignatureStatus;
+  signer_id: string | null;
+}
+
+/**
+ * Verify a single record's signature envelope against a canonical body.
+ *
+ * The canonical body for signing/recovery MUST match ApprovalRecord hashing
+ * (canonicalBody above) so a signature binds the exact same bytes that the
+ * record_hash binds. We recompute that body here for self-containment.
+ *
+ * Async: uses an injected verifyFn (real Web Crypto Ed25519 by default) so the
+ * same path works in Node test scripts with a deterministic stub.
+ */
+export async function checkApprovalSignature(
+  record: ApprovalRecord,
+  publicKeyPem: string | null,
+  verifyFn: (
+    pubKey: CryptoKey,
+    sig: Uint8Array,
+    data: Uint8Array,
+  ) => Promise<boolean> = defaultVerifyFn,
+): Promise<ApprovalSignatureCheck> {
+  if (!record.signature) {
+    return { seq: record.seq, status: "unsigned", signer_id: null };
+  }
+  if (!publicKeyPem) {
+    // Envelope present but no local public key to verify against → cannot confirm.
+    return { seq: record.seq, status: "invalid", signer_id: record.signature.signer_id };
+  }
+  try {
+    const pubKey = await importSpki(publicKeyPem);
+    const body = canonicalBody({
+      schema_version: record.schema_version,
+      seq: record.seq,
+      approver_id: record.approver_id,
+      target_ref: record.target_ref,
+      decision: record.decision,
+      note: record.note,
+      ts: record.ts,
+      prev_hash: record.prev_hash,
+    });
+    const ok = await verifyFn(
+      pubKey,
+      b64urlToBytes(record.signature.signature),
+      new TextEncoder().encode(body),
+    );
+    return {
+      seq: record.seq,
+      status: ok ? "verified" : "invalid",
+      signer_id: ok ? record.signature.signer_id : null,
+    };
+  } catch {
+    return { seq: record.seq, status: "invalid", signer_id: record.signature.signer_id };
+  }
+}
+
+// Local Web Crypto helpers (mirror local-identity.ts; kept inline so this module
+// stays self-contained for browser + Node test scripts without cross-imports).
+function b64urlToBytes(s: string): Uint8Array {
+  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+  const bin = atob(b64 + pad);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function importSpki(pem: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    "spki",
+    b64urlToBytes(pem) as BufferSource,
+    { name: "Ed25519" },
+    false,
+    ["verify"],
+  );
+}
+
+async function defaultVerifyFn(
+  pubKey: CryptoKey,
+  sig: Uint8Array,
+  data: Uint8Array,
+): Promise<boolean> {
+  return crypto.subtle.verify("Ed25519", pubKey, sig as BufferSource, data as BufferSource);
 }
