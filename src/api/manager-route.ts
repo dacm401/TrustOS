@@ -16,6 +16,7 @@ import { AgentSessionRepo } from "../db/repositories/agent-session.js";
 import { ManagerMessageRepo } from "../db/repositories/manager-message.js";
 import { SessionEventRepo } from "../db/repositories/session-event.js";
 import { routeMessage } from "../services/manager-routing/manager-router.js";
+import { shapeManagerRouteResponse } from "../services/manager-routing/manager-route-response.js";
 import { routeVisibility } from "../services/visibility-routing/visibility-router.js";
 import { callModel } from "../models/model-gateway.js";
 import { config } from "../config.js";
@@ -68,6 +69,16 @@ managerRouteRouter.post("/route-message", async (c) => {
       target_session_id: targetSessionId,
       active_sessions: activeSessions,
     });
+
+    // 2a. TRST-4H-III: explicit clarification short-circuit.
+    // ask_clarification is deterministic, produced by the hybrid router. It must NOT
+    // reach the LLM call, Worker, session creation, or any DB write. Return the shaped
+    // API response directly: clarificationRequired=true, assistant managerMessage with
+    // non-empty content, no createdSession, no fake task id.
+    if (routing.route_type === "ask_clarification") {
+      const shaped = shapeManagerRouteResponse(routing, userId);
+      return c.json(shaped, 200);
+    }
 
     // 2b. Normal conversation: call LLM for real reply instead of echoing user input
     if (routing.route_type === "normal_conversation") {
