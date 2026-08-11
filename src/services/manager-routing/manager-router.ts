@@ -19,15 +19,27 @@ import type {
   SessionEventSuggestion,
   NewSessionSuggestion,
 } from "./manager-routing-types.js";
+import { classifyManagerIntent } from "./manager-routing-intelligence.js";
 
 // ── Keyword Sets ─────────────────────────────────────────────────────────────
 
 /** Keywords that indicate the user wants to delegate a new task */
 const DELEGATION_KEYWORDS = [
+  // Primary action triggers
   "帮我", "让Worker", "执行", "修", "生成", "整理", "分析",
+  // Task creation
   "创建任务", "委托", "跑一下", "帮我做", "帮我修", "帮我生成",
   "帮我整理", "帮我分析", "帮我执行",
+  // Output artifacts (code, design, content)
   "创建", "写一个", "做一个", "画一个", "写个", "做个",
+  // Reasoning / computation (caught by current gap: 24-point, math, etc.)
+  "计算", "算出", "求解", "证明", "推导", "解题", "解答",
+  // Puzzles & math problems (not covered by generic computation keywords)
+  "拼出", "运算", "24点", "算24",
+  // Design / implementation
+  "设计", "实现", "开发",
+  // Translation
+  "翻译",
 ];
 
 /** Keywords that indicate the user is referring to an existing task */
@@ -228,6 +240,55 @@ export function routeMessage(input: ManagerRoutingInput): ManagerRoutingResult {
         reason: "Reference keyword detected but multiple active sessions, no unique match",
       };
     }
+  }
+
+  // ── TRST-4H-I: Hybrid Routing Intelligence fallback ──────────────────────────
+  // Keyword fast-path missed above. Use the deterministic classifier to decide
+  // whether the message should be delegated / clarified instead of silently
+  // falling into normal_conversation (which historically misrouted math /
+  // problem-solving / planning prompts).
+  const intent = classifyManagerIntent(message);
+  if (intent.route === "delegate") {
+    const title = generateTitle(message);
+    const riskLevel = assessRisk(message);
+    return {
+      route_type: "new_delegated_task",
+      target_session_id: null,
+      clarification_required: false,
+      manager_message_content: `我已创建独立任务「${title}」。它会作为独立 Session 跟踪，后续进展不会混入主对话。`,
+      session_event: {
+        type: "session.created",
+        summary: "Created delegated task from hybrid routing intelligence.",
+        visibility: "session_timeline",
+        severity: "info",
+      },
+      created_session: {
+        title: title,
+        goal: message,
+        status: "planning",
+        risk_level: riskLevel,
+        delegation_contract: {
+          source: "manager_routing_intelligence",
+          original_message: message,
+          classifier_reason: intent.reason,
+          classifier_confidence: intent.confidence,
+          created_at: new Date().toISOString(),
+        },
+      },
+      reason: `Hybrid routing intelligence classified as delegate (${intent.source}): ${intent.reason}`,
+    };
+  }
+  if (intent.route === "ask_clarification") {
+    return {
+      route_type: "ask_clarification",
+      target_session_id: null,
+      clarification_required: true,
+      // Honest message: asks for more detail; does NOT imply user error.
+      manager_message_content: "这个问题我需要先了解更多信息才能正确委派或回答。能补充一下具体目标、约束或期望产出吗？",
+      session_event: null,
+      created_session: null,
+      reason: `Hybrid routing intelligence classified as ask_clarification (${intent.source}): ${intent.reason}`,
+    };
   }
 
   // Rule 5: Normal conversation

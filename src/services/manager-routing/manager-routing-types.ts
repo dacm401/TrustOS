@@ -15,7 +15,10 @@ export type RouteType =
   | "normal_conversation"
   | "new_delegated_task"
   | "update_existing_session"
-  | "ambiguous_session_reference";
+  | "ambiguous_session_reference"
+  // TRST-4H-I: explicit clarification route from hybrid routing intelligence
+  // (distinct from ambiguous_session_reference which is session-reference specific).
+  | "ask_clarification";
 
 // ── Routing Input ────────────────────────────────────────────────────────────
 
