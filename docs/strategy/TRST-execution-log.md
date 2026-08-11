@@ -94,6 +94,10 @@ Current Phase:
         → Ed25519 local binding (Web Crypto), additive signature envelope on ApprovalRecord
         → 18 test PASS (8 smoke + 10 regression), npm run validate 21/21 PASS
         → No backend DB/auth/external identity service touched
+      MWT-4 Mainline — Task Evidence Report v0: IMPLEMENTED ✅ (2026-08-11)
+        → Deterministic buildTaskEvidenceReport: honest identity verification, approval mapping, SHA-256 fingerprint
+        → Reuses MWT-4E verifySignature; 24 test PASS (14 smoke + 10 regression), npm run validate 23/23 PASS
+        → No backend persistence / schema / external network
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-5 complete
     MWT-7 Productionization → MWT-6 complete
@@ -1955,6 +1959,57 @@ building block. Downstream (MWT-6/MWT-7 identity wiring, enforcement) remains NO
 
 ---
 
+### MWT-4 Mainline — Task Evidence Report v0 — IMPLEMENTED (2026-08-11) ✅
+
+**Driver:** PM Authorization (2026-08-11) — MWT-4E local completion accepted; next product
+capability is MWT-4 Mainline Task Evidence Report v0. Do not wait for GitHub push (network block).
+
+**Scope (additive, no backend persistence):** Build a deterministic evidence report for a
+task/session/work item that ties together actor identity, approver identity, approval status,
+routing/delegation metadata and evidence refs into a verifiable, human-readable artifact.
+
+**Files:**
+- `src/services/mwt4/task-evidence-types.ts` (NEW): `TaskEvidenceReport`, `BuildTaskEvidenceInput`,
+  `IdentityRef`, `RoutingDelegationMeta`, `EvidenceItemRef`, local `ApprovalRecordLike` /
+  `ApprovalSignatureLike` (mirrors approval-record.ts canonical shape so the local canonical body
+  matches the MWT-4E signature).
+- `src/services/mwt4/task-evidence-report.ts` (NEW): `buildTaskEvidenceReport(input, opts?)` pure
+  async builder. Honest `IdentityVerificationStatus` (verified / unverified / legacy_unsigned /
+  unavailable). `approvalCanonicalBody()` reproduces MWT-4E's canonical body for signature check.
+  SHA-256 fingerprint over stable-stringified report body. `stableStringify` (sorted keys).
+- `scripts/mwt4/run-smoke.mts` (NEW): 14/0 — minimal task, signed verification, tampered detection,
+  legacy unsigned, no approval, delegated metadata, clarification honesty, missing fields, deterministic fingerprint.
+- `scripts/mwt4/run-regression.mts` (NEW): 10/0 — determinism, decision mapping (approved/rejected/
+  noted), wrong-key rejection, actor fingerprint pass-through, evidence integrity, fingerprint sensitivity.
+- `scripts/trst/run-validation.mts`: MWT-4 Mainline section added → full suite **23/23 PASS**.
+
+**MWT-4E reuse:** reports verify approver signatures via `local-identity.verifySignature` (Web
+Crypto Ed25519). The local `approvalCanonicalBody()` is exported and used by both the builder and
+the tests so the verifiable body is byte-identical to the one MWT-4E signed — tampered records are
+correctly detected. The backend module stays self-contained under `src` rootDir (no frontend
+cross-import), satisfying the backend typecheck boundary.
+
+**Honest verification (no fake trust):**
+- Signed + public key present + signature OK → `verified`.
+- Signed but tampered/wrong key → `unverified` + warning.
+- Signed but no public key supplied → `unverified` + warning (cannot confirm).
+- Unsigned legacy approval → `legacy_unsigned` + warning (readable, never fails).
+- No approval → `unavailable` / approval_status `not_required`.
+- Missing optional fields → report still generated with warnings, never crashes.
+
+**Not in scope (per PM guardrails):** backend persistence, schema/migration, policy enforcement,
+external signing service, MR-1/MR-2 cleanup, MWT-6/MWT-7. Frontend EvidenceReportPanel wiring is
+optional and was NOT done (kept as additive backend capability only).
+
+**Validation:** `npm run validate` **23/23 PASS**. Commits: C1 `2dfb453` (feat), C2 `c0391a6` (test),
+C3 (docs, this commit).
+
+**Status:** Closed, deterministic, dependency-free. Task evidence can now be summarized with honest
+identity/approval verification and a tamper-evident fingerprint. Future capability (panel wiring,
+backend persistence) remains open.
+
+---
+
 ## TRST-4H-I Manager Routing Integration v0 — IMPLEMENTED (2026-08-11) ✅
 
 ```text
@@ -2249,6 +2304,8 @@ MWT Workstream status (2026-08-11):
   🟢 RH-1 Worktree Hygiene: COMPLETED ✅
   🟢 MWT-4E Authenticated Identity v0: IMPLEMENTED ✅ (Ed25519 local binding, additive signature
      envelope on ApprovalRecord; no backend DB/auth/external identity service)
+  🟢 MWT-4 Mainline — Task Evidence Report v0: IMPLEMENTED ✅ (deterministic buildTaskEvidenceReport;
+     honest identity verification, SHA-256 fingerprint; reuses MWT-4E verifySignature; no backend persistence)
   🔴 MWT-6 / MWT-7: NOT_STARTED
 ```
 
