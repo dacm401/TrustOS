@@ -23,6 +23,8 @@
 //  18. TRST-4H-III regression   (npx tsx scripts/trst4h-iii/run-regression.mts)
 //  19. MWT-4E smoke             (npx tsx scripts/mwt4e/run-smoke.mts)
 //  20. MWT-4E regression        (npx tsx scripts/mwt4e/run-regression.mts)
+//  21. MWT-4 Mainline smoke     (npx tsx scripts/mwt4/run-smoke.mts)
+//  22. MWT-4 Mainline regression(npx tsx scripts/mwt4/run-regression.mts)
 //
 // Scope guard:
 //   - validation only; MWT-4B implementation is the minimal export slice
@@ -80,6 +82,8 @@ const STEPS: Step[] = [
   { name: "TRST-4H-III Regression", cmd: "npx", args: ["tsx", "scripts/trst4h-iii/run-regression.mts"] },
   { name: "MWT-4E Smoke", cmd: "npx", args: ["tsx", "scripts/mwt4e/run-smoke.mts"] },
   { name: "MWT-4E Regression", cmd: "npx", args: ["tsx", "scripts/mwt4e/run-regression.mts"] },
+  { name: "MWT-4 Mainline Smoke", cmd: "npx", args: ["tsx", "scripts/mwt4/run-smoke.mts"] },
+  { name: "MWT-4 Mainline Regression", cmd: "npx", args: ["tsx", "scripts/mwt4/run-regression.mts"] },
 ];
 
 function runStep(step: Step): Promise<StepResult> {
