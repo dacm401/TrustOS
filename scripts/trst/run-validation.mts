@@ -25,6 +25,8 @@
 //  20. MWT-4E regression        (npx tsx scripts/mwt4e/run-regression.mts)
 //  21. MWT-4 Mainline smoke     (npx tsx scripts/mwt4/run-smoke.mts)
 //  22. MWT-4 Mainline regression(npx tsx scripts/mwt4/run-regression.mts)
+//  23. MWT-5+ Signed Approval smoke   (npx tsx scripts/mwt5/run-signed-approval-smoke.mts)
+//  24. MWT-5+ Signed Approval regression(npx tsx scripts/mwt5/run-signed-approval-regression.mts)
 //
 // Scope guard:
 //   - validation only; MWT-4B implementation is the minimal export slice
@@ -84,6 +86,8 @@ const STEPS: Step[] = [
   { name: "MWT-4E Regression", cmd: "npx", args: ["tsx", "scripts/mwt4e/run-regression.mts"] },
   { name: "MWT-4 Mainline Smoke", cmd: "npx", args: ["tsx", "scripts/mwt4/run-smoke.mts"] },
   { name: "MWT-4 Mainline Regression", cmd: "npx", args: ["tsx", "scripts/mwt4/run-regression.mts"] },
+  { name: "MWT-5+ Signed Approval Smoke", cmd: "npx", args: ["tsx", "scripts/mwt5/run-signed-approval-smoke.mts"] },
+  { name: "MWT-5+ Signed Approval Regression", cmd: "npx", args: ["tsx", "scripts/mwt5/run-signed-approval-regression.mts"] },
 ];
 
 function runStep(step: Step): Promise<StepResult> {
