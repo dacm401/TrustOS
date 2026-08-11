@@ -90,6 +90,10 @@ Current Phase:
       → v1 stash: STILL STASHED — DO NOT POP ❌
       → Chat→Manager rename: DEFERRED ❌
     MWT-4 Task Evidence Report → MWT-3 complete
+      MWT-4E Authenticated Identity v0: IMPLEMENTED ✅ (2026-08-11)
+        → Ed25519 local binding (Web Crypto), additive signature envelope on ApprovalRecord
+        → 18 test PASS (8 smoke + 10 regression), npm run validate 21/21 PASS
+        → No backend DB/auth/external identity service touched
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-5 complete
     MWT-7 Productionization → MWT-6 complete
@@ -1920,6 +1924,35 @@ npm run validate → 19/19 PASS ✅
 shapeManagerRouteResponse for ask_clarification over the real HTTP path. Legacy M-diff isolated
 and uncommitted. npm run validate 19/19 PASS. Next: PM discretion (MR-1/MR-2, or MWT-6/MWT-7).*
 
+### MWT-4E Authenticated Identity v0 — IMPLEMENTED (2026-08-11) ✅
+
+**Driver:** PM self-correction (2026-08-11) — legacy M-diff is non-blocking and must NOT pre-empt
+real product capability; next step is MWT-4E Authenticated Identity v0. Authorized by PM directive
+"开工".
+
+**Scope (additive, no backend changes):**
+- `src/services/identity/local-identity.ts` (NEW): deterministic Ed25519 local identity binding via
+  Web Crypto. `generateIdentity` (extractable key pair), `signBody`, `verifySignature`,
+  `publicKeyFingerprint` (SHA-256 of SPKI, b64url). `webCryptoSign` / `webCryptoVerify` exported as
+  injectable fns for test isolation. No new dependencies.
+- `frontend/src/lib/approval-record.ts` (EXTENDED): additive `ApprovalSignatureEnvelope` +
+  optional `signature` field on `ApprovalRecord` (backward compatible — legacy unsigned records stay
+  valid). `canonicalBody` exported. `checkApprovalSignature(record, publicKeyPem, verifyFn?)` →
+  `ApprovalSignatureStatus` ("unsigned" | "verified" | "invalid"). Inline `b64urlToBytes` /
+  `importSpki` / `defaultVerifyFn` (Web Crypto).
+
+**Not in scope (per PM guardrails):** backend DB/schema, external identity provider, changes to
+`manager-route.ts` legacy M-diff, manager-route wiring of identity, production auth.
+
+**Validation:**
+- `scripts/mwt4e/run-smoke.mts`: 8/0 PASS (signed/verified/tampered/wrong-key/legacy-unsigned).
+- `scripts/mwt4e/run-regression.mts`: 10/0 PASS (fingerprint stability, multi-record, tamper chain).
+- `scripts/trst/run-validation.mts`: MWT-4E section added; full suite **21/21 PASS**.
+- Commits: C1 `b1c4807` (feat), C2 `f7cd71d` (test), C3 (docs, this commit).
+
+**Status:** `npm run validate` 21/21 green. MWT-4E is a closed, tamper-evident, dependency-free
+building block. Downstream (MWT-6/MWT-7 identity wiring, enforcement) remains NOT_STARTED.
+
 ---
 
 ## TRST-4H-I Manager Routing Integration v0 — IMPLEMENTED (2026-08-11) ✅
@@ -2214,7 +2247,9 @@ MWT Workstream status (2026-08-11):
   🟢 TRST-4H-II Clarification UX/API Handling: IMPLEMENTED ✅ (pure shaper contract; API handler
      wiring deferred to separate milestone due to legacy M-diff isolation)
   🟢 RH-1 Worktree Hygiene: COMPLETED ✅
-  🔴 MWT-4E / MWT-6 / MWT-7: NOT_STARTED
+  🟢 MWT-4E Authenticated Identity v0: IMPLEMENTED ✅ (Ed25519 local binding, additive signature
+     envelope on ApprovalRecord; no backend DB/auth/external identity service)
+  🔴 MWT-6 / MWT-7: NOT_STARTED
 ```
 
 Commit plan (split, per PM TRST-4H-II authorization — C2 frontend omitted, justified):
