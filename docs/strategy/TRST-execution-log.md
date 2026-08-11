@@ -1810,6 +1810,118 @@ commit. Next: PM acceptance of TRST-4H + split commit.*
 
 ---
 
+## TRST-4H-II Clarification UX/API Handling v0 — ACCEPTED (Contract Layer) / E2E PENDING
+
+**PM acceptance (2026-08-11):**
+```
+TRST-4H-II Clarification UX/API Handling v0:
+  CONTRACT LAYER ACCEPTED ✅
+  END-TO-END API ADOPTION PENDING ⚠️
+```
+Accepted commits: `49788c8` (C1 feat), `8634060` (C3 test), `53df8e9` (C4 docs).
+Validation: `npm run validate` → 17/17 PASS ✅.
+
+**Classification (PM + Agent):**
+- `shapeManagerRouteResponse` established the correct contract.
+- `src/api/manager-route.ts` had NOT adopted it → real HTTP path incomplete.
+- This is correct engineering judgment, NOT failure.
+
+**Out-of-scope legacy diff in src/api/manager-route.ts (isolated, not bundled):**
+- `getContextUserId(c) || "dev-user"` dev-user fallback.
+- LLM failure → `new_delegated_task` re-route block.
+
+---
+
+## TRST-4H-III Manager Route HTTP Adoption v0 — COMPLETED ✅
+
+**PM authorization (2026-08-11):** Adopt `shapeManagerRouteResponse` inside
+`src/api/manager-route.ts` so `ask_clarification` reaches the real HTTP Manager route response,
+without bundling unrelated legacy changes.
+
+### Step 1 — Existing diff classification (src/api/manager-route.ts)
+```
+A. Required for TRST-4H-III:  (none)
+B. Unrelated legacy:
+   - getContextUserId(c) || "dev-user"             (dev-user fallback)
+   - LLM failure → new_delegated_task re-route      (lines ~84-105)
+C. Ambiguous:  (none)
+```
+The two legacy hunks are spatially separated from the response-construction region where the
+shaper adoption belongs → **Case A: safe split (no overlapping hunk)**.
+
+### Step 2 — Isolation decision
+- Adopted shaper only at the response short-circuit (before LLM/Worker/session/DB writes).
+- Legacy hunks left UNCOMMITTED (working tree), NOT bundled into TRST-4H-III.
+- Method: reverted file to HEAD, re-applied only the 2 adoption hunks, committed, then
+  restored legacy working-tree diff from backup.
+
+### Files changed
+- `src/api/manager-route.ts` — import `shapeManagerRouteResponse` + early `ask_clarification`
+  short-circuit returning the shaped response (HTTP 200, no Worker/session/DB write).
+- `scripts/trst4h-iii/run-smoke.mts` — NEW (real HTTP route → shaped clarification).
+- `scripts/trst4h-iii/run-regression.mts` — NEW (multi-phrasing + sealed-route preservation).
+- `scripts/trst/run-validation.mts` — added TRST-4H-III smoke/regression (§17/§18, 17→19).
+
+### HTTP adoption architecture
+```
+router.post("/route-message", ...)
+  → routeMessage(...) → routing.route_type
+  → if ask_clarification:
+        return c.json(shapeManagerRouteResponse(routing, userId), 200)   // short-circuit
+  → else: existing sealed flow (normal_conversation LLM / new_delegated_task / ...)
+```
+`ask_clarification` exits BEFORE `checkDbAvailability`, `AgentSessionRepo.list`, `callModel`,
+`ManagerMessageRepo.add`, `SessionEventRepo.add`, Worker. No DB write, no fake task id.
+
+### Behavior examples (real HTTP route)
+| Input | routeType | clarificationRequired | managerMessage | createdSession |
+|-------|-----------|----------------------|----------------|----------------|
+| 怎么弄？ | ask_clarification | true | assistant, non-empty | null |
+| 这个怎么改？ | ask_clarification | true | assistant, non-empty | null |
+| 然后呢？ | ask_clarification | true | assistant, non-empty | null |
+| 你说说看？ | ask_clarification | true | assistant, non-empty | null |
+| 你好 | normal_conversation | false | (LLM reply) | null |
+| 请用3、4、9、10拼出24点 | new_delegated_task | false | (task created) | not null |
+
+### Tests added/updated
+- TRST-4H-III Smoke: 14 PASS (real HTTP route clarification + router regression).
+- TRST-4H-III Regression: 31 PASS (4 phrasings × HTTP + router/shaper sealed-route regression).
+- Validation aggregator: 17 → 19 sections.
+
+### Validation result
+```
+npm run validate → 19/19 PASS ✅
+```
+
+### Commits
+- `c5aadce` C1 feat(manager-routing): adopt route response shaper in manager HTTP route
+  (src/api/manager-route.ts only, 1 file, +11, legacy NOT bundled)
+- `9a00369` C2 test(manager-routing): add manager route HTTP adoption coverage
+  (scripts/trst4h-iii/*, scripts/trst/run-validation.mts, 3 files, +173)
+- (C3 docs — this record)
+
+### Remaining manager-route.ts legacy diff status
+- UNCOMMITTED in working tree, isolated from TRST-4H-III:
+  - dev-user fallback (`getContextUserId(c) || "dev-user"`)
+  - LLM failure → new_delegated_task re-route block
+- Recommended separate milestones (NOT TRST-4H-III):
+  - MR-1 Manager Route Auth Fallback Cleanup
+  - MR-2 Manager LLM Failure Handling Policy
+
+### Confirmation
+- ✅ `shapeManagerRouteResponse` is USED by the actual HTTP route (`src/api/manager-route.ts`).
+- ✅ clarification is NOT an error (HTTP 200, assistant message).
+- ✅ no fake task id (createdSession: null).
+- ✅ no Worker/delegation call for clarification (short-circuit before Worker).
+- ✅ unrelated legacy NOT bundled (dev-user fallback + LLM-failure re-route isolated).
+- ✅ sealed baseline protected (MWT-4B/MWT-5 untouched; 19/19 PASS).
+
+*Last updated: 2026-08-11 — TRST-4H-III COMPLETED. src/api/manager-route.ts adopts
+shapeManagerRouteResponse for ask_clarification over the real HTTP path. Legacy M-diff isolated
+and uncommitted. npm run validate 19/19 PASS. Next: PM discretion (MR-1/MR-2, or MWT-6/MWT-7).*
+
+---
+
 ## TRST-4H-I Manager Routing Integration v0 — IMPLEMENTED (2026-08-11) ✅
 
 ```text
