@@ -98,8 +98,17 @@ Current Phase:
         → Deterministic buildTaskEvidenceReport: honest identity verification, approval mapping, SHA-256 fingerprint
         → Reuses MWT-4E verifySignature; 24 test PASS (14 smoke + 10 regression), npm run validate 23/23 PASS
         → No backend persistence / schema / external network
+      MWT-5+ Signed Approval Dry-run v0: IMPLEMENTED ✅ (2026-08-11)
+        → Extends MWT-5 advisory approval with optional local Ed25519 signature envelope
+        → verifySignedApproval → { verified | unverified | legacy_unsigned | unavailable } (structured, not boolean)
+        → Deterministic canonical body reused from MWT-4 Mainline approvalCanonicalBody (created_at→ts mapped)
+        → Honest states: valid signed→verified; tampered/missing-key→unverified+warn; legacy→legacy_unsigned; none→unavailable
+        → signer_id≠approver_id → unverified + warn (no fake trust)
+        → toApprovalRecordLike() bridges into MWT-4 Task Evidence Report (report reflects verification honestly)
+        → 38 test PASS (19 smoke + 19 regression), npm run validate 25/25 PASS
+        → No enforcement / backend persistence / external network / frontend change
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
-    MWT-6 Memory Governance → MWT-5 complete
+    MWT-6 Memory Governance → MWT-5+ complete
     MWT-7 Productionization → MWT-6 complete
         → Scope includes AD-8: embed Gateway into main process (eliminate process-separation SPOF)
 
@@ -2007,6 +2016,66 @@ C3 (docs, this commit).
 **Status:** Closed, deterministic, dependency-free. Task evidence can now be summarized with honest
 identity/approval verification and a tamper-evident fingerprint. Future capability (panel wiring,
 backend persistence) remains open.
+
+---
+
+### MWT-5+ Signed Approval Dry-run v0 — IMPLEMENTED (2026-08-11) ✅
+
+**Driver:** PM Acceptance of MWT-4 Mainline (23/23 PASS) + PM Authorization — next authorized milestone
+is MWT-5+ Signed Approval Dry-run v0. Turn the MWT-5 advisory approval record from a "bare approver_id
+field" into an "optionally signed, verifiable, reportable" dry-run approval. Active Builder Mode.
+
+**Scope (additive, dry-run / advisory only):** Extend the existing MWT-5 advisory approval semantics
+with an optional local Ed25519 signature envelope, verify it honestly, and make the result consumable
+by MWT-4 Task Evidence Report. NOT enforcement, NOT backend persistence, NOT schema migration.
+
+**Files:**
+- `src/services/mwt5/signed-approval-types.ts` (NEW): `SignedApprovalRecord`, `UnsignedApprovalRecord`,
+  `ApprovalSignatureEnvelope` (algorithm / signer_id / public_key / signature / signed_at /
+  canonical_body_version), `ApprovalVerificationResult` (status / signer_id / approver_id /
+  signer_matches_approver / reason / warnings), `IdentityVerificationStatus` (mirrors MWT-4E).
+- `src/services/mwt5/signed-approval.ts` (NEW): `signedApprovalCanonicalBody()` (deterministic, reuses
+  MWT-4 Mainline `approvalCanonicalBody` with `created_at→ts` mapping), `signSignedApproval()`
+  (produces envelope via `local-identity.signBody` / `webCryptoSign`), `verifySignedApproval()`
+  (structured status via `local-identity.verifySignature`), `toApprovalRecordLike()` (bridges into
+  MWT-4 `ApprovalRecordLike`), `toIdentityVerificationStatus()`.
+- `scripts/mwt5/run-signed-approval-smoke.mts` (NEW): 19/0 — all 7 PM behavior examples + evidence
+  report integration (valid signed / tampered / signer mismatch / legacy unsigned / missing key /
+  deterministic canonical / report reflects verified & tampered).
+- `scripts/mwt5/run-signed-approval-regression.mts` (NEW): 19/0 — determinism, decision mapping
+  (approved/noted/rejected), wrong-key rejection, signer_id tamper, canonical sensitivity per field,
+  status mapping, `toApprovalRecordLike` fidelity, missing created_at still verifies.
+- `scripts/trst/run-validation.mts`: MWT-5+ Smoke + Regression sections added → full suite **25/25 PASS**.
+
+**Canonical body (deterministic):** delegates to MWT-4 Mainline `approvalCanonicalBody` so the signed
+body is byte-identical to what the Task Evidence Report verifies (single source of truth). Field order
+is fixed: `schema_version, approver_id, target_ref, decision, note, evidence_refs, ts`. The signature
+envelope fields (`signer_id`, `public_key`, `signature`, `signed_at`, `canonical_body_version`) are
+explicitly excluded. `created_at` is mapped onto `ts` so MWT-5 records verify identically inside MWT-4.
+
+**Verification result semantics (not boolean):**
+- Signed + valid signature + `signer_id === approver_id` → `verified`.
+- Signed but tampered / wrong key / `signer_id !== approver_id` → `unverified` + warning (never silent).
+- Signed but public key not supplied → `unverified` + warning (cannot confirm).
+- Unsigned legacy approval → `legacy_unsigned` + warning (still readable, never crashes).
+- No approval record → `unavailable`.
+
+**Evidence Report integration:** `toApprovalRecordLike()` feeds the signed record into
+`buildTaskEvidenceReport({ approval, approver_public_key_pem })`. The report's `approver.verification`
+reflects `verified` / `unverified` / `legacy_unsigned` honestly and surfaces tamper warnings. MWT-4
+required NO code change — proven compatible by the smoke/regression tests (C2 omitted, per PM guidance).
+
+**Not in scope (per PM guardrails):** backend persistence, schema/migration, mandatory enforcement,
+external identity provider, key rotation, policy blocking, large UI redesign. MWT-5 advisory semantics
+preserved; no fake trust introduced.
+
+**Validation:** `npm run validate` **25/25 PASS** (19+19 MWT-5 tests; 24 MWT-4; 21 MWT-4E; etc.).
+Commits: C1 `feat(mwt5)`, C2 `feat(mwt4)` (omitted — no MWT-4 change needed), C3 `test(mwt5)`,
+C4 `docs(trst)`.
+
+**Status:** Closed, deterministic, dependency-free. The MWT-5 approval record is now optionally signed,
+honestly verifiable, and directly consumable by the Task Evidence Report — completing the advisory→
+evidence link in the Trust Spine.
 
 ---
 
