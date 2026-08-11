@@ -1807,3 +1807,138 @@ Commit plan (split, per PM TRST-4H authorization):
 Routing Intelligence v0 IMPLEMENTED (hybrid classifier, keyword fast-path preserved, deterministic
 fallback). npm run validate 13/13 PASS. Sealed MWT-4B/MWT-5 untouched. FH-1 closed via TRST-4H
 commit. Next: PM acceptance of TRST-4H + split commit.*
+
+---
+
+## TRST-4H-I Manager Routing Integration v0 — IMPLEMENTED (2026-08-11) ✅
+
+```text
+Authorization: PM ACCEPTANCE of TRST-4H split commit + explicit next-milestone directive
+"TRST-4H-I Manager Routing Integration v0". Active Builder Mode remains enabled.
+Scope: wire classifyManagerIntent into the REAL Manager routing entrypoint (routeMessage in
+manager-router.ts), so the product path benefits from hybrid routing — not only standalone tests.
+
+Actual routing entrypoint identified:
+  - src/services/manager-routing/manager-router.ts : routeMessage()
+      Pure deterministic function. Returns ManagerRoutingResult { route_type, ... }.
+      Existing fast-path rules: explicit target_session_id → update_existing_session;
+      reference keyword + unique session → update_existing_session;
+      reference keyword + ambiguous → ambiguous_session_reference;
+      strong DELEGATION_KEYWORDS hit → new_delegated_task; default → normal_conversation.
+  - src/api/manager-route.ts : HTTP entry that calls routeMessage; on normal_conversation
+      calls LLM; on LLM failure falls back to delegated task.
+
+Integration architecture (adapter-style, minimal diff):
+  - Imported classifyManagerIntent into manager-router.ts.
+  - BEFORE the existing "Rule 5: Normal conversation" default, added a TRST-4H-I fallback
+    block that calls classifyManagerIntent(message):
+      * intent.route === "delegate"  → new_delegated_task
+          (mirrors keyword delegate path: generateTitle + assessRisk + delegation_contract
+           carrying classifier_reason + classifier_confidence; manager_message_content +
+           session_event.session.created)
+      * intent.route === "ask_clarification" → NEW route_type "ask_clarification"
+          (clarification_required: true; honest message asking for more detail; does NOT
+           imply user error; distinct from ambiguous_session_reference which is session-ref
+           specific)
+      * intent.route === "normal" → fall through to existing Rule 5 normal_conversation
+  - Extended RouteType in manager-routing-types.ts with "ask_clarification" (minimal type
+    extension; existing 4 route_types preserved, no breakage).
+  - Keyword fast-path (Rules 1-4 incl. DELEGATION_KEYWORDS) is PRESERVED and still wins
+    before the classifier fallback — classifier only acts on keyword misses.
+
+Sealed baseline protection:
+  - MWT-4B export semantics: UNTOUCHED ✅
+  - MWT-5 advisory approval semantics: UNTOUCHED ✅
+  - manager-router.ts is no longer off-limits for this milestone (PM authorized integration):
+    the only production change is the additive fallback block + import; no existing route
+    logic deleted/rewritten.
+
+Behavior examples (REAL routeMessage path, verified by integration tests):
+  - "请用3、4、9、10拼出24点" → new_delegated_task ✅
+  - "帮我分析这个问题"        → new_delegated_task ✅
+  - "设计一个方案"            → new_delegated_task ✅
+  - "你好"                   → normal_conversation ✅
+  - "怎么弄？"               → ask_clarification ✅ (clarification_required: true)
+  - "帮我修一下登录页"        → new_delegated_task ✅ (legacy 帮我 keyword still wins)
+  - "那个任务怎么样了"(multi) → ambiguous_session_reference ✅ (sealed behavior intact)
+  - clarification message is honest: "…需要先了解更多信息才能正确委派或回答…" (no false
+    user-error implication)
+
+Tests added/updated:
+  NEW scripts/trst4h-i/run-smoke.mts       (10/0) — real routeMessage path incl. 24点/analysis/
+                                             design/greeting/underspecified/legacy-keyword/
+                                             honest-clarification-message
+  NEW scripts/trst4h-i/run-regression.mts  (18/0) — broad real-path coverage + sealed-route
+                                             preservation (explicit target, ref match, ambiguous
+                                             ref, keyword-wins, ask_clarification mapping,
+                                             casual not misrouted)
+  MODIFY scripts/trst/run-validation.mts   (sections 14/15 added: TRST-4H-I)
+
+Validation result: npm run validate → ALL 15 SECTIONS PASSED ✅ (13→15)
+  [PASS] Frontend Typecheck / Frontend Build / MWT-4A Smoke / MWT-4A Regression
+  [PASS] MWT-3B1 Regression / MWT-3B1 Smoke / Backend Typecheck
+  [PASS] MWT-4B Smoke / MWT-4B Regression / MWT-5 Smoke / MWT-5 Regression
+  [PASS] TRST-4H Smoke / TRST-4H Regression / TRST-4H-I Smoke / TRST-4H-I Regression
+  Backend tsc: 0 NEW errors ✅
+  Sealed MWT-4B/MWT-5 checks (§8-11) still PASS ✅
+
+Worktree classification (TRST-4H-I relevant vs isolated):
+  A. Relevant & included in TRST-4H-I commits:
+       src/services/manager-routing/manager-routing-types.ts  (RouteType extension)
+       src/services/manager-routing/manager-router.ts         (classifier integration fallback)
+       scripts/trst4h-i/run-smoke.mts                         (NEW)
+       scripts/trst4h-i/run-regression.mts                    (NEW)
+       scripts/trst/run-validation.mts                        (§14/15)
+  B. Unrelated legacy (NOT bundled, remains uncommitted):
+       frontend/src/** (ChatInterface, ManagerWorkspace, api.ts, TaskEvidenceView, etc.)
+       src/api/manager-route.ts (pre-existing M; its prior keyword/timeout fixes not re-touched)
+       src/middleware/admin-auth.ts, src/models/model-gateway.ts, src/services/trst1/* M-state
+       docs/strategy/* (private-beta-*, strst-*, MWT-4/5 briefs already committed or unrelated)
+       scripts/mwt2|mwt3|mwt4a|trst1|trst2|trst3|trst4|trst4b|trst4c/*
+  C. Scratch / generated (NOT bundled, NOT deleted per PM instruction):
+       _*.txt, _*.mjs, *.out, gateway.out, 2026*/ dirs, console.log(*) files
+  D. Ambiguous requiring PM review (NOT bundled, left untouched):
+       Any partially-modified backend/schema file whose intent is unclear — none specific to
+       routing; manager-router.ts change is fully explained inline and classified under (A).
+
+Boundary language (PM governance correction honored):
+  backend persistence / schema/migration / policy enforcement / identity binding / external
+  signing / global Chat→Manager rename / large Manager-Worker rewrite are OUT OF SCOPE for
+  TRST-4H-I, NOT permanently forbidden. Each requires its own scoped milestone.
+
+Acceptance (PM TRST-4H-I AC):
+  1. Real routing path integrates classifier ✅
+  2. Keyword fast-path preserved           ✅ (Rules 1-4 unchanged)
+  3. Ambiguous prompts deterministic       ✅ (classifyManagerIntent pure)
+  4. 24点/analysis/design → delegate       ✅ (real routeMessage)
+  5. Greeting → normal                     ✅
+  6. Underspecified short → ask_clarification (mapped to new route_type) ✅
+  7. Honest failure messaging              ✅ (clarification text, no user-blame)
+  8. Sealed MWT-4B/MWT-5 not regressed     ✅ (untouched; 15/15 PASS)
+  9. npm run validate passes               ✅ (15/15)
+
+MWT Workstream status (2026-08-11):
+  🟢 MWT-4B Task Evidence Export: SEALED_FRONTEND_ONLY_V0 ✅
+  🟢 MWT-5 Manager Policy & Approval: SEALED_ADVISORY_CLIENT_SIDE_ARTIFACT_V0 ✅
+  🟢 TRST-4H Manager Routing Intelligence: IMPLEMENTED ✅
+  🟢 TRST-4H-I Manager Routing Integration: IMPLEMENTED ✅ (classifier wired into routeMessage)
+  🔴 MWT-6 Memory Governance: NOT_STARTED
+  🔴 MWT-7 Productionization: NOT_STARTED
+```
+
+Commit plan (split, per PM TRST-4H-I authorization):
+  C1 feat(manager-routing): integrate routing intelligence into manager path
+      - src/services/manager-routing/manager-routing-types.ts (RouteType +ask_clarification)
+      - src/services/manager-routing/manager-router.ts        (classifier fallback + import)
+  C2 test(manager-routing): add routing intelligence integration coverage
+      - scripts/trst4h-i/run-smoke.mts
+      - scripts/trst4h-i/run-regression.mts
+      - scripts/trst/run-validation.mts (§14/15)
+  C3 docs(trst): record TRST-4H-I integration milestone
+      - docs/strategy/TRST-execution-log.md (this section)
+
+*Last updated: 2026-08-11 — TRST-4H-I Manager Routing Integration v0 IMPLEMENTED. classifyManagerIntent
+wired into real routeMessage path (adapter-style fallback, keyword fast-path preserved, new
+ask_clarification route_type). npm run validate 15/15 PASS. Sealed MWT-4B/MWT-5 untouched.
+Unrelated MWT-1→MWT-4 legacy + scratch files isolated, not bundled. Next: PM acceptance of
+TRST-4H-I + split commit.*
