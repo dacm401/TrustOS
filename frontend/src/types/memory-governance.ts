@@ -5,6 +5,10 @@
 // (src/services/mwt6/memory-governance-types). The UI never re-declares or
 // re-implements governance logic; it only renders records produced by the
 // core builder.
+//
+// IMPORTANT (MWT-7B): the builder is imported from `memory-governance-core`
+// (crypto-free), NOT from `memory-governance` (backend wrapper that imports
+// node:crypto). This keeps `node:crypto` out of the client bundle.
 
 export type {
   MemoryGovernanceRecord,
@@ -20,4 +24,4 @@ export type {
 export {
   buildMemoryGovernanceRecord,
   evaluateMemoryGovernance,
-} from "../../../src/services/mwt6/memory-governance";
+} from "../../../src/services/mwt6/memory-governance-core";
