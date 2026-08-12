@@ -190,6 +190,24 @@ Current Phase:
         → Overall: READY_WITH_ENV_BLOCKERS (no real code regression)
         → Aggregator sections 37-38 added (full suite 39 sections: 36 deterministic PASS, 3 live ENV_BLOCKED)
         → Docs: TRST-validation-health.md added
+      MWT-7B Frontend Build & Runtime Readiness v0: IMPLEMENTED ✅ (2026-08-12)
+        → ROOT-CAUSE FIX: frontend `src/types/memory-governance.ts` re-exported the backend builder
+          from `src/services/mwt6/memory-governance` which imports `node:crypto`. webpack statically
+          analyzed the `node:crypto` edge and failed the client build (UnhandledSchemeError).
+        → FIX (safe, surgical, no dependency change): extracted pure crypto-free logic into
+          `src/services/mwt6/memory-governance-core.ts`; backend `memory-governance.ts` re-exports
+          core + supplies node:crypto SHA-256 default; frontend re-export now points at core.
+        → RESULT: Frontend Build now PASSES (next build compiled successfully, 5 static pages).
+          Live ENV_BLOCKED dropped from 3 → 2 (only the 2 TRST-4H-III DB/gateway blockers remain).
+        → Diagnostics: scripts/frontend/frontend-build-diagnostics.mts separates typecheck / build /
+          runtime_surface into distinct statuses; narrow node-scheme classifier preserved.
+        → Audit + Memory surfaces verified reachable: Sidebar audit/memory items + page.tsx
+          activeNav branches + AuditReviewSurface/MemoryGovernanceSurface files all present.
+        → MWT-7B frontend-readiness smoke: 17 PASS; regression: 19 PASS (classifier, reachability, taxonomy)
+        → Deterministic product suites: 38 PASS / 0 FAIL (was 36, +2 MWT-7B sections); Live: 1 PASS / 2 ENV_BLOCKED
+        → Overall: READY_WITH_ENV_BLOCKERS (no real code regression)
+        → Aggregator sections 37-38 now MWT-7B (full suite 41 sections: 38 deterministic PASS, 2 live ENV_BLOCKED, 1 live PASS)
+        → Docs: TRST-frontend-readiness.md added
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete

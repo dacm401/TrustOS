@@ -38,6 +38,9 @@ otherwise (all PASS / SKIPPED)        => READY
 - `scripts/trst/run-validation-health-smoke.mts` — 24 PASS
 - `scripts/trst/run-validation-health-regression.mts` — 123 PASS
 - `scripts/trst/run-validation.mts` — aggregator upgraded to per-bucket reporting + readiness verdict; live steps classified via `isEnvBlockedError`
+- **MWT-7B** (Frontend Build & Runtime Readiness) — see `TRST-frontend-readiness.md`. The Frontend
+  Build node-scheme blocker is now RESOLVED (build PASSES); the remaining 2 live ENV_BLOCKED are the
+  TRST-4H-III DB/gateway steps only.
 
 ## Live-env-blocker classifier (NARROW)
 Only well-known environmental signatures are classified `ENV_BLOCKED`:
