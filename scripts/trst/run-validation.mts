@@ -25,6 +25,8 @@
 //  38. MWT-7B Frontend Surface Reachability  [deterministic, offline]
 //  39. MWT-7C Browser Smoke (live runtime probe) [live, browser]
 //  40. MWT-7C Browser Smoke Regression        [deterministic, offline]
+//  41. MWT-7D Browser Harness Smoke (live CDP) [live, browser]
+//  42. MWT-7D Browser Harness Regression       [deterministic, offline]
 //
 // MWT-7B (Frontend Build & Runtime Readiness): Frontend Build is now expected
 // PASS (the node:crypto client-bundle edge was removed). Sections 37-38 are
@@ -109,6 +111,8 @@ const STEPS: Step[] = [
   { name: "MWT-7B Frontend Surface Reachability", cmd: "npx", args: ["tsx", "scripts/frontend/run-frontend-readiness-regression.mts"] },
   { name: "MWT-7C Browser Smoke", cmd: "npx", args: ["tsx", "scripts/frontend/run-browser-smoke.mts"], bucket: "live" },
   { name: "MWT-7C Browser Smoke Regression", cmd: "npx", args: ["tsx", "scripts/frontend/run-browser-smoke-regression.mts"] },
+  { name: "MWT-7D Browser Harness Smoke", cmd: "npx", args: ["tsx", "scripts/frontend/run-browser-harness-smoke.mts"], bucket: "live" },
+  { name: "MWT-7D Browser Harness Regression", cmd: "npx", args: ["tsx", "scripts/frontend/run-browser-harness-regression.mts"] },
 ];
 
 function runStep(step: Step): Promise<StepResult> {
