@@ -302,6 +302,31 @@ Current Phase:
           regression) / C3 (docs). To be pushed to origin.
         → Confirmation: TRST-4H-III blockers explicit; env missing still ENV_BLOCKED; real failures still
           FAIL; deterministic suites unchanged/strict; no network hard dependency; browser harness PASS preserved.
+      MWT-8 Private Beta Release Pack v0: IMPLEMENTED ✅ (2026-08-12)
+        → PM authorization: package current Trust Spine + Memory Governance + Readiness into a private-beta
+          operator/user bundle (runbook, validation guide, demo, environment, known blockers, release
+          checklist) + lightweight beta readiness check. Packaging only — no core logic / Memory core changed.
+        → docs/private-beta/RUNBOOK.md: install, frontend startup, validation, browser harness, live preflight,
+          expected result, troubleshooting.
+        → docs/private-beta/VALIDATION.md: MWT-7 taxonomy (PASS/FAIL/ENV_BLOCKED/SKIPPED) + readiness verdicts
+          (READY / READY_WITH_ENV_BLOCKERS / FAIL) + narrow classifier boundaries.
+        → docs/private-beta/DEMO_SCRIPT.md: Audit + Memory click path demo, readiness report walkthrough.
+        → docs/private-beta/ENVIRONMENT.md: Node/Chrome, DATABASE_URL/Postgres, OPENAI_*/GATEWAY_*; grouped by
+          deterministic / browser / TRST-4H-III live; no browser binary committed; root-cause note on
+          manager-route DB-before-clarification.
+        → docs/private-beta/KNOWN_BLOCKERS.md: TRST-4H-III ×2 ENV_BLOCKED (explicit reason) + GitHub network
+          push blocker (classified env/network, not code readiness) + Chrome + streaming/future charters.
+        → docs/private-beta/RELEASE_CHECKLIST.md: 8-step pre-release gate + acceptance gate (no false READY).
+        → scripts/trst/run-private-beta-check.mts: deterministic, offline pack-consistency check (16 PASS/0 FAIL);
+          verifies required docs exist, taxonomy terms present, blockers documented, no false READY claim;
+          does NOT hide FAIL / convert ENV_BLOCKED to PASS. Added npm run beta:check.
+        → run-validation.mts header: section 44 (MWT-8) + packaging note.
+        → Validation unchanged: Deterministic 41 PASS/0 FAIL; Live 3 PASS / 2 ENV_BLOCKED / 0 FAIL;
+          Overall READY_WITH_ENV_BLOCKERS. Frontend tsc 0; Backend tsc 0.
+        → Split commits: C1 (runbook + validation guide) / C2 (demo + environment + blockers + checklist) /
+          C3 (beta check script + validation integration + log). To be pushed to origin.
+        → Confirmation: private beta docs complete; no false READY claim; ENV_BLOCKED documented honestly;
+          operator commands available; sealed baselines / core logic / Memory core protected.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete

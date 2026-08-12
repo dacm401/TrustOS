@@ -28,6 +28,13 @@
 //  41. MWT-7D Browser Harness Smoke (live CDP) [live, browser]
 //  42. MWT-7D Browser Harness Regression       [deterministic, offline]
 //  43. MWT-7E TRST-4H-III Live Preflight        [deterministic, offline report]
+//  44. MWT-8 Private Beta Readiness Check       [deterministic, orchestrator; see npm run beta:check]
+//
+// MWT-8: packaging milestone. Adds docs/private-beta/* runbook + validation
+// guide + demo script + environment + known blockers + release checklist, and a
+// lightweight orchestrator (run-private-beta-check.mts) that runs validation +
+// health check + live preflight + browser harness smoke and prints a consolidated
+// verdict WITHOUT hiding FAIL or converting ENV_BLOCKED to PASS.
 //
 // MWT-7E: the two TRST-4H-III LIVE steps require DATABASE_URL (Postgres) and a
 // gateway (OPENAI_BASE_URL/OPENAI_API_KEY). When those are absent the steps
