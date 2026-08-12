@@ -15,10 +15,11 @@ import EventChainViewer from "@/components/dashboard/EventChainViewer";
 import GatewayStatusCard from "@/components/dashboard/GatewayStatusCard";
 import EvidenceReportPanel from "@/components/dashboard/EvidenceReportPanel";
 import { AuditReviewSurface } from "@/components/audit/AuditReviewSurface";
+import MemoryGovernanceSurface from "@/components/memory/MemoryGovernanceSurface";
 import { ManagerWorkspace } from "@/components/manager-workspace/ManagerWorkspace";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
-type NavView = "chat" | "tasks" | "overview" | "evidence" | "audit" | "events" | "gateway" | "advanced";
+type NavView = "chat" | "tasks" | "overview" | "evidence" | "audit" | "memory" | "events" | "gateway" | "advanced";
 type AdvancedTab = "diagnostics" | "admin";
 
 const DEFAULT_USER_ID = "dev-user";
@@ -108,6 +109,13 @@ export default function HomePage() {
             {activeNav === "audit" && (
               <ErrorBoundary>
                 <AuditReviewSurface />
+              </ErrorBoundary>
+            )}
+
+            {/* Memory Governance — MWT-6-UI: honest memory governance surface */}
+            {activeNav === "memory" && (
+              <ErrorBoundary>
+                <MemoryGovernanceSurface />
               </ErrorBoundary>
             )}
 
