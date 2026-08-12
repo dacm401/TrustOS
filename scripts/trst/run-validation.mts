@@ -27,6 +27,14 @@
 //  40. MWT-7C Browser Smoke Regression        [deterministic, offline]
 //  41. MWT-7D Browser Harness Smoke (live CDP) [live, browser]
 //  42. MWT-7D Browser Harness Regression       [deterministic, offline]
+//  43. MWT-7E TRST-4H-III Live Preflight        [deterministic, offline report]
+//
+// MWT-7E: the two TRST-4H-III LIVE steps require DATABASE_URL (Postgres) and a
+// gateway (OPENAI_BASE_URL/OPENAI_API_KEY). When those are absent the steps
+// cannot run; the NARROW classifier now emits an EXPLICIT reason code
+// (e.g. ENV_BLOCKED(DB_URL_MISSING)) instead of a generic "DB/gateway
+// unavailable" line. The preflight (section 43) reports config presence
+// without opening a real socket or network call.
 //
 // MWT-7B (Frontend Build & Runtime Readiness): Frontend Build is now expected
 // PASS (the node:crypto client-bundle edge was removed). Sections 37-38 are
@@ -45,6 +53,7 @@ import {
   type ValidationStatus,
 } from "./validation-status";
 import { isEnvBlockedError } from "./env-diagnostics";
+import { classifyTrst4hBlocker } from "../trst4h-iii/live-env-diagnostics.mts";
 
 type StepResult = {
   name: string;
@@ -65,6 +74,9 @@ type Step = {
   args: string[];
   cwd?: string;
   bucket?: "deterministic" | "live";
+  // For live steps: which external dependency they require, used to emit an
+  // explicit ENV_BLOCKED reason code (MWT-7E).
+  liveDeps?: Array<"database" | "gateway" | "http_service">;
 };
 
 const STEPS: Step[] = [
@@ -85,8 +97,8 @@ const STEPS: Step[] = [
   { name: "TRST-4H-I Regression", cmd: "npx", args: ["tsx", "scripts/trst4h-i/run-regression.mts"] },
   { name: "TRST-4H-II Smoke", cmd: "npx", args: ["tsx", "scripts/trst4h-ii/run-smoke.mts"] },
   { name: "TRST-4H-II Regression", cmd: "npx", args: ["tsx", "scripts/trst4h-ii/run-regression.mts"] },
-  { name: "TRST-4H-III Smoke", cmd: "npx", args: ["tsx", "scripts/trst4h-iii/run-smoke.mts"], bucket: "live" },
-  { name: "TRST-4H-III Regression", cmd: "npx", args: ["tsx", "scripts/trst4h-iii/run-regression.mts"], bucket: "live" },
+  { name: "TRST-4H-III Smoke", cmd: "npx", args: ["tsx", "scripts/trst4h-iii/run-smoke.mts"], bucket: "live", liveDeps: ["database", "gateway"] },
+  { name: "TRST-4H-III Regression", cmd: "npx", args: ["tsx", "scripts/trst4h-iii/run-regression.mts"], bucket: "live", liveDeps: ["database", "gateway"] },
   { name: "MWT-4E Smoke", cmd: "npx", args: ["tsx", "scripts/mwt4e/run-smoke.mts"] },
   { name: "MWT-4E Regression", cmd: "npx", args: ["tsx", "scripts/mwt4e/run-regression.mts"] },
   { name: "MWT-4 Mainline Smoke", cmd: "npx", args: ["tsx", "scripts/mwt4/run-smoke.mts"] },
@@ -113,6 +125,7 @@ const STEPS: Step[] = [
   { name: "MWT-7C Browser Smoke Regression", cmd: "npx", args: ["tsx", "scripts/frontend/run-browser-smoke-regression.mts"] },
   { name: "MWT-7D Browser Harness Smoke", cmd: "npx", args: ["tsx", "scripts/frontend/run-browser-harness-smoke.mts"], bucket: "live" },
   { name: "MWT-7D Browser Harness Regression", cmd: "npx", args: ["tsx", "scripts/frontend/run-browser-harness-regression.mts"] },
+  { name: "MWT-7E TRST-4H-III Live Preflight", cmd: "npx", args: ["tsx", "scripts/trst4h-iii/run-live-preflight.mts"] },
 ];
 
 function runStep(step: Step): Promise<StepResult> {
@@ -153,10 +166,27 @@ function section(title: string): void {
 function classify(step: Step, r: StepResult): ValidationStatus {
   if (r.ok) return "PASS";
   // Failed. For live steps, apply the NARROW env-blocker classifier.
-  if (step.bucket === "live" && isEnvBlockedError(r.output)) {
-    return "ENV_BLOCKED";
+  if (step.bucket === "live") {
+    if (isEnvBlockedError(r.output)) {
+      return "ENV_BLOCKED";
+    }
+    // Even if the generic env classifier missed it, live steps that name a
+    // dependency get the TRST-4H-III narrow classifier for an explicit reason.
+    if (step.liveDeps && step.liveDeps.length > 0) {
+      const reason = classifyTrst4hBlocker(r.output);
+      if (reason.startsWith("ENV_BLOCKED")) return "ENV_BLOCKED";
+    }
   }
   return "FAIL";
+}
+
+// Build an explicit detail string for ENV_BLOCKED live steps (MWT-7E).
+function envBlockedDetail(step: Step, r: StepResult): string {
+  const reason = classifyTrst4hBlocker(r.output);
+  const deps = step.liveDeps && step.liveDeps.length > 0
+    ? ` (requires: ${step.liveDeps.join(", ")})`
+    : "";
+  return `${reason}${deps}`;
 }
 
 async function main(): Promise<void> {
@@ -174,12 +204,14 @@ async function main(): Promise<void> {
       name: step.name,
       status,
       bucket: step.bucket === "live" ? "live" : "deterministic",
-      detail: status === "ENV_BLOCKED" ? "DB/gateway unavailable in sandbox" : undefined,
+      detail: status === "ENV_BLOCKED" ? envBlockedDetail(step, r) : undefined,
     });
     if (status === "PASS") {
       process.stdout.write(`\n✅ ${step.name} PASSED (exit ${r.code})\n`);
     } else if (status === "ENV_BLOCKED") {
+      const reason = envBlockedDetail(step, r);
       process.stdout.write(`\n⚠️  ${step.name} ENV_BLOCKED (live dependency missing)\n`);
+      process.stdout.write(`      reason: ${reason}\n`);
     } else {
       process.stdout.write(`\n❌ ${step.name} FAILED (exit ${r.code})\n`);
     }
