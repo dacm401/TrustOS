@@ -107,8 +107,18 @@ Current Phase:
         → toApprovalRecordLike() bridges into MWT-4 Task Evidence Report (report reflects verification honestly)
         → 38 test PASS (19 smoke + 19 regression), npm run validate 25/25 PASS
         → No enforcement / backend persistence / external network / frontend change
+      MWT-4F Evidence ↔ Approval Provenance Binding v0: IMPLEMENTED ✅ (2026-08-12)
+        → Explicit provenance link between Task Evidence Report (MWT-4) and Signed Approval (MWT-5+)
+        → EvidenceApprovalProvenanceLink: link_id, task/session, report id, evidence_fingerprint, approval_id, approver_id, approval_signature_status, linked_at, binding_fingerprint, warnings
+        → Deterministic binding_fingerprint (SHA-256 over stableStringify of bound fields); changes if ANY bound field changes
+        → verifyEvidenceApprovalBinding → { linked | mismatch | unverified | unavailable } (structured, not boolean)
+        → Reuses MWT-5+ verifySignedApproval as single signature-verdict source (no duplicated logic)
+        → Honest: tampered report fingerprint→mismatch; tampered approval→unverified; different task_id→mismatch; legacy→unverified+warn; missing→unavailable
+        → 24 test PASS (12 smoke + 12 regression); MWT-4F sections added → full suite 27 sections
+        → No enforcement / backend persistence / external network
+        → NOTE: 2 TRST-4H-III live HTTP/Postgres sections fail ENVIRONMENTALLY (DB/gateway unavailable); not a MWT-4F regression (files untouched)
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
-    MWT-6 Memory Governance → MWT-5+ complete
+    MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization → MWT-6 complete
         → Scope includes AD-8: embed Gateway into main process (eliminate process-separation SPOF)
 
@@ -2076,6 +2086,71 @@ C4 `docs(trst)`.
 **Status:** Closed, deterministic, dependency-free. The MWT-5 approval record is now optionally signed,
 honestly verifiable, and directly consumable by the Task Evidence Report — completing the advisory→
 evidence link in the Trust Spine.
+
+---
+
+### MWT-4F Evidence ↔ Approval Provenance Binding v0 — IMPLEMENTED (2026-08-12) ✅
+
+**Driver:** PM Acceptance of MWT-5+ (25/25 PASS) + PM Authorization — next Trust Spine milestone is
+MWT-4F Evidence ↔ Approval Provenance Binding v0. Turn the implicit "report built with this approval"
+into an explicit, deterministic, tamper-evident binding. Active Builder Mode.
+
+**Scope (additive, dry-run / advisory only):** Explicitly bind a Signed Approval record (MWT-5+) to the
+exact Task Evidence Report (MWT-4 Mainline) it reviewed, via a deterministic provenance link. NOT
+enforcement, NOT backend persistence, NOT schema migration.
+
+**Files:**
+- `src/services/mwt4/provenance-types.ts` (NEW): `EvidenceApprovalProvenanceLink` (link_id, task_id,
+  session_id, evidence_report_id, evidence_fingerprint, approval_id, approver_id,
+  approval_signature_status, linked_at, binding_fingerprint, warnings), `ProvenanceVerificationResult`
+  (status / reasons / warnings / binding_fingerprint), `ApprovalSignatureStatus`, `ProvenanceStatus`.
+- `src/services/mwt4/provenance-binding.ts` (NEW): `buildEvidenceApprovalProvenanceLink()` (deterministic
+  link, `linked_at` anchored to `report.generated_at` — no clock), `verifyEvidenceApprovalBinding()`
+  (structured status), uses Node `crypto` SHA-256 + MWT-4 `stableStringify`.
+- `scripts/mwt4/run-provenance-smoke.mts` (NEW): 12/0 — all 8 PM behavior examples.
+- `scripts/mwt4/run-provenance-regression.mts` (NEW): 12/0 — fingerprint determinism/sensitivity,
+  honest status mapping, MWT-5+ reuse.
+- `scripts/trst/run-validation.mts`: MWT-4F Smoke + Regression sections added (steps 25–26).
+
+**Binding fingerprint (deterministic):** SHA-256 over `stableStringify({ approval_id, approver_id,
+task_id, session_id, evidence_report_id, evidence_fingerprint, approval_signature_status })`. Any
+change to a bound field (task, session, report id, fingerprint, approval id, approver, signature
+status) changes the fingerprint — so tampering is never silently accepted.
+
+**Verification result semantics (not boolean):**
+- Report + approval present, evidence fingerprint matches link, approval signature **verified**, and
+  recomputed binding fingerprint matches → `linked`.
+- Report fingerprint differs from link / task-session binding fields changed → `mismatch`.
+- Approval signature status not `verified` (tampered / missing key / signer mismatch / legacy-unsigned)
+  → `unverified`.
+- Report or approval missing → `unavailable`.
+
+**MWT-5+ compatibility:** `verifyEvidenceApprovalBinding` delegates the signature verdict to
+`verifySignedApproval()` (single source of truth — no duplicated verification). `approval_id` is derived
+from `signedApprovalCanonicalBody()` when not supplied. MWT-5+ advisory semantics preserved; dry-run
+remains advisory (no enforcement).
+
+**Behavior examples (all PASS):**
+- Valid signed approval + matching report → `linked`, stable fingerprint.
+- Tampered evidence report fingerprint → `mismatch`.
+- Tampered signed approval decision → `unverified`.
+- Approval for different task_id → `mismatch`.
+- Legacy unsigned approval → link built + warning, status `unverified` (never fake-verified).
+- Missing approval → `unavailable`.
+- Missing report fingerprint → `mismatch` + warning.
+- Same report + approval → identical `binding_fingerprint` (determinism).
+
+**Not in scope (per PM guardrails):** backend persistence, schema/migration, enforcement, external
+identity provider, large UI redesign. MWT-5+ advisory semantics preserved; no fake trust introduced.
+
+**Validation:** `npm run validate` — **25 deterministically-testable sections PASS** (incl. both new
+MWT-4F sections). NOTE: 2 `TRST-4H-III` live HTTP/Postgres sections fail **environmentally**
+(DB + live LLM gateway unavailable in this sandbox); they are pre-existing and untouched by MWT-4F
+(`scripts/trst4h-iii/*` not modified). Backend Typecheck now 0 errors. Commits: C1 `feat(mwt4)`,
+C2 `test(mwt4)`, C3 `docs(trst)`.
+
+**Status:** Closed, deterministic, dependency-free. The Trust Spine now has an explicit, auditable
+evidence↔approval binding — answering "which approval reviewed which report, and is it still intact?"
 
 ---
 
