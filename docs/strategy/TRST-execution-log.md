@@ -134,6 +134,16 @@ Current Phase:
         → Aggregator sections 29-30 added (full suite 31 sections, deterministic PASS, 2 live ENV_BLOCKED)
         → Frontend tsc --noEmit: 0 errors
         → No backend dependency; component is self-contained with local type mirror
+      MWT-5R-UI-II Audit Review Panel Route Integration v0: IMPLEMENTED ✅ (2026-08-12)
+        → Mounted ApprovalReviewPanel into the existing frontend product surface (Next.js App Router)
+        → Sidebar: added "Audit" nav item (id: "audit") between Evidence and Events
+        → Root page (app/page.tsx): NavView + "audit" branch rendering AuditReviewSurface
+        → New AuditReviewSurface.tsx: vertical stack of 4 deterministic fixtures + honest status legend
+        → Uses deterministic fixtures only (approved_verified / mismatch / legacy_unsigned / unavailable)
+        → No backend / API / DB fetch; surface consumes artifact, does NOT re-evaluate signatures/provenance
+        → UI route smoke: 21 PASS (incl. frontend tsc --noEmit 0 errors)
+        → UI route regression: 20 PASS (honest-status invariant + no UI-side trust logic)
+        → Aggregator sections 31-32 added (full suite 33 sections: 31 deterministic PASS, 2 live ENV_BLOCKED)
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization → MWT-6 complete
