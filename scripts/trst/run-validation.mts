@@ -21,6 +21,13 @@
 //  34. MWT-7 Validation Health Regression    [deterministic]
 //  35. TRST-4H-III Manager Route HTTP Smoke      [LIVE — DB/gateway dependent]
 //  36. TRST-4H-III Manager Route HTTP Regression [LIVE — DB/gateway dependent]
+//  37. MWT-7B Frontend Build Classifier      [deterministic, offline]
+//  38. MWT-7B Frontend Surface Reachability  [deterministic, offline]
+//
+// MWT-7B (Frontend Build & Runtime Readiness): Frontend Build is now expected
+// PASS (the node:crypto client-bundle edge was removed). Sections 37-38 are
+// DETERMINISTIC offline checks that assert the build-status classifier and the
+// Audit/Memory surface reachability WITHOUT re-running `next build` each time.
 //
 // Usage: npx tsx scripts/trst/run-validation.mts
 
@@ -96,6 +103,8 @@ const STEPS: Step[] = [
   { name: "MWT-6-UI Memory Governance Panel Regression", cmd: "npx", args: ["tsx", "scripts/mwt6/run-memory-governance-ui-regression.mts"] },
   { name: "MWT-7 Validation Health Smoke", cmd: "npx", args: ["tsx", "scripts/trst/run-validation-health-smoke.mts"] },
   { name: "MWT-7 Validation Health Regression", cmd: "npx", args: ["tsx", "scripts/trst/run-validation-health-regression.mts"] },
+  { name: "MWT-7B Frontend Build Classifier", cmd: "npx", args: ["tsx", "scripts/frontend/run-frontend-readiness-smoke.mts"] },
+  { name: "MWT-7B Frontend Surface Reachability", cmd: "npx", args: ["tsx", "scripts/frontend/run-frontend-readiness-regression.mts"] },
 ];
 
 function runStep(step: Step): Promise<StepResult> {
