@@ -14,10 +14,11 @@ import AdminPanel from "@/components/dashboard/AdminPanel";
 import EventChainViewer from "@/components/dashboard/EventChainViewer";
 import GatewayStatusCard from "@/components/dashboard/GatewayStatusCard";
 import EvidenceReportPanel from "@/components/dashboard/EvidenceReportPanel";
+import { AuditReviewSurface } from "@/components/audit/AuditReviewSurface";
 import { ManagerWorkspace } from "@/components/manager-workspace/ManagerWorkspace";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
-type NavView = "chat" | "tasks" | "overview" | "evidence" | "events" | "gateway" | "advanced";
+type NavView = "chat" | "tasks" | "overview" | "evidence" | "audit" | "events" | "gateway" | "advanced";
 type AdvancedTab = "diagnostics" | "admin";
 
 const DEFAULT_USER_ID = "dev-user";
@@ -100,6 +101,13 @@ export default function HomePage() {
                     <EvidencePanel taskId={selectedTaskId} userId={userId} />
                   </div>
                 </div>
+              </ErrorBoundary>
+            )}
+
+            {/* Audit Review — MWT-5R-UI-II: honest approval review replay surface */}
+            {activeNav === "audit" && (
+              <ErrorBoundary>
+                <AuditReviewSurface />
               </ErrorBoundary>
             )}
 
