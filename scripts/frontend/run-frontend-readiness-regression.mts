@@ -17,8 +17,11 @@
 //
 // Run: npx tsx scripts/frontend/run-frontend-readiness-regression.mts
 
-import { classifyBuildResult } from "./frontend-build-diagnostics.mts";
-import { runFrontendReadiness } from "./frontend-build-diagnostics.mts";
+import {
+  classifyBuildResult,
+  runFrontendReadiness,
+  checkFrontendImportBoundary,
+} from "./frontend-build-diagnostics.mts";
 import {
   computeReadiness,
   isEnvBlocked,
@@ -113,6 +116,19 @@ const typeFail = (n: string): StepOutcome => ({ name: n, status: "FAIL", bucket:
 check(
   "Guard: typecheck FAIL + env blocker => FAIL (fail dominates)",
   computeReadiness([typeFail("tsc"), env("build")]) === "FAIL",
+);
+
+// ── J. import-boundary guard (MWT-7B review follow-up) ──────────────────────
+// The current frontend must not leak Node built-ins into the client bundle.
+const violations = checkFrontendImportBoundary();
+check("J. current frontend has zero import-boundary violations", violations.length === 0);
+check(
+  "J. report import_boundary_status = PASS (no violations)",
+  live.import_boundary_status === "PASS",
+);
+check(
+  "J. report exposes violation list (array)",
+  Array.isArray(live.import_boundary_violations),
 );
 
 process.stdout.write(`\nMWT-7B frontend-readiness regression: ${passed} passed, ${failed} failed\n`);

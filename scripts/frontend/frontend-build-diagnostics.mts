@@ -32,6 +32,8 @@ export interface FrontendReadinessReport {
   typecheck_status: FrontendStatus;
   build_status: FrontendStatus;
   runtime_surface_status: FrontendStatus;
+  import_boundary_status: FrontendStatus;
+  import_boundary_violations: string[];
   audit_surface_present: boolean;
   memory_surface_present: boolean;
   audit_route_branch_present: boolean;
@@ -149,6 +151,128 @@ function pageHasBranches(): { audit: boolean; memory: boolean; detail: string } 
   return { audit, memory, detail: `page audit=${audit} memory=${memory}` };
 }
 
+// ── Import-boundary guard (MWT-7B review follow-up) ───────────────────────────
+//
+// Prevents recurrence of the exact bug class MWT-7B fixed: a frontend file
+// statically importing a backend module that pulls Node built-ins into the
+// client bundle (webpack UnhandledSchemeError). Two static checks, both
+// deterministic and offline:
+//   1. No frontend/src file may directly import `node:*` / `crypto` / `fs` /
+//      `path` / `child_process` / `net` / `tls`.
+//   2. No frontend/src file may import `src/services/**` (or any shared backend
+//      gateway to it) whose target file itself imports a Node built-in.
+//
+// Returns the list of violations (empty array = PASS).
+
+const FORBIDDEN_NODE_RE =
+  /(?:from|import)\s+["'](?:node:(?:crypto|fs|path|child_process|net|tls|async_hooks)|crypto|fs|path|child_process|net|tls)["']/;
+const REQUIRE_NODE_RE = /require\(\s*["'](?:node:(?:crypto|fs|path|child_process|net|tls)|crypto|fs|path|child_process|net|tls)["']\s*\)/;
+// Matches a relative import escaping upward toward repo-root services, e.g.
+// "../../../src/services/mwt6/memory-governance.ts"
+const BACKEND_SERVICE_IMPORT_RE =
+  /from\s+["']\.\.?\/.*?src\/services\/[^"']+["']/;
+
+function walkTsFiles(dir: string, acc: string[] = []): string[] {
+  if (!existsSync(dir)) return acc;
+  for (const entry of readFileSyncList(dir)) {
+    const full = join(dir, entry);
+    if (isDir(full)) {
+      walkTsFiles(full, acc);
+    } else if (/\.(ts|tsx|js|jsx|mts)$/.test(entry)) {
+      acc.push(full);
+    }
+  }
+  return acc;
+}
+
+// Minimal directory read without pulling in extra deps.
+import { readdirSync, statSync } from "node:fs";
+function readFileSyncList(dir: string): string[] {
+  return readdirSync(dir);
+}
+function isDir(p: string): boolean {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Deterministic import-boundary check. Returns violations; empty = safe.
+ * Exported so tests can assert the guard without running the live build.
+ */
+export function checkFrontendImportBoundary(): string[] {
+  const violations: string[] = [];
+  const frontendSrc = join(FRONTEND_DIR, "src");
+  const files = walkTsFiles(frontendSrc);
+
+  for (const file of files) {
+    let content: string;
+    try {
+      content = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    // 1. direct Node-builtin import from a frontend file
+    if (FORBIDDEN_NODE_RE.test(content) || REQUIRE_NODE_RE.test(content)) {
+      violations.push(`FRONTEND_DIRECT_NODE_IMPORT: ${relativeToFrontend(file)}`);
+      continue;
+    }
+    // 2. frontend importing a backend src/services module
+    const match = content.match(BACKEND_SERVICE_IMPORT_RE);
+    if (match) {
+      const target = resolveBackendTarget(file, match[0]);
+      if (target && existsSync(target) && backendModuleImportsNode(target)) {
+        violations.push(
+          `FRONTEND_IMPORTS_NODE_BACKEND: ${relativeToFrontend(file)} -> ${relativeToRepo(target)}`,
+        );
+      }
+    }
+  }
+  return violations;
+}
+
+// Resolve a `../../../src/services/...` import specifier to an absolute path.
+function resolveBackendTarget(fromFile: string, importStmt: string): string | null {
+  const spec = importStmt.match(/["']([^"']+)["']/);
+  if (!spec) return null;
+  // spec[1] is relative to the directory of fromFile
+  return joinSafe(dirnameOf(fromFile), spec[1]);
+}
+function dirnameOf(p: string): string {
+  const i = p.replace(/\\/g, "/").lastIndexOf("/");
+  return i === -1 ? "." : p.slice(0, i);
+}
+function joinSafe(base: string, rel: string): string {
+  // Normalize relative path manually to avoid path.normalize edge cases.
+  const parts = (base + "/" + rel).split("/");
+  const stack: string[] = [];
+  for (const part of parts) {
+    if (part === "." || part === "") continue;
+    if (part === "..") stack.pop();
+    else stack.push(part);
+  }
+  return "/" + stack.join("/");
+}
+
+function backendModuleImportsNode(target: string): boolean {
+  let content: string;
+  try {
+    content = readFileSync(target, "utf8");
+  } catch {
+    return false;
+  }
+  return FORBIDDEN_NODE_RE.test(content) || REQUIRE_NODE_RE.test(content);
+}
+
+function relativeToFrontend(p: string): string {
+  return p.replace(FRONTEND_DIR, "frontend").replace(/\\/g, "/");
+}
+function relativeToRepo(p: string): string {
+  return p.replace(join(process.cwd()), "").replace(/\\/g, "/").replace(/^\//, "");
+}
+
 // ── Main diagnostic ───────────────────────────────────────────────────────────
 
 export function runFrontendReadiness(): FrontendReadinessReport {
@@ -179,10 +303,18 @@ export function runFrontendReadiness(): FrontendReadinessReport {
 
   const runtime_status: FrontendStatus = surfacesOk ? "PASS" : "FAIL";
 
+  // Import-boundary guard (MWT-7B review follow-up): no Node built-ins may leak
+  // into the frontend bundle via direct import or via a backend module import.
+  const boundaryViolations = checkFrontendImportBoundary();
+  if (boundaryViolations.length) diagnostics.push("FRONTEND_IMPORT_BOUNDARY_VIOLATION");
+  const import_boundary_status: FrontendStatus = boundaryViolations.length === 0 ? "PASS" : "FAIL";
+
   return {
     typecheck_status: tc.status,
     build_status: build.status,
     runtime_surface_status: runtime_status,
+    import_boundary_status,
+    import_boundary_violations: boundaryViolations,
     audit_surface_present: auditSurface,
     memory_surface_present: memorySurface,
     audit_route_branch_present: pg.audit,

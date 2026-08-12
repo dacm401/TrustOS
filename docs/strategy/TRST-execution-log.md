@@ -208,6 +208,15 @@ Current Phase:
         → Overall: READY_WITH_ENV_BLOCKERS (no real code regression)
         → Aggregator sections 37-38 now MWT-7B (full suite 41 sections: 38 deterministic PASS, 2 live ENV_BLOCKED, 1 live PASS)
         → Docs: TRST-frontend-readiness.md added
+      MWT-7B review follow-up (import-boundary guard): IMPLEMENTED ✅ (2026-08-12)
+        → Added checkFrontendImportBoundary() (deterministic, offline) to prevent recurrence of the
+          node:crypto client-bundle leak class: (1) no frontend/src file may directly import node:*
+          builtins; (2) no frontend/src file may import a src/services/** backend module that itself
+          imports a Node built-in.
+        → Guard wired into runFrontendReadiness (import_boundary_status field) + regression test (J.*).
+        → Proven non-no-op: synthetic frontend node:crypto import is caught as FRONTEND_DIRECT_NODE_IMPORT.
+        → Current tree: 0 violations (import_boundary_status = PASS).
+        → Validation unchanged: 38 deterministic PASS / 0 FAIL; 1 live PASS / 2 ENV_BLOCKED; READY_WITH_ENV_BLOCKERS.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete

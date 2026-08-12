@@ -53,6 +53,17 @@ Plus booleans: `audit_surface_present`, `memory_surface_present`,
 `audit_route_branch_present`, `memory_route_branch_present`, and a `diagnostics[]`
 reason-code list.
 
+### Import-boundary guard (review follow-up)
+`checkFrontendImportBoundary()` is a deterministic, offline guard that prevents
+recurrence of the `node:crypto` leak class:
+1. No `frontend/src` file may directly `import`/`require` `node:crypto|fs|path|
+   child_process|net|tls|async_hooks` or bare `crypto|fs|path|...`.
+2. No `frontend/src` file may import a `src/services/**` backend module that
+   itself imports a Node built-in.
+
+Violations ⇒ `import_boundary_status = FAIL`. Current tree: **0 violations** (PASS).
+The guard is proven non-no-op (synthetic `node:crypto` import is caught).
+
 ### Build-status classifier (narrow, no catch-all)
 `classifyBuildResult(stderr)`:
 - empty stderr (build threw, nothing captured) ⇒ **FAIL**
