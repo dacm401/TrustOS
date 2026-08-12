@@ -271,6 +271,37 @@ Current Phase:
         → Remaining live blockers: TRST-4H-III ×2 (DB/gateway/live integration) only.
         → Overall: READY_WITH_ENV_BLOCKERS (browser blocker cleared).
         → Split commits: C1 (harness + smoke) / C2 (regression + aggregator) / C3 (docs). Pushed to origin.
+      MWT-7E TRST-4H-III Live Environment Unblock v0: IMPLEMENTED ✅ (2026-08-12)
+        → PM authorization: diagnose + make explicit the two TRST-4H-III live ENV_BLOCKED sections
+          (DB-backed Manager route-message + gateway-backed model availability) via preflight/diagnostics +
+          narrow classifier + docs. No product-code change (route handler out of authorized scope).
+        → Root-cause confirmed: src/api/manager-route.ts calls AgentSessionRepo.list(userId) BEFORE the
+          ask_clarification short-circuit, so even the deterministic clarification path hits Postgres and
+          returns 500 in a no-DB sandbox. MWT-7E does NOT change the route (out of scope); it makes the
+          live dependency explicit and providable.
+        → scripts/trst4h-iii/live-env-diagnostics.mts: inspectDatabase/inspectGateway/inspectHttpService +
+          inspectLiveEnv + narrow classifyTrst4hBlocker (explicit reason codes, NO catch-all).
+        → scripts/trst4h-iii/run-live-preflight.mts (section 43, deterministic, exit 0): prints explicit
+          DB/gateway/http readiness table — config presence only, NO real socket/network call.
+        → run-live-env-smoke.mts: 20 PASS/0 FAIL (classifier boundaries + preflight shape + no-network).
+        → run-live-env-regression.mts: 19 PASS/0 FAIL (all 9 behavior examples + taxonomy integration).
+        → run-validation.mts: import classifyTrst4hBlocker; add liveDeps annotation to TRST-4H-III steps;
+          classify() emits explicit ENV_BLOCKED reason for live steps; section 43 preflight added; header
+          updated. ENV_BLOCKED detail now prints: ENV_BLOCKED(DB_CONNECTION_REFUSED) (requires: database, gateway).
+        → Deterministic count: 38 -> 41 PASS (incl. MWT-7C 29 + MWT-7D 15 + MWT-7E 20/19 reframed as new
+          deterministic suites). Live: 3 PASS / 2 ENV_BLOCKED / 0 FAIL.
+        → Frontend typecheck: 0 errors. Backend typecheck: 0 errors. No product-code change.
+        → Behavior matrix verified: missing DB => ENV_BLOCKED; malformed DB => ENV_BLOCKED(explicit);
+          connrefused => ENV_BLOCKED; gateway missing/unavailable => ENV_BLOCKED; assertion mismatch =>
+          FAIL; TypeError/ReferenceError => FAIL; all config present => READY_TO_RUN; no live env =>
+          deterministic still PASS.
+        → Remaining live blockers: TRST-4H-III ×2 — NOW EXPLICIT (DB_URL_MISSING / GATEWAY_CONFIG_MISSING);
+          overall remains READY_WITH_ENV_BLOCKERS until DATABASE_URL + gateway config are provided.
+        → Docs: TRST-live-env-readiness.md (new), TRST-validation-health.md (updated), this log (this entry).
+        → Split commits: C1 (feat: diagnostics + preflight + validation integration) / C2 (test: smoke +
+          regression) / C3 (docs). To be pushed to origin.
+        → Confirmation: TRST-4H-III blockers explicit; env missing still ENV_BLOCKED; real failures still
+          FAIL; deterministic suites unchanged/strict; no network hard dependency; browser harness PASS preserved.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete

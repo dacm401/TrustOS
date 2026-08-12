@@ -41,6 +41,11 @@ otherwise (all PASS / SKIPPED)        => READY
 - **MWT-7B** (Frontend Build & Runtime Readiness) — see `TRST-frontend-readiness.md`. The Frontend
   Build node-scheme blocker is now RESOLVED (build PASSES); the remaining 2 live ENV_BLOCKED are the
   TRST-4H-III DB/gateway steps only.
+- **MWT-7C** (Browser Smoke Probe) — see `TRST-browser-smoke.md`. Honest live ENV_BLOCKED without a harness.
+- **MWT-7D** (Browser Harness Integration) — see `TRST-browser-smoke.md`. Real Chrome click path PASS.
+- **MWT-7E** (TRST-4H-III Live Environment Unblock) — see `TRST-live-env-readiness.md`.
+  `scripts/trst4h-iii/live-env-diagnostics.mts` + `run-live-preflight.mts` + `run-live-env-smoke.mts` (20 PASS)
+  + `run-live-env-regression.mts` (19 PASS). TRST-4H-III ENV_BLOCKED reasons are now EXPLICIT.
 
 ## Live-env-blocker classifier (NARROW)
 Only well-known environmental signatures are classified `ENV_BLOCKED`:
@@ -52,6 +57,18 @@ Postgres/5432, sandbox-no-db, and build-toolchain environmental signatures
 Real code failures (assertion mismatches, `TypeError`, `ReferenceError`) do NOT
 match and remain `FAIL`. No broad catch-all.
 
+### MWT-7E — TRST-4H-III explicit reason codes
+`scripts/trst4h-iii/live-env-diagnostics.mts` `classifyTrst4hBlocker()` returns:
+- `ENV_BLOCKED(DB_URL_MISSING)` — `DATABASE_URL` not set
+- `ENV_BLOCKED(DB_CONNECTION_REFUSED)` — `ECONNREFUSED` / `5432` / `postgres` / `draining`
+- `ENV_BLOCKED(NETWORK_UNREACHABLE)` — `ENOTFOUND` / `ETIMEDOUT` / `ECONNRESET` / `getaddrinfo`
+- `ENV_BLOCKED(GATEWAY_UNAVAILABLE)` — `gateway is unavailable`
+- `ENV_BLOCKED(GATEWAY_API_KEY_MISSING)` — `OPENAI_API_KEY` not set
+- `ENV_BLOCKED(GATEWAY_ENDPOINT_MISSING)` — `OPENAI_BASE_URL` not set
+- `FAIL(ASSERTION_MISMATCH)` — assertion/expected-got
+- `FAIL(CODE_EXCEPTION)` — `TypeError` / `ReferenceError` / `Cannot read`
+- `FAIL(UNKNOWN_LIVE_ERROR)` — anything unmatched (narrow: no catch-all)
+
 ## Health diagnostics (v0)
 - Checks: Node version, npm availability, backend/frontend typecheck toolchain,
   `DATABASE_URL` presence, `OPENAI_API_KEY`/`OPENAI_BASE_URL` presence, GitHub
@@ -62,11 +79,15 @@ match and remain `FAIL`. No broad catch-all.
 
 ## Current standing result
 ```
-Deterministic:  36 PASS / 0 FAIL
-Live:           0 PASS / 3 ENV_BLOCKED / 0 FAIL
+Deterministic:  41 PASS / 0 FAIL   (incl. MWT-7C 29, MWT-7D 15, MWT-7E 20+19 reframed)
+Live:           3 PASS / 2 ENV_BLOCKED / 0 FAIL
 Skipped:        0
 Overall:        READY_WITH_ENV_BLOCKERS
 ```
+The 2 live ENV_BLOCKED are the TRST-4H-III steps (require DATABASE_URL + gateway).
+They now report explicit reason codes: `DB_URL_MISSING` / `GATEWAY_CONFIG_MISSING`
+via `scripts/trst4h-iii/run-live-preflight.mts` (section 43). Provide those env
+vars to make them PASS; real assertion/code failures remain FAIL.
 The 3 ENV_BLOCKED = Frontend Build (sandbox webpack `node:` scheme limitation)
 + 2 × TRST-4H-III live HTTP/Postgres sections (no DB/gateway in sandbox).
 
