@@ -37,6 +37,8 @@
 //  32. MWT-5R-UI-II Route Integration Regression(npx tsx scripts/mwt5/run-approval-review-ui-route-regression.mts)
 //  33. MWT-6 Memory Governance Smoke          (npx tsx scripts/mwt6/run-memory-governance-smoke.mts)
 //  34. MWT-6 Memory Governance Regression      (npx tsx scripts/mwt6/run-memory-governance-regression.mts)
+//  35. MWT-6-UI Memory Governance Panel Smoke   (npx tsx scripts/mwt6/run-memory-governance-ui-smoke.mts)
+//  36. MWT-6-UI Memory Governance Panel Regression(npx tsx scripts/mwt6/run-memory-governance-ui-regression.mts)
 //
 // Scope guard:
 //   - validation only; MWT-4B implementation is the minimal export slice
@@ -108,6 +110,8 @@ const STEPS: Step[] = [
   { name: "MWT-5R-UI-II Route Integration Regression", cmd: "npx", args: ["tsx", "scripts/mwt5/run-approval-review-ui-route-regression.mts"] },
   { name: "MWT-6 Memory Governance Smoke", cmd: "npx", args: ["tsx", "scripts/mwt6/run-memory-governance-smoke.mts"] },
   { name: "MWT-6 Memory Governance Regression", cmd: "npx", args: ["tsx", "scripts/mwt6/run-memory-governance-regression.mts"] },
+  { name: "MWT-6-UI Memory Governance Panel Smoke", cmd: "npx", args: ["tsx", "scripts/mwt6/run-memory-governance-ui-smoke.mts"] },
+  { name: "MWT-6-UI Memory Governance Panel Regression", cmd: "npx", args: ["tsx", "scripts/mwt6/run-memory-governance-ui-regression.mts"] },
 ];
 
 function runStep(step: Step): Promise<StepResult> {
