@@ -23,6 +23,8 @@
 //  36. TRST-4H-III Manager Route HTTP Regression [LIVE — DB/gateway dependent]
 //  37. MWT-7B Frontend Build Classifier      [deterministic, offline]
 //  38. MWT-7B Frontend Surface Reachability  [deterministic, offline]
+//  39. MWT-7C Browser Smoke (live runtime probe) [live, browser]
+//  40. MWT-7C Browser Smoke Regression        [deterministic, offline]
 //
 // MWT-7B (Frontend Build & Runtime Readiness): Frontend Build is now expected
 // PASS (the node:crypto client-bundle edge was removed). Sections 37-38 are
@@ -105,6 +107,8 @@ const STEPS: Step[] = [
   { name: "MWT-7 Validation Health Regression", cmd: "npx", args: ["tsx", "scripts/trst/run-validation-health-regression.mts"] },
   { name: "MWT-7B Frontend Build Classifier", cmd: "npx", args: ["tsx", "scripts/frontend/run-frontend-readiness-smoke.mts"] },
   { name: "MWT-7B Frontend Surface Reachability", cmd: "npx", args: ["tsx", "scripts/frontend/run-frontend-readiness-regression.mts"] },
+  { name: "MWT-7C Browser Smoke", cmd: "npx", args: ["tsx", "scripts/frontend/run-browser-smoke.mts"], bucket: "live" },
+  { name: "MWT-7C Browser Smoke Regression", cmd: "npx", args: ["tsx", "scripts/frontend/run-browser-smoke-regression.mts"] },
 ];
 
 function runStep(step: Step): Promise<StepResult> {
