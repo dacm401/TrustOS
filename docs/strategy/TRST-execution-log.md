@@ -224,6 +224,27 @@ Current Phase:
           Residual risk closed: import-boundary guard + negative probe test accepted as real hardening.
           Deferred: browser-level click smoke (Audit/Memory DOM path) — stays separate from deterministic offline.
           Commit stack (local, unpushed): 340068f C1 / 5037c95 C2 / 11e311f C3 / 2f89801 C4.
+      MWT-7C Browser Smoke / UI Runtime Probe v0: IMPLEMENTED ✅ (2026-08-12)
+        → Next authorized milestone after MWT-7B follow-up (PM directive: verify Audit/Memory in a real runtime path).
+        → Repo has NO Playwright/Puppeteer dependency → implemented lightweight runtime probe per authorization:
+          browser-unavailable / no-harness => ENV_BLOCKED (never fake PASS); real UI/hydration error => FAIL; skip => SKIPPED.
+        → Added stable data-testid markers (test-only, no logic/visual change):
+          AuditReviewSurface[data-testid=audit-review-surface], MemoryGovernanceSurface[data-testid=memory-governance-surface],
+          Sidebar nav buttons data-testid=nav-audit / nav-memory.
+        → browser-smoke-utils.mts: single source of truth — classifyBrowserSmoke() (honest taxonomy, no catch-all PASS),
+          SELECTORS, detectBrowserRuntime() (env probe, no dep).
+        → run-browser-smoke.mts (live bucket): probes browser; in this env Chrome exists but no harness -> ENV_BLOCKED
+          (explicitly NOT faking PASS — cannot truly verify nav/surface/console without a harness).
+        → run-browser-smoke-regression.mts (deterministic, offline): 29 PASS / 0 FAIL — covers all 14 PM behavior examples
+          (A–N: browser unavailable, server unavailable, nav/surface missing, hydration error, assertion fail, skip, pass,
+          markers configured, taxonomy integration, offline).
+        → Aggregator: sections 39 (MWT-7C Browser Smoke, live) + 40 (MWT-7C Regression, deterministic) added.
+        → Validation: deterministic 38 + 0 = 38 PASS/0 FAIL unchanged for product suites; browser regression 29 PASS;
+          live browser smoke ENV_BLOCKED (no harness). Overall: READY_WITH_ENV_BLOCKERS (browser blocker added to live bucket).
+        → Frontend typecheck: 0 errors. No backend/DB/LLM/network dependency introduced.
+        → Docs: TRST-browser-smoke.md added.
+        → PM AUTHORIZATION (2026-08-12): NEXT MILESTONE MWT-7C AUTHORIZED ✅. Status: COMPLETE (live honestly ENV_BLOCKED).
+        → Split commits: C1 (markers + probe) / C2 (regression + aggregator) / C3 (docs). Pushed to origin after network recovered.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete
