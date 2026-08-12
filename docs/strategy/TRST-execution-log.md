@@ -117,6 +117,13 @@ Current Phase:
         → 24 test PASS (12 smoke + 12 regression); MWT-4F sections added → full suite 27 sections
         → No enforcement / backend persistence / external network
         → NOTE: 2 TRST-4H-III live HTTP/Postgres sections fail ENVIRONMENTALLY (DB/gateway unavailable); not a MWT-4F regression (files untouched)
+      MWT-5R Approval Review Replay / Audit View v0: IMPLEMENTED ✅ (2026-08-12)
+        → Deterministic approval review replay artifact over Signed Approval (MWT-5+) + Evidence Report (MWT-4) + Provenance Binding (MWT-4F)
+        → ApprovalReviewReplay: review_id, generated_at, task_id/session_id/target_ref, approval_id, approver_id, signer_id, approval_verification_status, decision, evidence_report_id/fingerprint, provenance_status, binding_fingerprint, conclusion (structured), warnings, human_summary
+        → Conclusion: approved_verified / approved_unverified / rejected_verified / rejected_unverified / legacy_unsigned / mismatch / unavailable
+        → Reuses verifySignedApproval() + buildEvidenceApprovalProvenanceLink()/verifyEvidenceApprovalBinding() as single sources (no duplicated logic)
+        → 46 test PASS (26 smoke + 20 regression); MWT-5R sections added → full suite 29 sections (27 deterministic PASS, 2 live ENV_BLOCKED)
+        → No enforcement / backend persistence / external network
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization → MWT-6 complete
@@ -2151,6 +2158,61 @@ C2 `test(mwt4)`, C3 `docs(trst)`.
 
 **Status:** Closed, deterministic, dependency-free. The Trust Spine now has an explicit, auditable
 evidence↔approval binding — answering "which approval reviewed which report, and is it still intact?"
+
+---
+
+### MWT-5R Approval Review Replay / Audit View v0 — IMPLEMENTED (2026-08-12) ✅
+
+**Driver:** PM Acceptance of MWT-4F (25 deterministic sections PASS; 2 live TRST-4H-III sections
+ENV_BLOCKED, unrelated) + PM Authorization — next Trust Spine milestone is MWT-5R Approval Review
+Replay / Audit View v0. Active Builder Mode.
+
+**Scope (additive, dry-run / advisory only):** Build a deterministic, pure-function approval review
+replay artifact that re-derives a structured audit verdict from a Signed Approval (MWT-5+), the Task
+Evidence Report it reviewed (MWT-4 Mainline), and the evidence↔approval provenance binding (MWT-4F).
+Answers, in human-readable form: who approved, is the signature valid, which report + fingerprint,
+does the report fingerprint match, was the approval tampered, does task/session line up, is a legacy
+unsigned approval only a historical record, and the final structured conclusion.
+
+**Files:**
+- `src/services/mwt5/approval-review-types.ts` (NEW): `ApprovalReviewReplay`, `ApprovalReviewInput`,
+  `ApprovalReviewOptions`, `ApprovalReviewConclusion` (structured conclusion, not boolean).
+- `src/services/mwt5/approval-review-replay.ts` (NEW): `buildApprovalReviewReplay(input, opts?)`,
+  `approvalReviewCanonicalBody(approval)`. Pure, no network, no DB, deterministic `review_id` (SHA-256
+  over stableStringify of bound verdict fields). Supports an optional pre-built `provenanceLink` to
+  enable honest evidence-tamper detection against a persisted anchor.
+- `scripts/mwt5/run-approval-review-smoke.mts` (NEW): 26/0 — all 9 PM behavior examples.
+- `scripts/mwt5/run-approval-review-regression.mts` (NEW): 20/0 — fingerprint sensitivity, repeated
+  determinism, honest conclusion mapping, MWT-5+/MWT-4F reuse.
+- `scripts/trst/run-validation.mts`: MWT-5R Smoke + Regression sections added (steps 27–28).
+
+**Reuse (single source of truth, no duplicated signature/provenance logic):**
+- `verifySignedApproval()` — MWT-5+ — sole signature-verdict source.
+- `buildEvidenceApprovalProvenanceLink()` / `verifyEvidenceApprovalBinding()` — MWT-4F — sole
+  provenance-bind source. The review does NOT re-implement signing/provenance judgment.
+
+**Conclusion semantics (structured, not boolean):**
+`approved_verified` / `approved_unverified` / `rejected_verified` / `rejected_unverified` /
+`legacy_unsigned` / `mismatch` / `unavailable`.
+- valid signed approval + matching report → `approved_verified`
+- tampered approval → `approved_unverified`/`rejected_unverified` (signature not cryptographically verified)
+- evidence fingerprint mismatch (persisted link vs tampered report) → `mismatch`
+- different task_id (approval `target_ref` ≠ report `task_id`) → `mismatch`
+- legacy unsigned approval → `legacy_unsigned` + warning (historical record, not cryptographically trusted)
+- missing approval/report → `unavailable`
+
+**Not in scope (per PM guardrails):** backend persistence, schema/migration, enforcement, external
+identity provider, large UI redesign. Advisory semantics preserved; no fake trust introduced.
+
+**Validation:** `npm run validate` — **27 deterministically-testable sections PASS** (incl. both new
+MWT-5R sections; prior MWT-5+ 19/0 and MWT-4F 12/0 retained). NOTE: same 2 `TRST-4H-III` live
+HTTP/Postgres sections remain ENV_BLOCKED (DB + live LLM gateway unavailable in sandbox); pre-existing,
+untouched by MWT-5R. Backend Typecheck 0 errors. Commits: C1 `feat(mwt5)`, C2 `test(mwt5)`,
+C3 `docs(trst)`.
+
+**Status:** Closed, deterministic, dependency-free. The Trust Spine is now auditable end-to-end:
+Identity (MWT-4E) → Evidence Report (MWT-4) → Signed Approval (MWT-5+) → Provenance Binding (MWT-4F)
+→ Review Replay / Audit View (MWT-5R).
 
 ---
 
