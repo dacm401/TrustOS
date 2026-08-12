@@ -26,24 +26,40 @@ probe:
 | Explicit skip flag | `SKIPPED` | `MWT7C_BROWSER_SMOKE=skip` |
 | All reachable + no errors | `PASS` | only with a real harness |
 
-## Why no real browser run yet
+## Why ENV_BLOCKED before MWT-7D (history)
 
-This repo has **no Playwright / Puppeteer dependency**. Per PM authorization,
-when no browser harness exists we implement a lightweight runtime probe and
-**must classify browser-runtime-unavailability honestly as ENV_BLOCKED — never
-fake PASS**.
+MWT-7C found Chrome on this machine but had **no automation harness** to drive
+it, so it honestly reported `ENV_BLOCKED` (never faked PASS).
 
-The probe (`detectBrowserRuntime()`) finds Chrome on this machine, but without a
-harness to actually launch headless Chrome, click nav, and assert surface
-visibility, a true PASS is impossible. The live script therefore reports:
+## MWT-7D — harness integrated ✅
+
+MWT-7D added a lightweight harness using **Playwright** (`channel: "chrome"`),
+which drives the ALREADY-INSTALLED Chrome — no browser binary download, no cache
+commit, added as a devDependency only. The live smoke now genuinely:
+
+1. starts/connects the frontend dev server,
+2. opens root in real Chrome,
+3. clicks `nav-audit` → asserts `audit-review-surface` visible,
+4. clicks `nav-memory` → asserts `memory-governance-surface` visible,
+5. captures console/page errors (resource noise filtered, see below).
+
+Live result:
 
 ```
-status: ENV_BLOCKED
-blocker: browser binary present but no runtime harness (Playwright/Puppeteer) wired
+status: PASS
+root_loaded: true
+audit_nav_found: true / audit_surface_visible: true
+memory_nav_found: true / memory_surface_visible: true
+runtime_errors: 0
 ```
 
-This keeps the contract honest: `ENV_BLOCKED` is never counted as PASS, and a
-real UI failure would still be FAIL.
+### Error filtering (honest classification)
+
+Network resource failures (favicon 404, backend `ERR_CONNECTION_REFUSED`) are
+environment-level noise unrelated to the Audit/Memory UI path. They are
+**filtered out**; only genuine JS hydration/runtime exceptions are counted as
+FAIL. This honors PM requirement #4: backend absence must not become a browser
+smoke prerequisite.
 
 ## Files
 
@@ -55,6 +71,10 @@ real UI failure would still be FAIL.
 | `frontend/src/components/audit/AuditReviewSurface.tsx` | `data-testid="audit-review-surface"` |
 | `frontend/src/components/memory/MemoryGovernanceSurface.tsx` | `data-testid="memory-governance-surface"` |
 | `frontend/src/components/layout/Sidebar.tsx` | `data-testid="nav-audit"` / `nav-memory` |
+| `scripts/frontend/browser-harness.mts` | MWT-7D Playwright harness (chrome channel) |
+| `scripts/frontend/run-browser-harness-smoke.mts` | MWT-7D live smoke (real click path) |
+| `scripts/frontend/run-browser-harness-regression.mts` | MWT-7D deterministic regression |
+| `package.json` (devDependency) | `playwright` (no browser download) |
 
 ## Surface markers
 
@@ -72,29 +92,28 @@ These are test-only attributes — no visual or logic change.
 ```bash
 # deterministic regression (offline, no browser needed)
 npx tsx scripts/frontend/run-browser-smoke-regression.mts
+npx tsx scripts/frontend/run-browser-harness-regression.mts
 
-# live runtime probe (honest ENV_BLOCKED if no harness)
-npx tsx scripts/frontend/run-browser-smoke.mts
+# live runtime probe
+npx tsx scripts/frontend/run-browser-smoke.mts            # MWT-7C (no harness -> ENV_BLOCKED)
+npx tsx scripts/frontend/run-browser-harness-smoke.mts   # MWT-7D (Playwright -> real PASS)
 
 # skip explicitly
-MWT7C_BROWSER_SMOKE=skip npx tsx scripts/frontend/run-browser-smoke.mts
+MWT7C_BROWSER_SMOKE=skip npx tsx scripts/frontend/run-browser-harness-smoke.mts
 ```
-
-## Future real-browser wiring (when a harness is added)
-
-Replace the `browser-available` branch in `run-browser-smoke.mts` with an actual
-launch + nav + surface-visibility + console-error capture, then classify via
-`classifyBrowserSmoke(...)`. Reuse `SELECTORS` and the classifier unchanged.
 
 ## Validation result (this environment)
 
-- Deterministic regression: **29 PASS / 0 FAIL**
-- Live browser smoke: **ENV_BLOCKED** (no harness to drive Chrome)
+- MWT-7C deterministic regression: **29 PASS / 0 FAIL**
+- MWT-7D deterministic regression: **15 PASS / 0 FAIL**
+- MWT-7C live browser smoke: **ENV_BLOCKED** (no harness path — kept for record)
+- MWT-7D live browser smoke: **PASS** (real Chrome click path verified)
 - Frontend typecheck: **0 errors**
-- Overall: **READY_WITH_ENV_BLOCKERS** (browser blocker added to live bucket)
+- Overall: **READY_WITH_ENV_BLOCKERS** (only TRST-4H-III ×2 remain)
 
 ## Split commits
 
-- C1 `feat(frontend)`: surface `data-testid` markers + browser smoke probe
-- C2 `test(frontend)`: browser smoke regression + aggregator section
-- C3 `docs(trst)`: browser smoke readiness docs
+- MWT-7C C1/C2/C3: markers + probe / regression + aggregator / docs
+- MWT-7D C1 `feat(frontend)`: browser harness integration (Playwright chrome channel)
+- MWT-7D C2 `test(frontend)`: browser harness regression + aggregator sections
+- MWT-7D C3 `docs(trst)`: browser harness readiness docs

@@ -245,6 +245,32 @@ Current Phase:
         → Docs: TRST-browser-smoke.md added.
         → PM AUTHORIZATION (2026-08-12): NEXT MILESTONE MWT-7C AUTHORIZED ✅. Status: COMPLETE (live honestly ENV_BLOCKED).
         → Split commits: C1 (markers + probe) / C2 (regression + aggregator) / C3 (docs). Pushed to origin after network recovered.
+      MWT-7D Browser Harness Integration v0: IMPLEMENTED ✅ (2026-08-12)
+        → Next authorized milestone after MWT-7C (PM directive: give the browser smoke a real harness).
+        → Decision: add Playwright as devDependency using channel:"chrome" to drive the ALREADY-INSTALLED
+          Chrome — NO browser binary download, NO cache commit, minimal footprint. Hand-rolled CDP driver
+          proved fragile across Chrome versions; Playwright is the PM-sanctioned lightweight harness.
+        → browser-harness.mts: launchHarness()/driveAuditMemoryPath()/teardownHarness()/harnessAvailable().
+          Real click path: goto root -> click nav-audit -> assert audit-review-surface -> click nav-memory ->
+          assert memory-governance-surface -> capture console/page errors.
+        → Error filtering: network resource noise (favicon 404, backend ERR_CONNECTION_REFUSED) excluded;
+          only genuine JS hydration/runtime exceptions count as FAIL (honors PM req #4: backend absence is
+          not a browser-smoke prerequisite).
+        → run-browser-harness-smoke.mts (live): starts/connects next dev, drives Chrome, classifies honestly:
+          harness missing/SERVER_UNAVAILABLE => ENV_BLOCKED; nav/surface missing => FAIL; runtime error => FAIL;
+          all reachable => PASS.
+        → run-browser-harness-regression.mts (deterministic, offline): 15 PASS / 0 FAIL — covers harness
+          missing/browser missing/server missing/selector missing/runtime error/no-backend/selectors-reused/
+          taxonomy integration.
+        → Aggregator: sections 41 (MWT-7D Harness Smoke, live) + 42 (MWT-7D Regression, deterministic).
+        → LIVE RESULT (this env): status=PASS; root_loaded/audit_nav/memory_nav/audit_surface/memory_surface
+          all true; runtime_errors=0. The browser-smoke ENV_BLOCKED blocker is ELIMINATED.
+        → package.json: +devDependency playwright@1.62.1 (no browser binaries downloaded).
+        → Docs: TRST-browser-smoke.md updated (MWT-7D section, error filtering, validation).
+        → Frontend typecheck: 0 errors. No backend/DB/LLM/network dependency introduced for the smoke.
+        → Remaining live blockers: TRST-4H-III ×2 (DB/gateway/live integration) only.
+        → Overall: READY_WITH_ENV_BLOCKERS (browser blocker cleared).
+        → Split commits: C1 (harness + smoke) / C2 (regression + aggregator) / C3 (docs). Pushed to origin.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete

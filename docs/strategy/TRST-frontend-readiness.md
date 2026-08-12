@@ -112,14 +112,23 @@ All four checks PASS → `runtime_surface_status = PASS`.
 - `frontend/src/types/memory-governance.ts` — re-export points at crypto-free core
 
 ## Validation (post-fix)
-- Deterministic: **38 PASS / 0 FAIL** (was 36, +2 MWT-7B)
-- Live: 1 PASS (Frontend Build) / 2 ENV_BLOCKED (TRST-4H-III ×2) / 0 FAIL
+- Deterministic: **38 PASS / 0 FAIL** (product suites) + browser regressions (MWT-7C 29 / MWT-7D 15)
+- Live: Frontend Build PASS / MWT-7D Browser Harness Smoke **PASS** (real Chrome click path) / 2 ENV_BLOCKED (TRST-4H-III ×2) / 0 FAIL
 - Overall: **READY_WITH_ENV_BLOCKERS**
 - Frontend tsc: 0 errors. Backend tsc: 0 errors.
+
+## Browser Smoke (MWT-7C → MWT-7D)
+- MWT-7C added the framework + honest ENV_BLOCKED when no harness existed.
+- MWT-7D integrated Playwright (`channel:"chrome"`, drives installed Chrome, no browser download)
+  and now genuinely verifies: root loads → click Audit → surface visible → click Memory → surface visible,
+  with runtime errors = 0. The browser-smoke ENV_BLOCKED blocker is cleared.
 
 ## Honesty Notes
 - The build fix is a real code fix, not a reclassification. Before the fix the
   ENV_BLOCKED was honest; after the fix the PASS is honest.
+- Browser smoke PASS is real: a real Chrome instance clicked Audit/Memory and the
+  surfaces rendered. Network resource noise (favicon 404, backend connection refused)
+  is filtered and does not fail the smoke (backend absence is not a prerequisite).
 - The 2 remaining ENV_BLOCKED are genuine DB/gateway (Postgres) unavailability in
   this sandbox, not frontend defects.
 - No broad Next/webpack upgrade, no new bundler, no frontend redesign.
