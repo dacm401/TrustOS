@@ -12,7 +12,7 @@ import { allFixtures } from "./__fixtures__/memory-governance";
 
 export default function MemoryGovernanceSurface() {
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="h-full overflow-y-auto p-6" data-testid="memory-governance-surface">
       <div className="max-w-3xl mx-auto space-y-6">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: "var(--text-primary)" }}>

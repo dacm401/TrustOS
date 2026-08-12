@@ -41,6 +41,7 @@ export function Sidebar({ activeNav, onNavChange, onSettingsClick }: SidebarProp
               key={item.id}
               onClick={() => onNavChange(item.id)}
               title={item.label}
+              data-testid={`nav-${item.id}`}
               className="relative w-full flex flex-col items-center justify-center py-2 rounded-lg text-xs transition-all"
               style={{
                 backgroundColor: isActive ? "var(--bg-overlay)" : "transparent",

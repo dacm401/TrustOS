@@ -27,7 +27,7 @@ const SAMPLES = [
 
 export function AuditReviewSurface() {
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="h-full overflow-y-auto p-6" data-testid="audit-review-surface">
       <div className="max-w-5xl mx-auto space-y-6">
         <div>
           <h1
