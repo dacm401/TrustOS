@@ -31,6 +31,8 @@
 //  26. MWT-4F Provenance regression(npx tsx scripts/mwt4/run-provenance-regression.mts)
 //  27. MWT-5R Approval Review Replay smoke   (npx tsx scripts/mwt5/run-approval-review-smoke.mts)
 //  28. MWT-5R Approval Review Replay regression(npx tsx scripts/mwt5/run-approval-review-regression.mts)
+//  29. MWT-5R-UI Approval Review Panel smoke   (npx tsx scripts/mwt5/run-approval-review-ui-smoke.mts)
+//  30. MWT-5R-UI Approval Review Panel regression(npx tsx scripts/mwt5/run-approval-review-ui-regression.mts)
 //
 // Scope guard:
 //   - validation only; MWT-4B implementation is the minimal export slice
@@ -96,6 +98,8 @@ const STEPS: Step[] = [
   { name: "MWT-4F Provenance Regression", cmd: "npx", args: ["tsx", "scripts/mwt4/run-provenance-regression.mts"] },
   { name: "MWT-5R Approval Review Replay Smoke", cmd: "npx", args: ["tsx", "scripts/mwt5/run-approval-review-smoke.mts"] },
   { name: "MWT-5R Approval Review Replay Regression", cmd: "npx", args: ["tsx", "scripts/mwt5/run-approval-review-regression.mts"] },
+  { name: "MWT-5R-UI Approval Review Panel Smoke", cmd: "npx", args: ["tsx", "scripts/mwt5/run-approval-review-ui-smoke.mts"] },
+  { name: "MWT-5R-UI Approval Review Panel Regression", cmd: "npx", args: ["tsx", "scripts/mwt5/run-approval-review-ui-regression.mts"] },
 ];
 
 function runStep(step: Step): Promise<StepResult> {
