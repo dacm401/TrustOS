@@ -157,6 +157,24 @@ Current Phase:
         → Backend tsc --noEmit: 0 errors
         → Aggregator sections 33-34 added (full suite 35 sections: 33 deterministic PASS, 2 live ENV_BLOCKED)
         → UI panel deferred to separate MWT-6-UI slice (v0 core only, per authorization)
+      MWT-6-UI Memory Governance Panel v0: IMPLEMENTED ✅ (2026-08-12)
+        → Renders deterministic MemoryGovernanceRecord artifacts in frontend (no backend, no network)
+        → MemoryGovernancePanel: honest status badge + scope/source/retention/sensitivity/memory_id/content_digest/warnings/refs/fingerprint
+        → statusDisplay mapping (single source of truth, also unit-tested):
+            active→positive, limited→warning, expired→warning, revoked→danger,
+            legacy→warning, unverified→warning, invalid→danger
+          Invariant enforced + asserted: NO untrusted status maps to positive.
+        → unknown sensitivity NEVER shown as public (sensitivityTone: unknown → warning)
+        → Trust Spine refs (evidence_report_id / evidence_fingerprint / approval_id / binding_fingerprint / review_id)
+          rendered from record.trust_refs; warnings always visible.
+        → MemoryGovernanceSurface: vertical stack of 7 deterministic fixtures + honest status legend.
+        → Fixtures (frontend/src/components/memory/__fixtures__/memory-governance.ts) built by core builder,
+          pinned now()/hashFn; cover active/limited/expired/revoked/legacy/invalid/evidence-review-linked.
+        → Sidebar "Memory" nav item added (after Audit); route branch in page.tsx (ErrorBoundary-wrapped).
+        → UI smoke: 15 PASS; UI regression: 53 PASS (status×sensitivity matrix, determinism, no-positive invariant)
+        → Frontend tsc --noEmit: 0 errors; Backend tsc: 0 errors (no core change)
+        → Aggregator sections 35-36 added (full suite 37 sections: 35 deterministic PASS, 2 live ENV_BLOCKED)
+        → No duplicated evaluator logic; UI only consumes records. No enforcement introduced.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization → MWT-6 complete
@@ -701,6 +719,7 @@ MWT Workstream:
      → implementation NOT AUTHORIZED ❌
   🔴 MWT-5 Manager Policy: NOT_STARTED
   🟢 MWT-6 Memory Governance: IMPLEMENTED ✅ (deterministic governance v0)
+  🟢 MWT-6-UI Memory Governance Panel: IMPLEMENTED ✅ (honest frontend rendering v0)
   🔴 MWT-7 Productionization: NOT_STARTED
 
 Authorized NOW (MWT-4A Implementation — 2026-08-10):
@@ -1624,6 +1643,7 @@ MWT Workstream status (2026-08-11):
   🟢 MWT-4B Task Evidence Export: IMPLEMENTED ✅ (frontend-only v0)
   🟢 MWT-5 Manager Policy & Approval: IMPLEMENTED ✅ (advisory dry-run, decision-signed)
   🟢 MWT-6 Memory Governance: IMPLEMENTED ✅ (deterministic governance v0)
+  🟢 MWT-6-UI Memory Governance Panel: IMPLEMENTED ✅ (honest frontend rendering v0)
   🔴 MWT-7 Productionization: NOT_STARTED
 
 Risk register updates:
@@ -1858,6 +1878,7 @@ MWT Workstream status (2026-08-11, post-freeze-revocation):
   🟢 MWT-5 Manager Policy & Approval: SEALED_ADVISORY_CLIENT_SIDE_ARTIFACT_V0 ✅
   🟢 TRST-4H Manager Routing Intelligence: IMPLEMENTED ✅ (hybrid classifier v0)
   🟢 MWT-6 Memory Governance: IMPLEMENTED ✅ (deterministic governance v0)
+  🟢 MWT-6-UI Memory Governance Panel: IMPLEMENTED ✅ (honest frontend rendering v0)
   🔴 MWT-7 Productionization: NOT_STARTED
 
 FH-1 closure note: scripts/trst/run-validation.mts now also carries TRST-4H §12/13. It is
@@ -2362,6 +2383,7 @@ MWT Workstream status (2026-08-11):
   🟢 TRST-4H Manager Routing Intelligence: IMPLEMENTED ✅
   🟢 TRST-4H-I Manager Routing Integration: IMPLEMENTED ✅ (classifier wired into routeMessage)
   🟢 MWT-6 Memory Governance: IMPLEMENTED ✅ (deterministic governance v0)
+  🟢 MWT-6-UI Memory Governance Panel: IMPLEMENTED ✅ (honest frontend rendering v0)
   🔴 MWT-7 Productionization: NOT_STARTED
 ```
 
