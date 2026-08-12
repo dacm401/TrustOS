@@ -124,6 +124,16 @@ Current Phase:
         → Reuses verifySignedApproval() + buildEvidenceApprovalProvenanceLink()/verifyEvidenceApprovalBinding() as single sources (no duplicated logic)
         → 46 test PASS (26 smoke + 20 regression); MWT-5R sections added → full suite 29 sections (27 deterministic PASS, 2 live ENV_BLOCKED)
         → No enforcement / backend persistence / external network
+      MWT-5R-UI Audit Review Panel v0: IMPLEMENTED ✅ (2026-08-12)
+        → Renders ApprovalReviewReplay in frontend with honest status (never fakes trust)
+        → ApprovalReviewPanel.tsx (component) + review-status.ts (pure status mapping) + @/types/audit (local mirror of ApprovalReviewReplay)
+        → Honest tone mapping: approved_verified/rejected_verified→positive; legacy_unsigned/unverified verification→warning; mismatch→danger; unavailable→neutral
+        → Critical invariant enforced + tested: NO untrusted state borrows "positive" tone
+        → Deterministic fixtures (__fixtures__/approval-reviews.ts): approved_verified / mismatch / legacy_unsigned / unavailable
+        → UI script tests: run-approval-review-ui-smoke.mts (19 PASS) + run-approval-review-ui-regression.mts (41 PASS)
+        → Aggregator sections 29-30 added (full suite 31 sections, deterministic PASS, 2 live ENV_BLOCKED)
+        → Frontend tsc --noEmit: 0 errors
+        → No backend dependency; component is self-contained with local type mirror
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization → MWT-6 complete
