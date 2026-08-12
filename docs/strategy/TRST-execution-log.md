@@ -144,6 +144,19 @@ Current Phase:
         → UI route smoke: 21 PASS (incl. frontend tsc --noEmit 0 errors)
         → UI route regression: 20 PASS (honest-status invariant + no UI-side trust logic)
         → Aggregator sections 31-32 added (full suite 33 sections: 31 deterministic PASS, 2 live ENV_BLOCKED)
+      MWT-6 Memory Governance v0: IMPLEMENTED ✅ (2026-08-12)
+        → Deterministic MemoryGovernanceRecord + build/evaluate pure functions (no DB, no network)
+        → Explicit scope (user/session/task/project/system) — unknown scope → invalid, never silent-active
+        → Explicit source (incl imported_legacy honestly marked) — legacy → legacy/unverified + warning
+        → Retention (ephemeral/session/project/long_term/revoked/expired) — revoked/expired NEVER active
+        → Sensitivity (public/internal/sensitive/restricted/unknown) — unknown NEVER public; sensitive/restricted → limited + warning
+        → Structured status: active/limited/expired/revoked/unverified/legacy/invalid (no boolean)
+        → Trust Spine linkage: evidence/approval/review/binding refs preserved; never faked "verified"; malformed → warning
+        → Deterministic governance_fingerprint (stableStringify + injectable SHA-256 hash + injectable now)
+        → Smoke: 24 PASS (10 required behavior examples); Regression: 3240 PASS (exhaustive honesty matrix + symmetry)
+        → Backend tsc --noEmit: 0 errors
+        → Aggregator sections 33-34 added (full suite 35 sections: 33 deterministic PASS, 2 live ENV_BLOCKED)
+        → UI panel deferred to separate MWT-6-UI slice (v0 core only, per authorization)
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization → MWT-6 complete
@@ -687,7 +700,7 @@ MWT Workstream:
      → prebrief hardened (privacy/hash/trust boundary); questionnaire/risk/gate created
      → implementation NOT AUTHORIZED ❌
   🔴 MWT-5 Manager Policy: NOT_STARTED
-  🔴 MWT-6 Memory Governance: NOT_STARTED
+  🟢 MWT-6 Memory Governance: IMPLEMENTED ✅ (deterministic governance v0)
   🔴 MWT-7 Productionization: NOT_STARTED
 
 Authorized NOW (MWT-4A Implementation — 2026-08-10):
@@ -893,7 +906,7 @@ MWT Roadmap (PM 2026-08-09 Decision):
        → Implementation Readiness Pack: DOCUMENTATION_ONLY COMPLETE ✅ (2026-08-10, 7 docs)
        → Implementation: NOT_AUTHORIZED ❌
   MWT-5 Manager Policy & Approval → PREBRIEF_ACCEPTED_DIRECTIONAL_ONLY ⚠️ (NOT_STARTED, implementation blocked)
-  MWT-6 Memory Governance → NOT_STARTED
+  MWT-6 Memory Governance → IMPLEMENTED ✅ (deterministic governance v0)
   MWT-7 Productionization → NOT_STARTED
 
 Product completeness:
@@ -1610,7 +1623,7 @@ Scope discipline held:
 MWT Workstream status (2026-08-11):
   🟢 MWT-4B Task Evidence Export: IMPLEMENTED ✅ (frontend-only v0)
   🟢 MWT-5 Manager Policy & Approval: IMPLEMENTED ✅ (advisory dry-run, decision-signed)
-  🔴 MWT-6 Memory Governance: NOT_STARTED
+  🟢 MWT-6 Memory Governance: IMPLEMENTED ✅ (deterministic governance v0)
   🔴 MWT-7 Productionization: NOT_STARTED
 
 Risk register updates:
@@ -1844,7 +1857,7 @@ MWT Workstream status (2026-08-11, post-freeze-revocation):
   🟢 MWT-4B Task Evidence Export: SEALED_FRONTEND_ONLY_V0 ✅
   🟢 MWT-5 Manager Policy & Approval: SEALED_ADVISORY_CLIENT_SIDE_ARTIFACT_V0 ✅
   🟢 TRST-4H Manager Routing Intelligence: IMPLEMENTED ✅ (hybrid classifier v0)
-  🔴 MWT-6 Memory Governance: NOT_STARTED
+  🟢 MWT-6 Memory Governance: IMPLEMENTED ✅ (deterministic governance v0)
   🔴 MWT-7 Productionization: NOT_STARTED
 
 FH-1 closure note: scripts/trst/run-validation.mts now also carries TRST-4H §12/13. It is
@@ -2348,7 +2361,7 @@ MWT Workstream status (2026-08-11):
   🟢 MWT-5 Manager Policy & Approval: SEALED_ADVISORY_CLIENT_SIDE_ARTIFACT_V0 ✅
   🟢 TRST-4H Manager Routing Intelligence: IMPLEMENTED ✅
   🟢 TRST-4H-I Manager Routing Integration: IMPLEMENTED ✅ (classifier wired into routeMessage)
-  🔴 MWT-6 Memory Governance: NOT_STARTED
+  🟢 MWT-6 Memory Governance: IMPLEMENTED ✅ (deterministic governance v0)
   🔴 MWT-7 Productionization: NOT_STARTED
 ```
 
