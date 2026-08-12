@@ -175,10 +175,25 @@ Current Phase:
         → Frontend tsc --noEmit: 0 errors; Backend tsc: 0 errors (no core change)
         → Aggregator sections 35-36 added (full suite 37 sections: 35 deterministic PASS, 2 live ENV_BLOCKED)
         → No duplicated evaluator logic; UI only consumes records. No enforcement introduced.
+      MWT-7 Productionization / Validation Health v0: IMPLEMENTED ✅ (2026-08-12)
+        → Validation status taxonomy: PASS | FAIL | ENV_BLOCKED | SKIPPED (single source: validation-status.ts)
+        → Overall readiness: any FAIL => FAIL; no FAIL + ENV_BLOCKED => READY_WITH_ENV_BLOCKERS; else READY
+        → Aggregator upgraded: per-bucket (deterministic/live/skipped) reporting + readiness verdict
+        → Live steps (TRST-4H-III) classified via NARROW isEnvBlockedError; real assertion failures stay FAIL
+        → Frontend Build classified as live (sandbox webpack node: scheme = ENV_BLOCKED, not code FAIL;
+          type errors would NOT match and stay FAIL). Frontend Typecheck stays deterministic (passes).
+        → Health diagnostics: run-health-check.mts checks node/npm/typecheck toolchain/DB env/LLM gateway env
+          /GitHub network (cheap ping). No hard network/DB dependency; no real connection forced.
+        → Live-env-blocker classifier is NARROW (known DB/gateway/build-toolchain signatures only); no catch-all.
+        → MWT-7 validation-health smoke: 24 PASS; regression: 123 PASS (status matrix, determinism, classifier)
+        → Deterministic product suites: 36 PASS / 0 FAIL; Live: 3 ENV_BLOCKED (Frontend Build + 2 TRST-4H-III)
+        → Overall: READY_WITH_ENV_BLOCKERS (no real code regression)
+        → Aggregator sections 37-38 added (full suite 39 sections: 36 deterministic PASS, 3 live ENV_BLOCKED)
+        → Docs: TRST-validation-health.md added
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
-    MWT-7 Productionization → MWT-6 complete
-        → Scope includes AD-8: embed Gateway into main process (eliminate process-separation SPOF)
+    MWT-7 Productionization / Validation Health → MWT-6 complete
+        → v0 scope: validation/readiness health; full productionization deferred (see forward milestone sequencing)
 
 Last Closed Gates:
 TRST-3 MVP — CLOSED WITH NO PLANNED DEBT (52/52 AC, 2026-08-05)
@@ -720,7 +735,7 @@ MWT Workstream:
   🔴 MWT-5 Manager Policy: NOT_STARTED
   🟢 MWT-6 Memory Governance: IMPLEMENTED ✅ (deterministic governance v0)
   🟢 MWT-6-UI Memory Governance Panel: IMPLEMENTED ✅ (honest frontend rendering v0)
-  🔴 MWT-7 Productionization: NOT_STARTED
+  🟢 MWT-7 Productionization / Validation Health: IMPLEMENTED ✅ (honest readiness taxonomy v0)
 
 Authorized NOW (MWT-4A Implementation — 2026-08-10):
   ✅ MWT-4A brief 4 revisions patched (paths / no-renderer-reuse / no-error_code-inference / S9 wording)
@@ -1644,7 +1659,7 @@ MWT Workstream status (2026-08-11):
   🟢 MWT-5 Manager Policy & Approval: IMPLEMENTED ✅ (advisory dry-run, decision-signed)
   🟢 MWT-6 Memory Governance: IMPLEMENTED ✅ (deterministic governance v0)
   🟢 MWT-6-UI Memory Governance Panel: IMPLEMENTED ✅ (honest frontend rendering v0)
-  🔴 MWT-7 Productionization: NOT_STARTED
+  🟢 MWT-7 Productionization / Validation Health: IMPLEMENTED ✅ (honest readiness taxonomy v0)
 
 Risk register updates:
   - R1/R2 (MWT-4B) — RESOLVED (frontend-only v0 shipped, 9/9 validated)
@@ -1879,7 +1894,7 @@ MWT Workstream status (2026-08-11, post-freeze-revocation):
   🟢 TRST-4H Manager Routing Intelligence: IMPLEMENTED ✅ (hybrid classifier v0)
   🟢 MWT-6 Memory Governance: IMPLEMENTED ✅ (deterministic governance v0)
   🟢 MWT-6-UI Memory Governance Panel: IMPLEMENTED ✅ (honest frontend rendering v0)
-  🔴 MWT-7 Productionization: NOT_STARTED
+  🟢 MWT-7 Productionization / Validation Health: IMPLEMENTED ✅ (honest readiness taxonomy v0)
 
 FH-1 closure note: scripts/trst/run-validation.mts now also carries TRST-4H §12/13. It is
 committed together with the TRST-4H milestne (see commit plan below), so the committed tree
@@ -2384,7 +2399,7 @@ MWT Workstream status (2026-08-11):
   🟢 TRST-4H-I Manager Routing Integration: IMPLEMENTED ✅ (classifier wired into routeMessage)
   🟢 MWT-6 Memory Governance: IMPLEMENTED ✅ (deterministic governance v0)
   🟢 MWT-6-UI Memory Governance Panel: IMPLEMENTED ✅ (honest frontend rendering v0)
-  🔴 MWT-7 Productionization: NOT_STARTED
+  🟢 MWT-7 Productionization / Validation Health: IMPLEMENTED ✅ (honest readiness taxonomy v0)
 ```
 
 Commit plan (split, per PM TRST-4H-I authorization):
