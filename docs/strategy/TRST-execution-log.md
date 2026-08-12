@@ -217,6 +217,13 @@ Current Phase:
         → Proven non-no-op: synthetic frontend node:crypto import is caught as FRONTEND_DIRECT_NODE_IMPORT.
         → Current tree: 0 violations (import_boundary_status = PASS).
         → Validation unchanged: 38 deterministic PASS / 0 FAIL; 1 live PASS / 2 ENV_BLOCKED; READY_WITH_ENV_BLOCKERS.
+        → PM FINAL SIGN-OFF (Follow-Up Review, 2026-08-12): ACCEPTED ✅
+          MWT-7B: COMPLETE + HARDENED | Code-readiness: PASS | Frontend readiness: PASS
+          Import boundary: PASS | Deterministic 38 PASS/0 FAIL | Live 1 PASS/2 ENV_BLOCKED/0 FAIL
+          Overall: READY_WITH_ENV_BLOCKERS | Worktree: clean | Push: BLOCKED_BY_NETWORK_ONLY (env-only)
+          Residual risk closed: import-boundary guard + negative probe test accepted as real hardening.
+          Deferred: browser-level click smoke (Audit/Memory DOM path) — stays separate from deterministic offline.
+          Commit stack (local, unpushed): 340068f C1 / 5037c95 C2 / 11e311f C3 / 2f89801 C4.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete
