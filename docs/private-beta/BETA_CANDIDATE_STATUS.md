@@ -18,7 +18,7 @@
 | Browser harness smoke | PASS (offline) |
 | TRST-4H-III live | ENV_BLOCKED (DB + gateway required) |
 | Backend typecheck | 0 errors |
-| beta:check | 37 PASS / 0 FAIL |
+| beta:check | 48 PASS / 0 FAIL |
 | Secrets | none committed |
 | Verdict | **READY_WITH_ENV_BLOCKERS** (not READY) |
 
@@ -37,3 +37,15 @@
 2. `npm run validate` → TRST-4H-III live PASS.
 3. `npm run beta:check` → asserts READY when blockers clear.
 4. Re-tag / re-mark as Full READY candidate.
+
+## MWT-11 status (2026-08-13)
+
+- **Live env provisioning:** NOT performed in CI/agent environment — no reachable
+  Postgres or gateway credentials available here. Operator must supply `[LIV]`
+  vars locally (`.env` is gitignored, never committed).
+- **Reviewer feedback archive:** `reviewer-feedback/` created with README + sanitized
+  `session-001-template.md`. Real sessions recorded only after live env is supplied.
+- **Full readiness gates run (offline):** `npm run validate` exit 0; `run-live-activation-check.mts`
+  exit 0; `run-private-beta-report.mts` exit 0.
+- **Verdict:** still `READY_WITH_ENV_BLOCKERS` (TRST-4H-III ×2 ENV_BLOCKED). No false READY.
+- **Secrets:** none committed; `.env` gitignored + untracked; reports presence-only.

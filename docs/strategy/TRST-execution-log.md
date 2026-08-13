@@ -399,6 +399,25 @@ Current Phase:
           (verdict READY_WITH_ENV_BLOCKERS, masking verified); worktree clean.
         → Worktree: clean ✅. Local commits 4d1656e / 9aa3384 / 91b9dd0 ready, not yet on origin.
         → Action: retry push when network recovers. Do NOT change code for this blocker.
+      MWT-11 Live Env Provisioning & First Reviewer Session v0: CODE-READY (partial) ⚠️ (2026-08-13)
+        → PM authorization: provision live DB/gateway locally, run full readiness gates, conduct first reviewer
+          session. Live Beta Operation mode. No core/secrets changes.
+        → Live env provisioning: NOT performed in agent/CI environment — no reachable Postgres or gateway
+          credentials available here; supplying real secrets is out of scope and unsafe. Operator must do this
+          on own machine (.env gitignored, never committed). Environment boundary documented, not a code failure.
+        → Reviewer feedback archive: docs/private-beta/reviewer-feedback/ (README + session-001-template.md)
+          created; sanitized, no personal data, presence-only env.
+        → Full readiness gates (offline, run here): npm run validate exit 0 (no real FAIL);
+          run-live-activation-check.mts exit 0 (verdict READY_WITH_ENV_BLOCKERS, masking verified);
+          run-private-beta-report.mts exit 0 (no false READY, 9/9 onboarding docs, TRST-4H-III ENV_BLOCKED).
+        → First reviewer session: cannot run a real human session without live env + a human reviewer; structure
+          and sanitized template are in place per REVIEWER_SESSION_GUIDE.md. Session recorded when operator
+          supplies live env and runs with a reviewer.
+        → Beta candidate status: BETA_CANDIDATE_STATUS.md updated (beta:check 48 PASS; MWT-11 status).
+        → Verdict: READY_WITH_ENV_BLOCKERS (unchanged). No false READY.
+        → Worktree: clean ✅. No secrets committed; .env gitignored + untracked.
+        → Note: MWT-11 is CODE-READY for the parts automatable here; the live-provisioning + human-session parts
+          are gated on operator-provided [LIV] env and a real reviewer. Not a milestone failure.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete
