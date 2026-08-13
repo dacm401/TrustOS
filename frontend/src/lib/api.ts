@@ -390,6 +390,39 @@ export async function createManagerMessage(
   return res.json();
 }
 
+// MWT-14: ManagerConversation list + create
+export interface ManagerConversationRecord {
+  id: string;
+  user_id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchConversations(userId: string, limit = 50) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations?limit=${limit}`,
+    { headers: { "X-User-Id": userId } }
+  );
+  if (!res.ok) throw new Error(`加载会话列表失败 (${res.status})`);
+  return res.json() as Promise<{ conversations: ManagerConversationRecord[]; total: number }>;
+}
+
+export async function createConversation(userId: string, title?: string) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(`${apiBase}/v1/manager-conversations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-User-Id": userId },
+    body: JSON.stringify(title ? { title } : {}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `创建会话失败 (${res.status})`);
+  }
+  return res.json() as Promise<{ conversation: ManagerConversationRecord }>;
+}
+
 export async function fetchSessionEvents(userId: string, sessionId: string, limit = 200) {
   const { apiBase } = await getApiConfig();
   const res = await fetch(

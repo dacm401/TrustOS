@@ -464,6 +464,23 @@ Current Phase:
           no Memory Governance regression; no auth/RBAC; no policy enforcement; no irreversible migration; no new dep.
         → Follow-up (out of v0 scope, NOT done here): wire controller/router to service; frontend ManagerConversation
           to use service contract; conversations table ownership index tuning; MWT-14 UI surface.
+      MWT-14 ManagerConversation Controller + UI Surface v0: COMPLETED (2026-08-13)
+        → Authorized after MWT-13 accepted. Goal: turn MWT-13 foundation into minimal usable product surface.
+        → Backend: src/api/manager-conversations.ts (managerConversationsRouter @ /v1/manager-conversations)
+          POST create / GET list / GET :id, wired to managerConversationService, reuses getContextUserId +
+          identityMiddleware convention. Mounted in src/index.ts. __setConversationStoreForTesting seam for tests.
+        → Frontend: lib/api.ts added fetchConversations + createConversation (X-User-Id header, matching existing
+          manager API pattern). ManagerWorkspace.tsx gained a conversation selector (list + "+ 新建" button);
+          replaces hardcoded `manager-${userId}` with real selected conversationId; ManagerConversation remounts
+          via key on switch. No second chat layer — Manager surface visualizes multiple manager conversations.
+        → Tests: scripts/trst/mwt14-conversation-controller.test.mts — zero-DB Hono app test (10 assertions):
+          create 201 / list / get-by-id / ownership 404 / no-auth 401 / empty-body 201. Uses in-memory fake store.
+        → Validation: mwt14 controller test 10 PASS; mwt13 service test 14 PASS; tsc --noEmit 0 errors;
+          beta:check 48 PASS / 0 FAIL (no regression); readiness unchanged READY_WITH_ENV_BLOCKERS.
+        → Boundaries preserved: no fake live run / reviewer / READY; no Trust Spine / Memory change; no secrets;
+          no new dependency; no destructive migration (026 additive); no policy enforcement; no auth/RBAC new logic.
+        → Push: network recovered during MWT-13 retry; origin now synced to d2860c0. MWT-14 committed on top.
+        → Follow-up (out of v0 scope): MWT-15 Manager↔Memory Context Bridge; MWT-16 Manager↔Trust Evidence Bridge.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete
