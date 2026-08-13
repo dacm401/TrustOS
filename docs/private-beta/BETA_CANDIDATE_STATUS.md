@@ -49,3 +49,11 @@
   exit 0; `run-private-beta-report.mts` exit 0.
 - **Verdict:** still `READY_WITH_ENV_BLOCKERS` (TRST-4H-III ×2 ENV_BLOCKED). No false READY.
 - **Secrets:** none committed; `.env` gitignored + untracked; reports presence-only.
+
+## MWT-12 operator runbook (2026-08-13)
+
+- **MWT-12 Operator Live Run & First Reviewer Evidence v0:** AUTHORIZED_FOR_OPERATOR_ENV.
+- Single entry point for operator execution: `MWT-12-OPERATOR-RUNBOOK.md`.
+- Covers: `[LIV]` prerequisites, four gate commands, reviewer session flow,
+  decision rules, and the 12-section completion-report format.
+- Agent/CI must NOT run MWT-12 (no real `[LIV]` credentials here). Operator-only.
