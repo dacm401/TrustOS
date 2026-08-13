@@ -418,6 +418,27 @@ Current Phase:
         → Worktree: clean ✅. No secrets committed; .env gitignored + untracked.
         → Note: MWT-11 is CODE-READY for the parts automatable here; the live-provisioning + human-session parts
           are gated on operator-provided [LIV] env and a real reviewer. Not a milestone failure.
+      MWT-12 Operator Live Run & First Reviewer Evidence v0: AUTHORIZED_FOR_OPERATOR_ENV ✅ (2026-08-13)
+        → PM authorization: run the private beta candidate with real [LIV] DB/gateway in an OPERATOR environment,
+          collect first reviewer feedback evidence, and decide promotion from Private Beta Candidate → Full READY.
+        → Mode: Live Operator Execution. NOT to be run by agent/CI (no [LIV] credentials here — correct boundary).
+        → Prerequisites (operator, local only): DATABASE_URL + either (OPENAI_BASE_URL+OPENAI_API_KEY) or
+          (GATEWAY_ENDPOINT+GATEWAY_API_KEY). Rules: .env not committed, no secret in issue/doc/chat, logs
+          presence/masked only, reviewer feedback sanitized.
+        → Execution steps (operator): git checkout/pull feature/trst-3-private-beta-readiness; cp
+          .env.private-beta.example .env; fill [LIV] vars; run npm run beta:check,
+          npx tsx scripts/trst4h-iii/run-live-activation-check.mts, npm run validate,
+          npx tsx scripts/trst/run-private-beta-report.mts; conduct session per REVIEWER_SESSION_GUIDE.md;
+          record sanitized result in reviewer-feedback/session-001-<role>.md (copy from session-001-template.md).
+        → Decision rules: Full READY = no FAIL + no ENV_BLOCKED + TRST-4H-III PASS + reviewer=continue + no
+          high/critical blocker; Remain Candidate = no FAIL but some ENV_BLOCKED + reviewer can continue;
+          Fix Before Beta = medium/high blocker or reviewer cannot complete core demo; Rejected = any real FAIL /
+          critical trust-audit-memory issue / false READY / secret leakage.
+        → Completion report: 12-section format (operator env presence-only, beta:check, live activation, full
+          validation, readiness verdict, TRST-4H-III status, reviewer session summary, feedback classification,
+          promotion decision, files changed sanitized, commit/push status, confirmation of no-secret/no-false-READY).
+        → Agent boundary: do NOT fake live runs or reviewer sessions here. Promotion decision belongs to operator+PM
+          after real [LIV] env is supplied. Agent may only keep docs/scripts ready and record the authorization.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete
