@@ -29,7 +29,16 @@
 //  42. MWT-7D Browser Harness Regression       [deterministic, offline]
 //  43. MWT-7E TRST-4H-III Live Preflight        [deterministic, offline report]
 //  44. MWT-8 Private Beta Readiness Check       [deterministic, orchestrator; see npm run beta:check]
+//  45. MWT-9 Private Beta Operator Onboarding   [docs/check/report; see npm run beta:check, npm run beta:report]
 //
+// MWT-9: operator-onboarding & release-gate milestone. Extends the pack with
+// QUICKSTART.md, OPERATOR_ONBOARDING.md, BETA_ACCEPTANCE_CRITERIA.md, an env
+// template (.env.private-beta.example, empty keys only), a readiness report
+// script (run-private-beta-report.mts, offline, honest verdict) and an extended
+// beta:check (run-private-beta-check.mts) asserting docs/env/report consistency.
+// No product core or validation taxonomy changes.
+//
+
 // MWT-8: packaging milestone. Adds docs/private-beta/* runbook + validation
 // guide + demo script + environment + known blockers + release checklist, and a
 // lightweight orchestrator (run-private-beta-check.mts) that runs validation +

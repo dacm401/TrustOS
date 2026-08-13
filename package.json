@@ -37,7 +37,8 @@
     "trst4b:streaming-smoke": "npx tsx scripts/trst4b/run-streaming-smoke.ts",
     "trst4c:smoke": "node scripts/trst4c/run-smoke.mjs",
     "validate": "npx tsx scripts/trst/run-validation.mts",
-    "beta:check": "npx tsx scripts/trst/run-private-beta-check.mts"
+    "beta:check": "npx tsx scripts/trst/run-private-beta-check.mts",
+    "beta:report": "npx tsx scripts/trst/run-private-beta-report.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.0",

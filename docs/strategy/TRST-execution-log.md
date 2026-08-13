@@ -327,6 +327,38 @@ Current Phase:
           C3 (beta check script + validation integration + log). To be pushed to origin.
         → Confirmation: private beta docs complete; no false READY claim; ENV_BLOCKED documented honestly;
           operator commands available; sealed baselines / core logic / Memory core protected.
+      MWT-9 Private Beta Operator Onboarding & Release Gate v0: IMPLEMENTED ✅ (2026-08-12)
+        → PM authorization: turn the private beta release pack into an operator-facing onboarding + release-gate
+          workflow with copy-paste commands, env templates, and a final readiness report artifact. No core logic
+          / Memory core / Trust Spine core changed; validation taxonomy preserved.
+        → docs/private-beta/QUICKSTART.md: copy-paste commands (install, beta:check, validate, frontend dev,
+          browser harness, live preflight, report) + expected results + explicit READY_WITH_ENV_BLOCKERS note.
+        → docs/private-beta/OPERATOR_ONBOARDING.md: 9-step full flow (checkout → install → env → validate →
+          browser → preflight → demo → report/upgrade → escalation) + blocker escalation table.
+        → docs/private-beta/BETA_ACCEPTANCE_CRITERIA.md: Private Beta Candidate (allows READY_WITH_ENV_BLOCKERS,
+          requires no real FAIL) vs Full READY (no FAIL + no ENV_BLOCKED + TRST-4H-III live PASS) vs Rejected
+          (any deterministic/browser FAIL, undocumented blocker, false READY). Taxonomy boundary enforced.
+        → .env.private-beta.example: empty keys only (DATABASE_URL / OPENAI_BASE_URL / OPENAI_API_KEY /
+          GATEWAY_ENDPOINT / GATEWAY_API_KEY / FRONTEND_PORT) with [DET]/[BRW]/[LIV] requirement annotations;
+          no real secrets committed; .env gitignored.
+        → docs/private-beta/READINESS_REPORT_TEMPLATE.md: committed template for the generated runtime report
+          (runtime reports are NOT committed by default).
+        → scripts/trst/run-private-beta-report.mts: offline, network-free readiness report; emits timestamp, git
+          branch/commit, deterministic/live/browser/TRST-4H-III status, known blockers, next actions; verdict rule
+          forbids READY while ENV_BLOCKED remains; optional --write to generated-readiness-report.md.
+        → scripts/trst/run-private-beta-check.mts: extended (MWT-9) — now 9 check groups incl. env template keys +
+          no-secret assertion, acceptance criteria Candidate/Full READY/Rejected presence, quickstart command
+          references, report-script honesty. npm run beta:report added.
+        → README.md: Private Beta section linking onboarding docs + env template + beta:check/beta:report/validate.
+        → run-validation.mts header: section 45 (MWT-9) + onboarding note.
+        → Validation unchanged: Deterministic 41 PASS/0 FAIL; Live 3 PASS / 2 ENV_BLOCKED / 0 FAIL;
+          Overall READY_WITH_ENV_BLOCKERS. Frontend tsc 0; Backend tsc 0.
+        → beta:check (extended): expected PASS increase; no network hard dependency; honest verdict preserved.
+        → Split commits: C1 (docs: quickstart + onboarding + acceptance criteria) / C2 (chore: env template +
+          readiness report template) / C3 (feat: report script + extended beta check + README + validation header + log).
+        → Confirmation: operator onboarding clear/repeatable; acceptance criteria distinguish Candidate vs Full
+          READY; readiness report available; no real secrets; no false READY claim; sealed baselines / core logic /
+          Memory core protected.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete

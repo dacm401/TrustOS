@@ -160,6 +160,39 @@ npm run test           # Vitest
 
 ---
 
+## Private Beta（受控私有测试）
+
+当前分支 `feature/trst-3-private-beta-readiness` 已具备 Private Beta Release Pack。
+operator 从零开始的上手与发布门禁文档：
+
+| 文档 | 用途 |
+|:---|:---|
+| `docs/private-beta/QUICKSTART.md` | 复制粘贴命令 + 预期结果 |
+| `docs/private-beta/OPERATOR_ONBOARDING.md` | 完整 onboarding 流程（install → configure → validate → demo → report） |
+| `docs/private-beta/BETA_ACCEPTANCE_CRITERIA.md` | Candidate / Full READY / Rejected 判定 |
+| `docs/private-beta/RUNBOOK.md` | 安装、启动、验证、排障 |
+| `docs/private-beta/ENVIRONMENT.md` | 环境要求（DB/gateway/chrome） |
+| `docs/private-beta/KNOWN_BLOCKERS.md` | 已知 blocker（含 TRST-4H-III ENV_BLOCKED） |
+
+环境模板（仅空 key，无真实 secret）：
+
+```bash
+cp .env.private-beta.example .env   # 仅在需要 TRST-4H-III live 时填写
+```
+
+一键检查 / 报告：
+
+```bash
+npm run beta:check     # 文档包一致性门禁（offline）
+npm run beta:report    # 生成 operator-facing readiness report
+npm run validate       # 完整验证（deterministic + live）
+```
+
+> 当前总体状态：`READY_WITH_ENV_BLOCKERS`（产品/前端/浏览器/文档已就绪；
+> 仅 TRST-4H-III 的 DB/gateway live env 仍阻塞）。这不是 `READY`，也不是失败。
+
+---
+
 ## 目录结构
 
 ```
