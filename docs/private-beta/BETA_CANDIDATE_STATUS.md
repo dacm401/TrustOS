@@ -1,0 +1,39 @@
+# Private Beta Candidate Status
+
+> Release marker for MWT-9F Push Sync & Beta Candidate Tag v0.
+> This is a documentation marker, not a generated runtime artifact.
+
+## Candidate marker
+
+- **Tag:** `private-beta-candidate-v0`
+- **Commit:** `c4bb593`
+- **Branch:** `feature/trst-3-private-beta-readiness`
+- **Date:** 2026-08-13
+
+## Readiness
+
+| Area | Status |
+|---|---|
+| Deterministic validation | PASS (offline) |
+| Browser harness smoke | PASS (offline) |
+| TRST-4H-III live | ENV_BLOCKED (DB + gateway required) |
+| Backend typecheck | 0 errors |
+| beta:check | 37 PASS / 0 FAIL |
+| Secrets | none committed |
+| Verdict | **READY_WITH_ENV_BLOCKERS** (not READY) |
+
+## What this marker means
+
+- The private beta operator onboarding + release-gate workflow is code-complete and
+  synced to GitHub.
+- New operators can follow `QUICKSTART.md` / `OPERATOR_ONBOARDING.md` without guessing.
+- Full READY requires supplying `[LIV]` variables (`DATABASE_URL` + gateway pair) and
+  re-running `npm run validate` so TRST-4H-III transitions from ENV_BLOCKED to PASS.
+- This marker does **not** claim Full READY. The live env is not provided in this pack.
+
+## Promotion path to Full READY
+
+1. Provide `DATABASE_URL` (reachable Postgres) + gateway config (`OPENAI_*` or `GATEWAY_*`).
+2. `npm run validate` → TRST-4H-III live PASS.
+3. `npm run beta:check` → asserts READY when blockers clear.
+4. Re-tag / re-mark as Full READY candidate.

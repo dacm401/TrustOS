@@ -359,6 +359,21 @@ Current Phase:
         → Confirmation: operator onboarding clear/repeatable; acceptance criteria distinguish Candidate vs Full
           READY; readiness report available; no real secrets; no false READY claim; sealed baselines / core logic /
           Memory core protected.
+      MWT-9F Push Sync & Beta Candidate Tag v0: CLOSED ✅ (2026-08-13)
+        → PM authorization: sync accepted MWT-9 code-ready commits to GitHub, run final checks, mark branch as
+          private beta candidate if validation stays clean. Release Closure mode. No core logic / Memory core /
+          Trust Spine core changed.
+        → Push: SUCCESS. `git push origin feature/trst-3-private-beta-readiness` → 785296f..c4bb593 synced to origin.
+          Network blocker cleared (was BLOCKED_BY_NETWORK Connection reset).
+        → Final beta:check: 37 PASS / 0 FAIL ✅ (exit 0). Secret-scan false positive fixed (line-by-line + [ \t]).
+        → Final validate: `npm run validate` exit 0 ✅ (no real FAIL).
+        → Readiness report: run-private-beta-report.mts exit 0; verdict READY_WITH_ENV_BLOCKERS (env blocked, not READY).
+        → Fix applied: removed stale hardcoded "GitHub push network" known-blocker line from report script (push now
+          succeeded; runtime push state not asserted by offline report). No logic change.
+        → Lightweight tag: private-beta-candidate-v0 @ c4bb593 created as beta candidate marker.
+        → Worktree: clean ✅.
+        → Confirmation: MWT-9 pushed; no false READY; no secrets; no core changes; ready for real reviewer sessions
+          once [LIV] DATABASE_URL + gateway config supplied.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete

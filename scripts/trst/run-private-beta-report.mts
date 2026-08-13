@@ -144,7 +144,6 @@ out.push("");
 out.push("## Known blockers");
 out.push("");
 out.push("- TRST-4H-III ×2 ENV_BLOCKED (DB/gateway required) — see KNOWN_BLOCKERS.md");
-out.push("- GitHub push network — environment/network issue, not code readiness");
 out.push("");
 out.push("## Next actions");
 out.push("");
