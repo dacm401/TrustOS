@@ -439,6 +439,31 @@ Current Phase:
           promotion decision, files changed sanitized, commit/push status, confirmation of no-secret/no-false-READY).
         → Agent boundary: do NOT fake live runs or reviewer sessions here. Promotion decision belongs to operator+PM
           after real [LIV] env is supplied. Agent may only keep docs/scripts ready and record the authorization.
+      MWT-13 ManagerConversation Backend Wiring v0: IN PROGRESS → COMPLETED (2026-08-13)
+        → PM correction applied: do NOT enter idle/wait loop. MWT-12 live run stays operator-only; product dev continues.
+          GitHub network blocker is NOT a development blocker.
+        → Phase A discovery: manager_messages table (migration 024) + ManagerMessageRepo + managerMessagesRouter
+          (/v1/manager-messages) + managerRouteRouter (/v1/manager/route-message) already exist (S100P-003/S101P).
+          Frontend ManagerConversation.tsx already calls the 3 APIs but backend metadata wiring was a separate backlog
+          item. NO second chat layer — ManagerConversation is the Manager Loop management/coordination surface,
+          linked to Worker sessions only via related_session_id.
+        → Gap: no `conversations` entity (conversation_id was a free-form string on messages); no service boundary;
+          no deterministic test. This is the MWT-13 v0 value.
+        → Phase C implementation (committed):
+          - src/db/migrations/026_mwt13_conversations.sql: additive CREATE TABLE IF NOT EXISTS conversations (id, user_id,
+            title, created_at, updated_at) + index. Reversible (DROP TABLE). No Trust Spine / Memory change.
+          - src/services/manager/conversation-service.ts: ManagerConversationService with ConversationStore interface
+            (injectable → in-memory testable), PostgresConversationStore default, methods createConversation /
+            appendMessage / getConversation / listConversations / listMessages. Ownership-scoped, role-validated,
+            title-trimmed. Reuses ManagerMessageRepo (no fork). Singleton export managerConversationService.
+          - scripts/trst/mwt13-conversation-service.test.mts: zero-DB deterministic test (in-memory fake store + fake
+            ManagerMessageRepo). 14 assertions: create/list/append/order/ownership/role-validation.
+        → Validation: test 14 passed / 0 failed; tsc --noEmit 0 errors; beta:check 48 PASS / 0 FAIL (no regression);
+          readiness verdict unchanged READY_WITH_ENV_BLOCKED (MWT-12 not faked).
+        → Boundaries preserved: no live env required; no fake READY; no secret; no Trust Spine semantic change;
+          no Memory Governance regression; no auth/RBAC; no policy enforcement; no irreversible migration; no new dep.
+        → Follow-up (out of v0 scope, NOT done here): wire controller/router to service; frontend ManagerConversation
+          to use service contract; conversations table ownership index tuning; MWT-14 UI surface.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete
