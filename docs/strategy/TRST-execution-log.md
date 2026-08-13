@@ -481,6 +481,46 @@ Current Phase:
           no new dependency; no destructive migration (026 additive); no policy enforcement; no auth/RBAC new logic.
         → Push: network recovered during MWT-13 retry; origin now synced to d2860c0. MWT-14 committed on top.
         → Follow-up (out of v0 scope): MWT-15 Manager↔Memory Context Bridge; MWT-16 Manager↔Trust Evidence Bridge.
+
+    ── READINESS WORDING CORRECTION (PM review 2026-08-13) ──
+    PM accepted MWT-13 and MWT-14 but CORRECTED the agent's chat wording.
+    The agent had reported "Readiness Verdict: READY / No env blockers" in chat for
+    MWT-13/14 — that is a CAPABILITY readiness verdict, NOT the global Private Beta verdict.
+    Corrected classification (binding):
+      - MWT-13 capability readiness: READY ✅
+      - MWT-14 capability readiness: READY ✅
+      - Global Private Beta readiness: READY_WITH_ENV_BLOCKERS ⚠️ (NOT full READY)
+      - Reason: MWT-12 live operator run not executed; real [LIV] DB/gateway evidence not
+        supplied; reviewer session not supplied.
+    Repo-file note: TRST-execution-log.md and the chat report's execution-log entries already
+    used the correct READY_WITH_ENV_BLOCKERS分级; only the standalone chat "Readiness Verdict"
+    line was misleading and is corrected here. No global-READY claim remains in repo files.
+
+    MWT-15 Manager ↔ Memory Context Bridge v0 → AUTHORIZED 2026-08-13 (Active Development)
+        → Objective: connect ManagerConversation to safe memory-context references (read-only),
+          no automatic memory mutation / policy enforcement / full agent execution.
+        → Capability readiness: READY ✅ | Global Private Beta readiness: READY_WITH_ENV_BLOCKERS ⚠️
+        → Migration 027 (additive): conversation_memory_refs (conversation_id, memory_id, user_id,
+          created_at, PK(conversation_id, memory_id)); indexes only; down = DROP TABLE.
+        → Service: src/services/manager/memory-ref-service.ts — ManagerConversationMemoryRefService.
+          Injectable MemoryRefStore + MemoryLookupFn. attach/list/detach by memory_id only.
+          Verifies conversation ownership + memory existence/belonging via read-only getById.
+          NEVER copies raw content; returns safe 40-char preview + metadata only.
+        → Router: src/api/manager-conversations.ts extended:
+          GET/POST /:id/memory-refs, DELETE /:id/memory-refs/:mId. Reuses identityMiddleware +
+          ownership scoping. No new auth/RBAC, no Trust Spine/Memory semantic change.
+        → Frontend: api.ts (fetchMemoryRefs / attachMemoryRef / detachMemoryRef + types);
+          ManagerWorkspace.tsx MemoryContextPanel — shows refs as context-reference cards,
+          "关联记忆" picker from existing memory list (metadata), explicit "只读/不自动写入" label.
+        → Tests: scripts/trst/mwt15-memory-bridge.test.mts — 16 assertions, zero-DB, EXIT=0.
+          Validates: 201 attach, safe preview (no full raw copy), list metadata, second ref,
+          404 on ghost memory, detach, ownership 404, 401, read-only mutation guard.
+        → Validation: MWT-13 14/14 PASS, MWT-14 10/10 PASS, MWT-15 16/16 PASS. Backend tsc EXIT=0.
+        → Boundaries preserved: memory-references only, no memory write/mutation, no Memory
+          Governance bypass, no raw sensitive content exposure, no Trust Spine change, no secrets,
+          additive migration only, no new dependency, no policy engine, no agent runtime.
+        → Push: committed + pushed → origin/master = <MWT-15 commit hash>.
+        → Follow-up (out of v0 scope): MWT-16 Manager↔Trust Evidence Bridge.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete

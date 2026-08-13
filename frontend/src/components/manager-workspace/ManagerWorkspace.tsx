@@ -5,7 +5,189 @@ import { SessionList } from "./SessionList";
 import { ManagerConversation } from "./ManagerConversation";
 import { SessionDetail } from "./SessionDetail";
 import { TaskPanel } from "@/components/workbench/TaskPanel";
-import { fetchConversations, createConversation, type ManagerConversationRecord } from "@/lib/api";
+import {
+  fetchConversations,
+  createConversation,
+  fetchMemoryRefs,
+  attachMemoryRef,
+  detachMemoryRef,
+  fetchMemory,
+  type ManagerConversationRecord,
+  type MemoryRefRecord,
+} from "@/lib/api";
+
+// MWT-15: Manager ↔ Memory Context Bridge — read-only context-reference panel.
+// Shows memory references attached to a manager conversation. These are REFERENCES
+// only (memory_id + safe preview), never autonomous memory writes. UI makes this
+// explicit so the user understands they are context links, not auto-mutations.
+function MemoryContextPanel({
+  userId,
+  conversationId,
+}: {
+  userId: string;
+  conversationId: string | null;
+}) {
+  const [refs, setRefs] = useState<MemoryRefRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [memories, setMemories] = useState<{ id: string; category: string | null; preview: string }[]>([]);
+
+  const loadRefs = useCallback(() => {
+    if (!conversationId) return;
+    setLoading(true);
+    fetchMemoryRefs(userId, conversationId)
+      .then((data) => setRefs(data.memory_refs ?? []))
+      .catch(() => setRefs([]))
+      .finally(() => setLoading(false));
+  }, [userId, conversationId]);
+
+  useEffect(() => {
+    loadRefs();
+  }, [loadRefs]);
+
+  const openPicker = useCallback(() => {
+    if (!conversationId) return;
+    setPickerOpen(true);
+    fetchMemory(userId)
+      .then((data) =>
+        setMemories(
+          (data.entries ?? []).map((e) => ({
+            id: e.id,
+            category: e.category,
+            preview: (e.content ?? "").slice(0, 40),
+          }))
+        )
+      )
+      .catch(() => setMemories([]));
+  }, [userId, conversationId]);
+
+  const handleAttach = useCallback(
+    async (memoryId: string) => {
+      if (!conversationId) return;
+      try {
+        await attachMemoryRef(userId, conversationId, memoryId);
+        setPickerOpen(false);
+        loadRefs();
+      } catch {
+        /* silent */
+      }
+    },
+    [userId, conversationId, loadRefs]
+  );
+
+  const handleDetach = useCallback(
+    async (memoryId: string) => {
+      if (!conversationId) return;
+      try {
+        await detachMemoryRef(userId, conversationId, memoryId);
+        loadRefs();
+      } catch {
+        /* silent */
+      }
+    },
+    [userId, conversationId, loadRefs]
+  );
+
+  if (!conversationId) {
+    return (
+      <div className="px-3 py-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
+        选择一个会话后可查看记忆上下文引用
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-3 py-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>
+          记忆上下文引用
+        </span>
+        <button
+          onClick={openPicker}
+          className="text-[10px] px-2 py-0.5 rounded"
+          style={{
+            backgroundColor: "var(--bg-overlay)",
+            color: "var(--text-secondary)",
+            border: "1px solid var(--border-subtle)",
+          }}
+        >
+          + 关联记忆
+        </button>
+      </div>
+      <div className="text-[9px] mb-1.5" style={{ color: "var(--text-faint)" }}>
+        上下文引用（只读），不会自动写入记忆
+      </div>
+
+      {loading && <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>加载中…</div>}
+      {!loading && refs.length === 0 && (
+        <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>暂无引用</div>
+      )}
+      <div className="space-y-1 max-h-40 overflow-y-auto">
+        {refs.map((r) => (
+          <div
+            key={r.memory_id}
+            className="text-[10px] rounded px-2 py-1"
+            style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-mono truncate" style={{ maxWidth: "120px" }}>
+                {r.memory_id.slice(0, 8)}
+              </span>
+              <button
+                onClick={() => handleDetach(r.memory_id)}
+                className="text-[9px]"
+                style={{ color: "var(--text-faint)" }}
+                title="取消关联"
+              >
+                解绑
+              </button>
+            </div>
+            <div className="truncate" style={{ color: "var(--text-muted)" }}>{r.preview}</div>
+            {r.category && (
+              <div className="text-[9px]" style={{ color: "var(--text-faint)" }}>
+                {r.category}
+                {r.source ? ` · ${r.source}` : ""}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {pickerOpen && (
+        <div
+          className="mt-2 rounded p-2"
+          style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px]" style={{ color: "var(--text-secondary)" }}>
+              选择记忆（引用，不复制内容）
+            </span>
+            <button onClick={() => setPickerOpen(false)} className="text-[9px]" style={{ color: "var(--text-faint)" }}>
+              关闭
+            </button>
+          </div>
+          <div className="space-y-1 max-h-40 overflow-y-auto">
+            {memories.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => handleAttach(m.id)}
+                className="w-full text-left text-[10px] rounded px-2 py-1"
+                style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+              >
+                <span className="font-mono">{m.id.slice(0, 8)}</span>
+                {m.category ? ` · ${m.category}` : ""}
+                <span className="block truncate" style={{ color: "var(--text-muted)" }}>{m.preview}</span>
+              </button>
+            ))}
+            {memories.length === 0 && (
+              <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>无可用记忆</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface ManagerWorkspaceProps {
   userId: string;
@@ -136,6 +318,7 @@ export function ManagerWorkspace({ userId }: ManagerWorkspaceProps) {
 
       {/* Center: Manager Conversation */}
       <div className="flex-1 h-full min-w-0">
+        <MemoryContextPanel userId={userId} conversationId={selectedConversationId} />
         <ManagerConversation
           key={conversationId}
           userId={userId}

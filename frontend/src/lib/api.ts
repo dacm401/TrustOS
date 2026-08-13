@@ -423,6 +423,69 @@ export async function createConversation(userId: string, title?: string) {
   return res.json() as Promise<{ conversation: ManagerConversationRecord }>;
 }
 
+// MWT-15: Manager ↔ Memory Context Bridge (read-only references)
+export interface MemoryRefRecord {
+  conversation_id: string;
+  memory_id: string;
+  user_id: string;
+  created_at: string;
+  preview: string;
+  category: string | null;
+  importance: number | null;
+  source: string | null;
+  tags: string[];
+}
+
+// Lightweight memory entry metadata for the "link memory" picker (no raw content).
+export interface MemoryEntryMeta {
+  id: string;
+  category: string | null;
+  importance: number | null;
+  source: string | null;
+  tags: string[];
+  preview: string;
+}
+
+export async function fetchMemoryRefs(userId: string, conversationId: string) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/memory-refs`,
+    { headers: { "X-User-Id": userId } }
+  );
+  if (!res.ok) throw new Error(`加载记忆引用失败 (${res.status})`);
+  return res.json() as Promise<{ memory_refs: MemoryRefRecord[]; total: number }>;
+}
+
+export async function attachMemoryRef(userId: string, conversationId: string, memoryId: string) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/memory-refs`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId },
+      body: JSON.stringify({ memory_id: memoryId }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `关联记忆失败 (${res.status})`);
+  }
+  return res.json() as Promise<{ memory_ref: MemoryRefRecord }>;
+}
+
+export async function detachMemoryRef(userId: string, conversationId: string, memoryId: string) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/memory-refs/${memoryId}`,
+    { method: "DELETE", headers: { "X-User-Id": userId } }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `取消关联失败 (${res.status})`);
+  }
+  return res.json() as Promise<{ detached: boolean }>;
+}
+
 export async function fetchSessionEvents(userId: string, sessionId: string, limit = 200) {
   const { apiBase } = await getApiConfig();
   const res = await fetch(
