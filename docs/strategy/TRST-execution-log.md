@@ -374,6 +374,22 @@ Current Phase:
         → Worktree: clean ✅.
         → Confirmation: MWT-9 pushed; no false READY; no secrets; no core changes; ready for real reviewer sessions
           once [LIV] DATABASE_URL + gateway config supplied.
+      MWT-10 Live Environment Activation & Reviewer Session v0: CLOSED ✅ (2026-08-13)
+        → PM authorization: prepare live env activation + first reviewer session, with no-secret guarantees and
+          honest readiness reporting. Beta Activation mode. No Trust Spine / Memory core changed.
+        → Docs (C1): LIVE_ENV_ACTIVATION.md (runbook: required vars, local set, preflight, activation check,
+          validate, expected PASS matrix, DB/gateway troubleshooting), REVIEWER_SESSION_GUIDE.md (9-step-ish:
+          pre-checklist, demo path Audit/Memory/Readiness, questions, blockers disclosure, feedback format),
+          REVIEWER_FEEDBACK_TEMPLATE.md (role/env/validation/UI/trust/memory/blockers/severity/recommendation).
+        → Tooling (C2): scripts/trst4h-iii/run-live-activation-check.mts — reuses inspectLiveEnv + adds secret
+          masking self-test (presence-only, never VALUE) and classifier honesty demo. Offline, no socket/HTTP.
+        → Check (C3): extended run-private-beta-check.mts with MWT-10 group (activation/reviewer docs exist,
+          [LIV] keys documented, no real secret VALUE in docs, presence-only, no false READY when env blocked).
+        → Validation: beta:check 48 PASS / 0 FAIL (was 37); live activation check exit 0; verdict
+          READY_WITH_ENV_BLOCKERS; secret masking verified; no false READY.
+        → Worktree: clean ✅. No real .env or secrets committed.
+        → Confirmation: no secrets; no false READY; live blockers explicit; reviewer session ready; private beta
+          candidate protected; Case A (no live env) verified — remains READY_WITH_ENV_BLOCKERS.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete

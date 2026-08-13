@@ -1,4 +1,4 @@
-// MWT-8 + MWT-9 — Private Beta Readiness Check (docs/consistency orchestrator).
+// MWT-8 + MWT-9 + MWT-10 — Private Beta Readiness Check (docs/consistency orchestrator).
 //
 // Lightweight, deterministic, offline checklist reporter. It verifies the
 // private-beta release pack is internally consistent and honest:
@@ -11,6 +11,8 @@
 //   - quickstart contains operator commands
 //   - readiness report script emits READY_WITH_ENV_BLOCKERS honestly
 //   - live-env preflight reports honestly
+//   - MWT-10: live activation/reviewer docs exist + no secret VALUE in docs
+//   - MWT-10: presence-only reporting, no false READY when live env missing
 //
 // It does NOT hide FAIL and does NOT convert ENV_BLOCKED to PASS.
 // For the actual command executions, see docs/private-beta/RUNBOOK.md
@@ -165,6 +167,45 @@ if (envBlocked) {
   );
 }
 
+// 10. MWT-10 — Live activation docs exist (no false readiness, presence-only)
+const mwt10Docs = [
+  "LIVE_ENV_ACTIVATION.md",
+  "REVIEWER_SESSION_GUIDE.md",
+  "REVIEWER_FEEDBACK_TEMPLATE.md",
+];
+for (const d of mwt10Docs) {
+  check(existsSync(join(PB, d)), `MWT-10 doc exists: docs/private-beta/${d}`);
+}
+
+// 11. MWT-10 — required [LIV] env keys documented + no real secret in docs/templates
+const liveDoc = mwt10Docs
+  .map((d) => join(PB, d))
+  .filter(existsSync)
+  .map((p) => readFileSync(p, "utf8"))
+  .join("\n");
+const documentedKeys = ["DATABASE_URL", "OPENAI_BASE_URL", "OPENAI_API_KEY", "GATEWAY_ENDPOINT", "GATEWAY_API_KEY"];
+for (const k of documentedKeys) {
+  check(liveDoc.includes(k), `MWT-10: [LIV] key documented: ${k}`);
+}
+// Docs/templates must not embed a real secret VALUE (only key names / placeholder shape).
+// A real DATABASE_URL has a user:pass credential — flag if present in any doc.
+const credentialLeak = /postgres:\/\/[^ \n]+:[^ \n]+@/i.test(liveDoc + allDocs) ||
+  /sk-[A-Za-z0-9]{10,}/.test(liveDoc + allDocs);
+check(!credentialLeak, "MWT-10: no real secret VALUE in activation/reviewer docs");
+
+// 12. MWT-10 — presence-only reporting, no false READY when live env missing
+check(
+  existsSync(join(ROOT, "scripts", "trst4h-iii", "run-live-activation-check.mts")),
+  "MWT-10: live activation check script exists",
+);
+if (envBlocked) {
+  // Even with activation docs present, the pack must NOT claim plain READY.
+  check(
+    /READY_WITH_ENV_BLOCKERS/i.test(liveDoc + allDocs),
+    "MWT-10: no false READY while live env blocked (READY_WITH_ENV_BLOCKERS stated)",
+  );
+}
+
 // Report
 const passed = lines.filter((l) => l.ok).length;
 const failed = lines.length - passed;
@@ -189,6 +230,7 @@ out.push("  npm run beta:check");
 out.push("  npx tsx scripts/trst/run-private-beta-report.mts");
 out.push("  npx tsx scripts/trst/run-health-check.mts");
 out.push("  npx tsx scripts/trst4h-iii/run-live-preflight.mts");
+out.push("  npx tsx scripts/trst4h-iii/run-live-activation-check.mts");
 out.push("  npx tsx scripts/frontend/run-browser-harness-smoke.mts");
 
 process.stdout.write(out.join("\n") + "\n");
