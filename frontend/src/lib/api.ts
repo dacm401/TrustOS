@@ -486,6 +486,69 @@ export async function detachMemoryRef(userId: string, conversationId: string, me
   return res.json() as Promise<{ detached: boolean }>;
 }
 
+// MWT-16: Manager ↔ Trust Evidence Bridge (read-only references)
+export type TrustRefKind = "evidence" | "trace" | "event" | "task" | "run";
+export interface TrustRefRecord {
+  conversation_id: string;
+  ref_kind: TrustRefKind;
+  ref_id: string;
+  user_id: string;
+  created_at: string;
+  source?: string | null;
+  relevance_score?: number | null;
+  related_task_id?: string | null;
+}
+
+export async function fetchTrustRefs(userId: string, conversationId: string) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/trust-refs`,
+    { headers: { "X-User-Id": userId } }
+  );
+  if (!res.ok) throw new Error(`加载信任引用失败 (${res.status})`);
+  return res.json() as Promise<{ trust_refs: TrustRefRecord[]; total: number }>;
+}
+
+export async function attachTrustRef(
+  userId: string,
+  conversationId: string,
+  refKind: TrustRefKind,
+  refId: string
+) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/trust-refs`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId },
+      body: JSON.stringify({ ref_kind: refKind, ref_id: refId }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `关联信任证据失败 (${res.status})`);
+  }
+  return res.json() as Promise<{ trust_ref: TrustRefRecord }>;
+}
+
+export async function detachTrustRef(
+  userId: string,
+  conversationId: string,
+  refKind: TrustRefKind,
+  refId: string
+) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/trust-refs/${refKind}/${encodeURIComponent(refId)}`,
+    { method: "DELETE", headers: { "X-User-Id": userId } }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `取消关联失败 (${res.status})`);
+  }
+  return res.json() as Promise<{ detached: boolean }>;
+}
+
 export async function fetchSessionEvents(userId: string, sessionId: string, limit = 200) {
   const { apiBase } = await getApiConfig();
   const res = await fetch(

@@ -1,6 +1,7 @@
 /**
- * MWT-14 + MWT-15: ManagerConversation Controller + UI Surface v0
- *                         Manager ↔ Memory Context Bridge v0
+ * MWT-14 + MWT-15 + MWT-16: ManagerConversation Controller + UI Surface v0
+ *                            Manager ↔ Memory Context Bridge v0
+ *                            Manager ↔ Trust Evidence Bridge v0
  *
  * Mounted at /v1/manager-conversations via src/index.ts
  *
@@ -14,10 +15,16 @@
  *   POST   /v1/manager-conversations/:id/memory-refs       — attach an existing memory by id
  *   DELETE /v1/manager-conversations/:id/memory-refs/:mId  — detach a memory reference
  *
- * Wires the MWT-13/MWT-15 services into the HTTP boundary, reusing the existing
+ * Trust evidence bridge endpoints (MWT-16):
+ *   GET    /v1/manager-conversations/:id/trust-refs                — list trust references (read-only)
+ *   POST   /v1/manager-conversations/:id/trust-refs                — attach evidence/trace/event/task/run ref
+ *   DELETE /v1/manager-conversations/:id/trust-refs/:kind/:refId   — detach a trust reference
+ *
+ * Wires the MWT-13/MWT-15/MWT-16 services into the HTTP boundary, reusing the existing
  * identity convention (getContextUserId) and ownership scoping. No new auth/RBAC
- * logic, no Trust Spine / Memory semantic change. Memory bridge is REFERENCE-ONLY:
- * it never mutates the referenced memory entry or Memory Governance state.
+ * logic, no Trust Spine / Memory semantic change. Both bridges are REFERENCE-ONLY:
+ * they never mutate the referenced memory entry, evidence record, or Trust Spine
+ * event envelope. Global Private Beta readiness remains READY_WITH_ENV_BLOCKERS.
  */
 
 import { Hono } from "hono";
@@ -33,6 +40,14 @@ import {
   type MemoryRefStore,
   type MemoryLookupFn,
 } from "../services/manager/memory-ref-service.js";
+import {
+  ManagerConversationTrustRefService,
+  PostgresTrustRefStore,
+  type TrustRefStore,
+  type TrustRefKind,
+  type EvidenceLookupFn,
+  TRUST_REF_KINDS,
+} from "../services/manager/trust-ref-service.js";
 
 // Test seam: allow injecting an in-memory fake store for deterministic tests.
 let activeStore: ConversationStore = PostgresConversationStore;
@@ -51,6 +66,17 @@ export function __setMemoryRefStoreForTesting(
   activeMemoryLookup = lookup ?? undefined;
 }
 
+// Test seam: allow injecting a fake trust-ref store + evidence lookup (no live DB).
+let activeTrustRefStore: TrustRefStore = PostgresTrustRefStore;
+let activeEvidenceLookup: EvidenceLookupFn | undefined;
+export function __setTrustRefStoreForTesting(
+  store: TrustRefStore | null,
+  lookup: EvidenceLookupFn | null = null
+) {
+  activeTrustRefStore = store ?? PostgresTrustRefStore;
+  activeEvidenceLookup = lookup ?? undefined;
+}
+
 function getConversationService() {
   return new ManagerConversationService(activeStore);
 }
@@ -59,6 +85,13 @@ function getMemoryRefService() {
     activeMemoryRefStore,
     activeStore,
     activeMemoryLookup
+  );
+}
+function getTrustRefService() {
+  return new ManagerConversationTrustRefService(
+    activeTrustRefStore,
+    activeStore,
+    activeEvidenceLookup
   );
 }
 
@@ -178,6 +211,75 @@ managerConversationsRouter.delete("/:id/memory-refs/:mId", async (c) => {
     return c.json({ detached: true });
   } catch (error: any) {
     console.error("[MWT-15] detach memory ref error:", error.message);
+    return c.json({ error: error.message }, error.message.includes("not found") ? 404 : 500);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MWT-16: Manager ↔ Trust Evidence Bridge (read-only references)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /v1/manager-conversations/:id/trust-refs — list trust references
+managerConversationsRouter.get("/:id/trust-refs", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+
+  const id = c.req.param("id");
+  try {
+    const refs = await getTrustRefService().listTrustRefs(userId, id);
+    return c.json({ trust_refs: refs, total: refs.length });
+  } catch (error: any) {
+    console.error("[MWT-16] list trust refs error:", error.message);
+    return c.json({ error: error.message }, error.message.includes("not found") ? 404 : 500);
+  }
+});
+
+// POST /v1/manager-conversations/:id/trust-refs — attach a trust reference
+managerConversationsRouter.post("/:id/trust-refs", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+
+  const id = c.req.param("id");
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+
+  const refKind = body.ref_kind as TrustRefKind;
+  const refId = typeof body.ref_id === "string" ? body.ref_id : "";
+  if (!TRUST_REF_KINDS.includes(refKind)) {
+    return c.json({ error: `ref_kind must be one of: ${TRUST_REF_KINDS.join(", ")}` }, 400);
+  }
+  if (!refId) return c.json({ error: "ref_id is required" }, 400);
+
+  try {
+    const ref = await getTrustRefService().attachTrustRef(userId, id, refKind, refId);
+    return c.json({ trust_ref: ref }, 201);
+  } catch (error: any) {
+    console.error("[MWT-16] attach trust ref error:", error.message);
+    return c.json({ error: error.message }, error.message.includes("not found") ? 404 : 400);
+  }
+});
+
+// DELETE /v1/manager-conversations/:id/trust-refs/:kind/:refId — detach a trust reference
+managerConversationsRouter.delete("/:id/trust-refs/:kind/:refId", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+
+  const id = c.req.param("id");
+  const rawKind = c.req.param("kind") as TrustRefKind;
+  const refId = c.req.param("refId");
+  if (!TRUST_REF_KINDS.includes(rawKind)) {
+    return c.json({ error: `ref_kind must be one of: ${TRUST_REF_KINDS.join(", ")}` }, 400);
+  }
+  try {
+    const ok = await getTrustRefService().detachTrustRef(userId, id, rawKind, refId);
+    if (!ok) return c.json({ error: "trust reference not found" }, 404);
+    return c.json({ detached: true });
+  } catch (error: any) {
+    console.error("[MWT-16] detach trust ref error:", error.message);
     return c.json({ error: error.message }, error.message.includes("not found") ? 404 : 500);
   }
 });

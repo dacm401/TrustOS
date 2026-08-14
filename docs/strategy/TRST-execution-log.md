@@ -521,6 +521,38 @@ Current Phase:
           additive migration only, no new dependency, no policy engine, no agent runtime.
         → Push: committed + pushed → origin/master = <MWT-15 commit hash>.
         → Follow-up (out of v0 scope): MWT-16 Manager↔Trust Evidence Bridge.
+
+    MWT-16 Manager ↔ Trust Evidence Bridge v0 → AUTHORIZED 2026-08-14 (Active Development)
+        → Objective: connect ManagerConversation to Trust Evidence references (read-only),
+          make Manager a trust-aware coordination layer, without changing Trust Spine
+          semantics or claiming global READY.
+        → Capability readiness: READY ✅ | Global Private Beta readiness: READY_WITH_ENV_BLOCKERS ⚠️
+        → Branch sync: feature/trst-3-private-beta-readiness fast-forward synced to 8c62fa5 (safe, no force).
+        → Migration 028 (additive): conversation_trust_refs (conversation_id, ref_kind, ref_id,
+          user_id, created_at, PK(conversation_id, ref_kind, ref_id)); indexes only; down = DROP TABLE.
+        → Service: src/services/manager/trust-ref-service.ts — ManagerConversationTrustRefService.
+          Injectable TrustRefStore + EvidenceLookupFn. attach/list/detach by (ref_kind, ref_id).
+          ref_kind vocabulary: evidence|trace|event|task|run. For 'evidence', read-only
+          EvidenceRepo.getById ownership check; trace/event/task/run stored as user-supplied links.
+          NEVER copies raw event payload / raw evidence content; returns IDs + safe metadata only.
+        → Router: src/api/manager-conversations.ts extended:
+          GET/POST /:id/trust-refs, DELETE /:id/trust-refs/:kind/:refId. Reuses identityMiddleware +
+          ownership scoping. No new auth/RBAC, no Trust Spine semantic change (event_hash/hashing/
+          validation gates untouched).
+        → Frontend: api.ts (fetchTrustRefs / attachTrustRef / detachTrustRef + types);
+          ManagerWorkspace.tsx TrustEvidencePanel — shows refs as audit/observational cards,
+          "+关联证据" picker (kind select + ref id), explicit "观测/审计引用（只读），不是
+          Private Beta READY 证明" label. NO raw payload exposed in UI.
+        → Tests: scripts/trst/mwt16-trust-bridge.test.mts — 16 assertions, zero-DB, EXIT=0.
+          Validates: 201 evidence/trace/event attach, evidence enriched with source/related_task_id,
+          list 3 refs, invalid ref_kind 400, ghost evidence 404, detach, ownership 404, 401,
+          NO raw content/event_hash/payload exposed in refs.
+        → Validation: MWT-13 14/14, MWT-14 10/10, MWT-15 16/16, MWT-16 16/16 = 56 PASS. Backend tsc EXIT=0.
+        → Boundaries preserved: references only (no raw payload), no Trust Spine change, no evidence
+          mutation, no validation gate weakening, no readiness taxonomy change, no secrets, additive
+          migration only, no new dependency, no policy engine / worker execution.
+        → Push: committed + pushed → origin/master = <MWT-16 commit hash>; feature branch synced.
+        → Follow-up (out of v0 scope): MWT-17 Worker Delegation Contract.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete

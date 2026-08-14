@@ -12,8 +12,13 @@ import {
   attachMemoryRef,
   detachMemoryRef,
   fetchMemory,
+  fetchTrustRefs,
+  attachTrustRef,
+  detachTrustRef,
   type ManagerConversationRecord,
   type MemoryRefRecord,
+  type TrustRefRecord,
+  type TrustRefKind,
 } from "@/lib/api";
 
 // MWT-15: Manager ↔ Memory Context Bridge — read-only context-reference panel.
@@ -189,6 +194,175 @@ function MemoryContextPanel({
   );
 }
 
+// MWT-16: Manager ↔ Trust Evidence Bridge — read-only audit/observational references.
+// Shows trust evidence references attached to a manager conversation. These are
+// OBSERVATIONAL/audit links (trace/event/evidence/task/run IDs + safe metadata), NOT
+// proof of full Private Beta READY. UI makes this explicit so the user understands
+// the references are context links, not autonomous verification. No raw event payload
+// or raw evidence content is exposed.
+const TRUST_REF_KINDS: TrustRefKind[] = ["evidence", "trace", "event", "task", "run"];
+
+function TrustEvidencePanel({
+  userId,
+  conversationId,
+}: {
+  userId: string;
+  conversationId: string | null;
+}) {
+  const [refs, setRefs] = useState<TrustRefRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [kind, setKind] = useState<TrustRefKind>("evidence");
+  const [refId, setRefId] = useState("");
+
+  const loadRefs = useCallback(() => {
+    if (!conversationId) return;
+    setLoading(true);
+    fetchTrustRefs(userId, conversationId)
+      .then((data) => setRefs(data.trust_refs ?? []))
+      .catch(() => setRefs([]))
+      .finally(() => setLoading(false));
+  }, [userId, conversationId]);
+
+  useEffect(() => {
+    loadRefs();
+  }, [loadRefs]);
+
+  const handleAttach = useCallback(async () => {
+    if (!conversationId || !refId.trim()) return;
+    try {
+      await attachTrustRef(userId, conversationId, kind, refId.trim());
+      setRefId("");
+      setPickerOpen(false);
+      loadRefs();
+    } catch {
+      /* silent */
+    }
+  }, [userId, conversationId, kind, refId, loadRefs]);
+
+  const handleDetach = useCallback(async (r: TrustRefRecord) => {
+    if (!conversationId) return;
+    try {
+      await detachTrustRef(userId, conversationId, r.ref_kind, r.ref_id);
+      loadRefs();
+    } catch {
+      /* silent */
+    }
+  }, [userId, conversationId, loadRefs]);
+
+  if (!conversationId) {
+    return (
+      <div className="px-3 py-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
+        选择一个会话后可查看信任证据引用
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-3 py-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>
+          信任证据引用
+        </span>
+        <button
+          onClick={() => setPickerOpen((v) => !v)}
+          className="text-[10px] px-2 py-0.5 rounded"
+          style={{
+            backgroundColor: "var(--bg-overlay)",
+            color: "var(--text-secondary)",
+            border: "1px solid var(--border-subtle)",
+          }}
+        >
+          + 关联证据
+        </button>
+      </div>
+      <div className="text-[9px] mb-1.5" style={{ color: "var(--text-faint)" }}>
+        观测/审计引用（只读），不是 Private Beta READY 证明
+      </div>
+
+      {loading && <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>加载中…</div>}
+      {!loading && refs.length === 0 && (
+        <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>暂无引用</div>
+      )}
+      <div className="space-y-1 max-h-40 overflow-y-auto">
+        {refs.map((r) => (
+          <div
+            key={`${r.ref_kind}:${r.ref_id}`}
+            className="text-[10px] rounded px-2 py-1"
+            style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-mono truncate" style={{ maxWidth: "110px" }}>
+                {r.ref_kind}:{r.ref_id.slice(0, 10)}
+              </span>
+              <button
+                onClick={() => handleDetach(r)}
+                className="text-[9px]"
+                style={{ color: "var(--text-faint)" }}
+                title="取消关联"
+              >
+                解绑
+              </button>
+            </div>
+            {r.ref_kind === "evidence" && (
+              <div className="text-[9px]" style={{ color: "var(--text-faint)" }}>
+                {r.source ?? ""}
+                {r.relevance_score != null ? ` · score ${r.relevance_score}` : ""}
+                {r.related_task_id ? ` · task ${r.related_task_id.slice(0, 8)}` : ""}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {pickerOpen && (
+        <div
+          className="mt-2 rounded p-2"
+          style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px]" style={{ color: "var(--text-secondary)" }}>
+              关联信任证据（引用，不复制内容）
+            </span>
+            <button onClick={() => setPickerOpen(false)} className="text-[9px]" style={{ color: "var(--text-faint)" }}>
+              关闭
+            </button>
+          </div>
+          <div className="flex gap-1 mb-1">
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as TrustRefKind)}
+              className="text-[10px] rounded px-1 py-0.5"
+              style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+            >
+              {TRUST_REF_KINDS.map((k) => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+            <input
+              value={refId}
+              onChange={(e) => setRefId(e.target.value)}
+              placeholder="ref id"
+              className="flex-1 text-[10px] rounded px-1 py-0.5"
+              style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+            />
+            <button
+              onClick={handleAttach}
+              className="text-[10px] px-2 py-0.5 rounded"
+              style={{ backgroundColor: "var(--accent-blue)", color: "white" }}
+            >
+              关联
+            </button>
+          </div>
+          <div className="text-[9px]" style={{ color: "var(--text-faint)" }}>
+            evidence 引用会做归属校验；trace/event/task/run 为关联链接
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ManagerWorkspaceProps {
   userId: string;
 }
@@ -319,6 +493,7 @@ export function ManagerWorkspace({ userId }: ManagerWorkspaceProps) {
       {/* Center: Manager Conversation */}
       <div className="flex-1 h-full min-w-0">
         <MemoryContextPanel userId={userId} conversationId={selectedConversationId} />
+        <TrustEvidencePanel userId={userId} conversationId={selectedConversationId} />
         <ManagerConversation
           key={conversationId}
           userId={userId}
