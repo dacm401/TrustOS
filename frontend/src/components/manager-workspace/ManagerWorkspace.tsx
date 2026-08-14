@@ -15,10 +15,17 @@ import {
   fetchTrustRefs,
   attachTrustRef,
   detachTrustRef,
+  fetchContracts,
+  createContract,
+  updateContract,
+  setContractStatus,
+  deleteContract,
   type ManagerConversationRecord,
   type MemoryRefRecord,
   type TrustRefRecord,
   type TrustRefKind,
+  type WorkerDelegationContract,
+  type ContractStatus,
 } from "@/lib/api";
 
 // MWT-15: Manager ↔ Memory Context Bridge — read-only context-reference panel.
@@ -363,6 +370,298 @@ function TrustEvidencePanel({
   );
 }
 
+// MWT-17: Worker Delegation Contract — explicit, reviewable contract layer.
+// This panel lets the Manager prepare a structured worker delegation contract:
+// what to delegate, to which worker/capability, inputs, constraints, expected
+// output, and review status. It is NON-EXECUTING: no worker is invoked, no
+// autonomous loop, no scheduling. A contract is intent, not completed work and
+// not proof of Private Beta READY.
+const CONTRACT_STATUSES: ContractStatus[] = [
+  "draft",
+  "ready_for_review",
+  "approved",
+  "rejected",
+  "superseded",
+];
+
+function WorkerDelegationPanel({
+  userId,
+  conversationId,
+}: {
+  userId: string;
+  conversationId: string | null;
+}) {
+  const [contracts, setContracts] = useState<WorkerDelegationContract[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [creatorOpen, setCreatorOpen] = useState(false);
+
+  // draft form state
+  const [title, setTitle] = useState("");
+  const [objective, setObjective] = useState("");
+  const [intendedWorker, setIntendedWorker] = useState("");
+  const [inputSummary, setInputSummary] = useState("");
+  const [constraints, setConstraints] = useState("");
+  const [expectedOutput, setExpectedOutput] = useState("");
+
+  const loadContracts = useCallback(() => {
+    if (!conversationId) return;
+    setLoading(true);
+    fetchContracts(userId, conversationId)
+      .then((data) => setContracts(data.contracts ?? []))
+      .catch(() => setContracts([]))
+      .finally(() => setLoading(false));
+  }, [userId, conversationId]);
+
+  useEffect(() => {
+    loadContracts();
+  }, [loadContracts]);
+
+  const resetForm = useCallback(() => {
+    setTitle("");
+    setObjective("");
+    setIntendedWorker("");
+    setInputSummary("");
+    setConstraints("");
+    setExpectedOutput("");
+  }, []);
+
+  const handleCreate = useCallback(async () => {
+    if (!conversationId || !title.trim() || !objective.trim()) return;
+    try {
+      await createContract(userId, conversationId, {
+        title: title.trim(),
+        objective: objective.trim(),
+        intended_worker: intendedWorker.trim() || null,
+        input_summary: inputSummary.trim() || null,
+        constraints: constraints.trim() || null,
+        expected_output: expectedOutput.trim() || null,
+      });
+      setCreatorOpen(false);
+      resetForm();
+      loadContracts();
+    } catch {
+      /* silent */
+    }
+  }, [
+    userId,
+    conversationId,
+    title,
+    objective,
+    intendedWorker,
+    inputSummary,
+    constraints,
+    expectedOutput,
+    resetForm,
+    loadContracts,
+  ]);
+
+  const handleSetStatus = useCallback(
+    async (c: WorkerDelegationContract, status: ContractStatus) => {
+      if (!conversationId) return;
+      try {
+        await setContractStatus(userId, conversationId, c.contract_id, status);
+        loadContracts();
+      } catch {
+        /* silent */
+      }
+    },
+    [userId, conversationId, loadContracts]
+  );
+
+  const handleDelete = useCallback(
+    async (c: WorkerDelegationContract) => {
+      if (!conversationId) return;
+      try {
+        await deleteContract(userId, conversationId, c.contract_id);
+        loadContracts();
+      } catch {
+        /* silent */
+      }
+    },
+    [userId, conversationId, loadContracts]
+  );
+
+  const statusColor: Record<ContractStatus, string> = {
+    draft: "var(--text-muted)",
+    ready_for_review: "var(--accent-blue)",
+    approved: "var(--accent-green)",
+    rejected: "var(--text-faint)",
+    superseded: "var(--text-faint)",
+  };
+
+  if (!conversationId) {
+    return (
+      <div className="px-3 py-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
+        选择一个会话后可创建委派合同
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-3 py-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>
+          委派合同
+        </span>
+        <button
+          onClick={() => setCreatorOpen((v) => !v)}
+          className="text-[10px] px-2 py-0.5 rounded"
+          style={{
+            backgroundColor: "var(--bg-overlay)",
+            color: "var(--text-secondary)",
+            border: "1px solid var(--border-subtle)",
+          }}
+        >
+          + 新建合同
+        </button>
+      </div>
+      <div className="text-[9px] mb-1.5" style={{ color: "var(--text-faint)" }}>
+        委派意图层（不执行、不自动运行），不是 Private Beta READY 证明
+      </div>
+
+      {loading && <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>加载中…</div>}
+      {!loading && contracts.length === 0 && (
+        <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>暂无合同</div>
+      )}
+      <div className="space-y-1 max-h-44 overflow-y-auto">
+        {contracts.map((c) => (
+          <div
+            key={c.contract_id}
+            className="text-[10px] rounded px-2 py-1"
+            style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-medium truncate" style={{ maxWidth: "160px" }}>
+                {c.title}
+              </span>
+              <span
+                className="text-[9px] px-1 rounded"
+                style={{ color: statusColor[c.status], border: `1px solid ${statusColor[c.status]}` }}
+              >
+                {c.status}
+              </span>
+            </div>
+            <div className="truncate" style={{ color: "var(--text-muted)" }}>{c.objective}</div>
+            {c.intended_worker && (
+              <div className="text-[9px]" style={{ color: "var(--text-faint)" }}>
+                委派给: {c.intended_worker}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-1 mt-1">
+              {c.status === "draft" && (
+                <>
+                  <button
+                    onClick={() => handleSetStatus(c, "ready_for_review")}
+                    className="text-[9px] px-1.5 py-0.5 rounded"
+                    style={{ backgroundColor: "var(--accent-blue)", color: "#fff" }}
+                  >
+                    提交审核
+                  </button>
+                  <button
+                    onClick={() => handleDelete(c)}
+                    className="text-[9px] px-1.5 py-0.5 rounded"
+                    style={{ color: "var(--text-faint)", border: "1px solid var(--border-subtle)" }}
+                  >
+                    删除草稿
+                  </button>
+                </>
+              )}
+              {c.status === "ready_for_review" && (
+                <>
+                  <button
+                    onClick={() => handleSetStatus(c, "approved")}
+                    className="text-[9px] px-1.5 py-0.5 rounded"
+                    style={{ backgroundColor: "var(--accent-green)", color: "#fff" }}
+                  >
+                    批准
+                  </button>
+                  <button
+                    onClick={() => handleSetStatus(c, "rejected")}
+                    className="text-[9px] px-1.5 py-0.5 rounded"
+                    style={{ color: "var(--text-faint)", border: "1px solid var(--border-subtle)" }}
+                  >
+                    驳回
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {creatorOpen && (
+        <div
+          className="mt-2 rounded p-2 space-y-1"
+          style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px]" style={{ color: "var(--text-secondary)" }}>
+              新建委派合同（仅记录意图，不执行）
+            </span>
+            <button onClick={() => setCreatorOpen(false)} className="text-[9px]" style={{ color: "var(--text-faint)" }}>
+              关闭
+            </button>
+          </div>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="标题 *"
+            className="w-full text-[10px] rounded px-1 py-0.5"
+            style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+          />
+          <textarea
+            value={objective}
+            onChange={(e) => setObjective(e.target.value)}
+            placeholder="目标 / 委派原因 *"
+            rows={2}
+            className="w-full text-[10px] rounded px-1 py-0.5"
+            style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+          />
+          <input
+            value={intendedWorker}
+            onChange={(e) => setIntendedWorker(e.target.value)}
+            placeholder="委派给 (worker/capability)"
+            className="w-full text-[10px] rounded px-1 py-0.5"
+            style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+          />
+          <textarea
+            value={inputSummary}
+            onChange={(e) => setInputSummary(e.target.value)}
+            placeholder="输入摘要 / 上下文"
+            rows={2}
+            className="w-full text-[10px] rounded px-1 py-0.5"
+            style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+          />
+          <textarea
+            value={constraints}
+            onChange={(e) => setConstraints(e.target.value)}
+            placeholder="约束 / 允许范围"
+            rows={2}
+            className="w-full text-[10px] rounded px-1 py-0.5"
+            style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+          />
+          <textarea
+            value={expectedOutput}
+            onChange={(e) => setExpectedOutput(e.target.value)}
+            placeholder="期望输出 / 完成标准"
+            rows={2}
+            className="w-full text-[10px] rounded px-1 py-0.5"
+            style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+          />
+          <button
+            onClick={handleCreate}
+            disabled={!title.trim() || !objective.trim()}
+            className="text-[10px] px-2 py-0.5 rounded disabled:opacity-50"
+            style={{ backgroundColor: "var(--accent-blue)", color: "#fff" }}
+          >
+            创建草稿
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ManagerWorkspaceProps {
   userId: string;
 }
@@ -494,6 +793,7 @@ export function ManagerWorkspace({ userId }: ManagerWorkspaceProps) {
       <div className="flex-1 h-full min-w-0">
         <MemoryContextPanel userId={userId} conversationId={selectedConversationId} />
         <TrustEvidencePanel userId={userId} conversationId={selectedConversationId} />
+        <WorkerDelegationPanel userId={userId} conversationId={selectedConversationId} />
         <ManagerConversation
           key={conversationId}
           userId={userId}

@@ -549,6 +549,126 @@ export async function detachTrustRef(
   return res.json() as Promise<{ detached: boolean }>;
 }
 
+// MWT-17: Worker Delegation Contract (contract layer only — no execution)
+export type ContractStatus =
+  | "draft"
+  | "ready_for_review"
+  | "approved"
+  | "rejected"
+  | "superseded";
+
+export interface WorkerDelegationContract {
+  contract_id: string;
+  conversation_id: string;
+  user_id: string;
+  title: string;
+  objective: string;
+  intended_worker: string | null;
+  input_summary: string | null;
+  memory_ref_ids: string[];
+  trust_ref_ids: string[];
+  constraints: string | null;
+  expected_output: string | null;
+  status: ContractStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateContractInput {
+  title: string;
+  objective: string;
+  intended_worker?: string | null;
+  input_summary?: string | null;
+  memory_ref_ids?: string[];
+  trust_ref_ids?: string[];
+  constraints?: string | null;
+  expected_output?: string | null;
+}
+
+export async function fetchContracts(userId: string, conversationId: string) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/contracts`,
+    { headers: { "X-User-Id": userId } }
+  );
+  if (!res.ok) throw new Error(`加载委派合同失败 (${res.status})`);
+  return res.json() as Promise<{ contracts: WorkerDelegationContract[]; total: number }>;
+}
+
+export async function createContract(userId: string, conversationId: string, input: CreateContractInput) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/contracts`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId },
+      body: JSON.stringify(input),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `创建委派合同失败 (${res.status})`);
+  }
+  return res.json() as Promise<{ contract: WorkerDelegationContract }>;
+}
+
+export async function updateContract(
+  userId: string,
+  conversationId: string,
+  contractId: string,
+  patch: Partial<CreateContractInput & { status: ContractStatus }>
+) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/contracts/${contractId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId },
+      body: JSON.stringify(patch),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `更新委派合同失败 (${res.status})`);
+  }
+  return res.json() as Promise<{ contract: WorkerDelegationContract }>;
+}
+
+export async function setContractStatus(
+  userId: string,
+  conversationId: string,
+  contractId: string,
+  status: ContractStatus
+) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/contracts/${contractId}/status`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId },
+      body: JSON.stringify({ status }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `设置合同状态失败 (${res.status})`);
+  }
+  return res.json() as Promise<{ contract: WorkerDelegationContract }>;
+}
+
+export async function deleteContract(userId: string, conversationId: string, contractId: string) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/contracts/${contractId}`,
+    { method: "DELETE", headers: { "X-User-Id": userId } }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `删除委派合同失败 (${res.status})`);
+  }
+  return res.json() as Promise<{ deleted: boolean }>;
+}
+
 export async function fetchSessionEvents(userId: string, sessionId: string, limit = 200) {
   const { apiBase } = await getApiConfig();
   const res = await fetch(

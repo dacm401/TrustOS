@@ -553,6 +553,37 @@ Current Phase:
           migration only, no new dependency, no policy engine / worker execution.
         → Push: committed + pushed → origin/master = <MWT-16 commit hash>; feature branch synced.
         → Follow-up (out of v0 scope): MWT-17 Worker Delegation Contract.
+
+    MWT-17 Worker Delegation Contract v0 → AUTHORIZED 2026-08-14 (Active Development)
+        → Objective: add a minimal, explicit Worker Delegation Contract layer to ManagerConversation
+          so Manager can represent intended worker tasks in a structured, reviewable, testable way
+          WITHOUT executing them autonomously. Contract layer before controlled execution (MWT-18).
+        → Capability readiness: READY ✅ | Global Private Beta readiness: READY_WITH_ENV_BLOCKERS ⚠️ (unchanged)
+        → Migration 029 (additive/reversible): worker_delegation_contracts
+          (contract_id, conversation_id, user_id, title, objective, intended_worker, input_summary,
+           memory_ref_ids[], trust_ref_ids[], constraints, expected_output, status, created_at, updated_at).
+          Status CHECK: draft | ready_for_review | approved | rejected | superseded.
+        → Service: delegation-contract-service.ts (WorkerDelegationContractService, injectable store,
+          zero-DB deterministic test seam). Validations: required userId/conversation_id/title/objective;
+          normalized id arrays; locked contracts (approved/rejected/superseded) cannot be edited; only
+          draft contracts may be hard-deleted.
+        → API: GET/POST /:id/contracts, GET/PATCH /:id/contracts/:cId, POST /:id/contracts/:cId/status,
+          DELETE /:id/contracts/:cId — under manager-conversations, ownership via getContextUserId,
+          test seam __setDelegationStoreForTesting.
+        → Frontend: WorkerDelegationPanel in ManagerWorkspace center column (after TrustEvidencePanel).
+          api.ts: fetchContracts/createContract/updateContract/setContractStatus/deleteContract. Wording
+          states "委派意图层（不执行、不自动运行），不是 Private Beta READY 证明".
+        → Memory/trust handling: references memory_ref_ids / trust_ref_ids as IDs only; no raw payload copy;
+          reuses MWT-15/16 reference IDs. No Memory write, no Trust Spine mutation.
+        → Execution safety: NO worker invocation, NO scheduling/background, NO autonomous loop, NO external
+          tool call. Status-only transitions; a contract is intent, not completed work, not proof.
+        → Validation: MWT-13 14/14, MWT-14 10/10, MWT-15 16/16, MWT-16 16/16, MWT-17 24/24 = 80 PASS.
+          Backend tsc EXIT=0, Frontend tsc EXIT=0, beta:check 48/0 READY_WITH_ENV_BLOCKERS.
+        → Boundaries preserved: additive migration only, no raw content/event_hash/payload in contracts,
+          no Trust Spine / Memory mutation, no execution, no readiness taxonomy change, no new dependency,
+          no policy engine / worker runtime.
+        → Push: committed + pushed → origin/master = <MWT-17 commit hash>; feature branch synced.
+        → Follow-up (out of v0 scope): MWT-18 Controlled Worker Execution Harness.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete

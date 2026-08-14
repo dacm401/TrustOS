@@ -20,7 +20,15 @@
  *   POST   /v1/manager-conversations/:id/trust-refs                — attach evidence/trace/event/task/run ref
  *   DELETE /v1/manager-conversations/:id/trust-refs/:kind/:refId   — detach a trust reference
  *
- * Wires the MWT-13/MWT-15/MWT-16 services into the HTTP boundary, reusing the existing
+ * Worker delegation contract endpoints (MWT-17):
+ *   GET    /v1/manager-conversations/:id/contracts                       — list worker delegation contracts
+ *   POST   /v1/manager-conversations/:id/contracts                       — create a worker delegation contract
+ *   GET    /v1/manager-conversations/:id/contracts/:cId                  — get a single contract
+ *   PATCH  /v1/manager-conversations/:id/contracts/:cId                  — update draft/ready_for_review contract
+ *   POST   /v1/manager-conversations/:id/contracts/:cId/status           — set contract status
+ *   DELETE /v1/manager-conversations/:id/contracts/:cId                  — delete a draft contract
+ *
+ * Wires the MWT-13/MWT-15/MWT-16/MWT-17 services into the HTTP boundary, reusing the existing
  * identity convention (getContextUserId) and ownership scoping. No new auth/RBAC
  * logic, no Trust Spine / Memory semantic change. Both bridges are REFERENCE-ONLY:
  * they never mutate the referenced memory entry, evidence record, or Trust Spine
@@ -48,6 +56,12 @@ import {
   type EvidenceLookupFn,
   TRUST_REF_KINDS,
 } from "../services/manager/trust-ref-service.js";
+import {
+  WorkerDelegationContractService,
+  PostgresDelegationContractStore,
+  type DelegationContractStore,
+  type ContractStatus,
+} from "../services/manager/delegation-contract-service.js";
 
 // Test seam: allow injecting an in-memory fake store for deterministic tests.
 let activeStore: ConversationStore = PostgresConversationStore;
@@ -93,6 +107,15 @@ function getTrustRefService() {
     activeStore,
     activeEvidenceLookup
   );
+}
+
+// Test seam: allow injecting a fake delegation-contract store (no live DB).
+let activeDelegationStore: DelegationContractStore = PostgresDelegationContractStore;
+export function __setDelegationStoreForTesting(store: DelegationContractStore | null) {
+  activeDelegationStore = store ?? PostgresDelegationContractStore;
+}
+function getDelegationService() {
+  return new WorkerDelegationContractService(activeDelegationStore);
 }
 
 export const managerConversationsRouter = new Hono();
@@ -281,5 +304,144 @@ managerConversationsRouter.delete("/:id/trust-refs/:kind/:refId", async (c) => {
   } catch (error: any) {
     console.error("[MWT-16] detach trust ref error:", error.message);
     return c.json({ error: error.message }, error.message.includes("not found") ? 404 : 500);
+  }
+});
+
+// ── MWT-17: Worker Delegation Contract endpoints ───────────────────────────────
+// Contract layer only. No worker execution, no scheduling, no Trust Spine / Memory
+// mutation. References memory_ref_ids / trust_ref_ids as IDs only.
+
+// GET /v1/manager-conversations/:id/contracts — list
+managerConversationsRouter.get("/:id/contracts", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const conversationId = c.req.param("id");
+  try {
+    const contracts = await getDelegationService().listContracts(userId, conversationId);
+    return c.json({ contracts, total: contracts.length });
+  } catch (error: any) {
+    console.error("[MWT-17] list contracts error:", error.message);
+    return c.json({ error: error.message }, 400);
+  }
+});
+
+// POST /v1/manager-conversations/:id/contracts — create
+managerConversationsRouter.post("/:id/contracts", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const conversationId = c.req.param("id");
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  try {
+    const contract = await getDelegationService().createContract(userId, {
+      conversation_id: conversationId,
+      title: typeof body.title === "string" ? body.title : "",
+      objective: typeof body.objective === "string" ? body.objective : "",
+      intended_worker: typeof body.intended_worker === "string" ? body.intended_worker : null,
+      input_summary: typeof body.input_summary === "string" ? body.input_summary : null,
+      memory_ref_ids: Array.isArray(body.memory_ref_ids) ? body.memory_ref_ids.map(String) : [],
+      trust_ref_ids: Array.isArray(body.trust_ref_ids) ? body.trust_ref_ids.map(String) : [],
+      constraints: typeof body.constraints === "string" ? body.constraints : null,
+      expected_output: typeof body.expected_output === "string" ? body.expected_output : null,
+      status: (body.status as ContractStatus) ?? "draft",
+    });
+    return c.json({ contract }, 201);
+  } catch (error: any) {
+    console.error("[MWT-17] create contract error:", error.message);
+    return c.json({ error: error.message }, error.message.includes("required") ? 400 : 500);
+  }
+});
+
+// GET /v1/manager-conversations/:id/contracts/:cId — get one
+managerConversationsRouter.get("/:id/contracts/:cId", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const cId = c.req.param("cId");
+  try {
+    const contract = await getDelegationService().getContract(userId, cId);
+    if (!contract) return c.json({ error: "contract not found" }, 404);
+    return c.json({ contract });
+  } catch (error: any) {
+    console.error("[MWT-17] get contract error:", error.message);
+    return c.json({ error: error.message }, 400);
+  }
+});
+
+// PATCH /v1/manager-conversations/:id/contracts/:cId — update draft/ready_for_review
+managerConversationsRouter.patch("/:id/contracts/:cId", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const cId = c.req.param("cId");
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  try {
+    const contract = await getDelegationService().updateContract(userId, cId, {
+      title: typeof body.title === "string" ? body.title : undefined,
+      objective: typeof body.objective === "string" ? body.objective : undefined,
+      intended_worker: typeof body.intended_worker === "string" ? body.intended_worker : undefined,
+      input_summary: typeof body.input_summary === "string" ? body.input_summary : undefined,
+      memory_ref_ids: Array.isArray(body.memory_ref_ids) ? body.memory_ref_ids.map(String) : undefined,
+      trust_ref_ids: Array.isArray(body.trust_ref_ids) ? body.trust_ref_ids.map(String) : undefined,
+      constraints: typeof body.constraints === "string" ? body.constraints : undefined,
+      expected_output: typeof body.expected_output === "string" ? body.expected_output : undefined,
+      status: (body.status as ContractStatus) ?? undefined,
+    });
+    return c.json({ contract });
+  } catch (error: any) {
+    console.error("[MWT-17] update contract error:", error.message);
+    const msg = error.message;
+    if (msg.includes("not found")) return c.json({ error: msg }, 404);
+    if (msg.includes("locked") || msg.includes("status")) return c.json({ error: msg }, 409);
+    return c.json({ error: msg }, 400);
+  }
+});
+
+// POST /v1/manager-conversations/:id/contracts/:cId/status — set status
+managerConversationsRouter.post("/:id/contracts/:cId/status", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const cId = c.req.param("cId");
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const status = body.status as ContractStatus;
+  if (!status) return c.json({ error: "status is required" }, 400);
+  try {
+    const contract = await getDelegationService().setStatus(userId, cId, status);
+    return c.json({ contract });
+  } catch (error: any) {
+    console.error("[MWT-17] set status error:", error.message);
+    const msg = error.message;
+    if (msg.includes("not found")) return c.json({ error: msg }, 404);
+    if (msg.includes("Invalid status") || msg.includes("superseded")) return c.json({ error: msg }, 409);
+    return c.json({ error: msg }, 400);
+  }
+});
+
+// DELETE /v1/manager-conversations/:id/contracts/:cId — delete a draft contract
+managerConversationsRouter.delete("/:id/contracts/:cId", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const cId = c.req.param("cId");
+  try {
+    const ok = await getDelegationService().deleteContract(userId, cId);
+    if (!ok) return c.json({ error: "contract not found" }, 404);
+    return c.json({ deleted: true });
+  } catch (error: any) {
+    console.error("[MWT-17] delete contract error:", error.message);
+    const msg = error.message;
+    if (msg.includes("Only draft")) return c.json({ error: msg }, 409);
+    return c.json({ error: msg }, 400);
   }
 });
