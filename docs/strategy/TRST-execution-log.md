@@ -584,6 +584,39 @@ Current Phase:
           no policy engine / worker runtime.
         → Push: committed + pushed → origin/master = <MWT-17 commit hash>; feature branch synced.
         → Follow-up (out of v0 scope): MWT-18 Controlled Worker Execution Harness.
+
+    MWT-18 Controlled Worker Execution Harness v0 → AUTHORIZED 2026-08-15 (Active Development)
+        → Objective: add a minimal CONTROLLED execution-attempt layer created ONLY from an APPROVED
+          Worker Delegation Contract. Local/deterministic, non-live, non-autonomous. First controlled
+          execution-attempt layer before MWT-19 review/approve loop.
+        → Capability readiness: READY ✅ | Global Private Beta readiness: READY_WITH_ENV_BLOCKERS ⚠️ (unchanged)
+        → Migration 030 (additive/reversible): worker_execution_attempts
+          (attempt_id, conversation_id, contract_id, user_id, worker_label, input_summary, constraints,
+           status, result_summary, error_summary, execution_mode, created_at, updated_at, completed_at).
+          Status CHECK: queued|running|completed|failed|cancelled. Mode CHECK: deterministic_local|dry_run|manual_placeholder.
+        → Service: execution-attempt-service.ts (WorkerExecutionHarnessService, injectable attempt store,
+          contract-lookup seam, local deterministic executor seam). Contract gate: only status='approved'
+          may create attempts; draft/ready_for_review/rejected/superseded rejected. Runs LOCAL executor only
+          (no external call, no gateway, no network, no scheduling, no autonomous loop). Terminal attempts
+          (completed/failed/cancelled) cannot be cancelled.
+        → API: GET /:id/attempts, POST /:id/contracts/:cId/attempts, GET /:id/attempts/:aId,
+          POST /:id/attempts/:aId/cancel — under manager-conversations, ownership via getContextUserId,
+          test seams __setDelegationStoreForTesting + __setAttemptStoreForTesting.
+        → Frontend: WorkerExecutionPanel in ManagerWorkspace center column (after WorkerDelegationPanel).
+          api.ts: fetchAttempts/createAttempt/cancelAttempt. Wording: "仅从已批准合同创建 · 本地确定性输出 ·
+          非真实执行 · 非 Private Beta READY 证明". Execution mode selector (deterministic_local/dry_run/
+          manual_placeholder). Contract gate visibly enforced (no approved contract => cannot create).
+        → Safety/non-live labeling: result_summary explicitly states "local harness output, not live evidence"
+          / "[dry_run] No real execution". No claim of real-world completion. result_summary/error_summary
+          only; no raw memory/trust payload; references contract_id/conversation_id by ID. No Trust Spine /
+          Memory mutation; only the additive attempt record is written.
+        → Validation: MWT-18 20/20 PASS. MWT-13/14/15/16/17 regression all PASS (80 assertions). Backend tsc
+          EXIT=0, Frontend tsc EXIT=0, beta:check 48/0 READY_WITH_ENV_BLOCKERS. Total assertions 13~18 = 100.
+        → Boundaries preserved: no external tools/gateway/network/scheduling/autonomous loop, additive
+          migration only, no raw payload, no Trust Spine/Memory mutation, no readiness taxonomy change, no
+          new dependency, no full worker runtime/policy engine/scheduler.
+        → Push: committed + pushed → origin/master = <MWT-18 commit hash>; feature branch synced.
+        → Follow-up (out of v0 scope): MWT-19 Manager Review / Approve Loop.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete

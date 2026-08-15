@@ -20,12 +20,18 @@ import {
   updateContract,
   setContractStatus,
   deleteContract,
+  fetchAttempts,
+  createAttempt,
+  cancelAttempt,
   type ManagerConversationRecord,
   type MemoryRefRecord,
   type TrustRefRecord,
   type TrustRefKind,
   type WorkerDelegationContract,
   type ContractStatus,
+  type WorkerExecutionAttempt,
+  type ExecutionMode,
+  type AttemptStatus,
 } from "@/lib/api";
 
 // MWT-15: Manager ↔ Memory Context Bridge — read-only context-reference panel.
@@ -662,6 +668,192 @@ function WorkerDelegationPanel({
   );
 }
 
+// MWT-18: Controlled Worker Execution Harness — creates a CONTROLLED execution
+// attempt ONLY from an APPROVED Worker Delegation Contract. The attempt is local
+// and deterministic: it runs NO real worker, NO live gateway, NO network, NO
+// scheduling, NO autonomous loop. The result summary is explicitly labeled as
+// local harness output, NOT live evidence and NOT proof of real-world completion.
+const ATTEMPT_STATUSES: AttemptStatus[] = [
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "cancelled",
+];
+
+function WorkerExecutionPanel({
+  userId,
+  conversationId,
+}: {
+  userId: string;
+  conversationId: string | null;
+}) {
+  const [attempts, setAttempts] = useState<WorkerExecutionAttempt[]>([]);
+  const [contracts, setContracts] = useState<WorkerDelegationContract[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<ExecutionMode>("deterministic_local");
+
+  const approvedContracts = useMemo(
+    () => contracts.filter((c) => c.status === "approved"),
+    [contracts]
+  );
+
+  // Load approved contracts (contract gate source) for this conversation.
+  useEffect(() => {
+    if (!conversationId) {
+      setContracts([]);
+      return;
+    }
+    fetchContracts(userId, conversationId)
+      .then((data) => setContracts(data.contracts ?? []))
+      .catch(() => setContracts([]));
+  }, [userId, conversationId]);
+
+  const loadAttempts = useCallback(() => {
+    if (!conversationId) return;
+    setLoading(true);
+    fetchAttempts(userId, conversationId)
+      .then((data) => setAttempts(data.attempts ?? []))
+      .catch(() => setAttempts([]))
+      .finally(() => setLoading(false));
+  }, [userId, conversationId]);
+
+  useEffect(() => {
+    loadAttempts();
+  }, [loadAttempts]);
+
+  const handleRun = useCallback(
+    async (contractId: string) => {
+      if (!conversationId) return;
+      try {
+        await createAttempt(userId, conversationId, contractId, mode);
+        loadAttempts();
+      } catch {
+        /* silent */
+      }
+    },
+    [userId, conversationId, mode, loadAttempts]
+  );
+
+  const handleCancel = useCallback(
+    async (a: WorkerExecutionAttempt) => {
+      if (!conversationId) return;
+      try {
+        await cancelAttempt(userId, conversationId, a.attempt_id);
+        loadAttempts();
+      } catch {
+        /* silent */
+      }
+    },
+    [userId, conversationId, loadAttempts]
+  );
+
+  const statusColor: Record<AttemptStatus, string> = {
+    queued: "var(--text-muted)",
+    running: "var(--accent-blue)",
+    completed: "var(--accent-green)",
+    failed: "var(--text-faint)",
+    cancelled: "var(--text-faint)",
+  };
+
+  if (!conversationId) {
+    return (
+      <div className="px-3 py-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
+        选择一个会话后可查看执行尝试
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-3 py-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+      <div className="text-[11px] font-medium mb-1" style={{ color: "var(--text-muted)" }}>
+        执行尝试（受控 harness）
+      </div>
+      <div className="text-[9px] mb-1.5" style={{ color: "var(--text-faint)" }}>
+        仅从已批准合同创建 · 本地确定性输出 · 非真实执行 · 非 Private Beta READY 证明
+      </div>
+
+      {/* Contract gate: only approved contracts may spawn attempts */}
+      <div className="mb-1.5">
+        <span className="text-[9px]" style={{ color: "var(--text-faint)" }}>执行模式: </span>
+        <select
+          value={mode}
+          onChange={(e) => setMode(e.target.value as ExecutionMode)}
+          className="text-[9px] rounded px-1 py-0.5"
+          style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+        >
+          <option value="deterministic_local">deterministic_local</option>
+          <option value="dry_run">dry_run</option>
+          <option value="manual_placeholder">manual_placeholder</option>
+        </select>
+      </div>
+
+      {approvedContracts.length === 0 && (
+        <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+          无已批准合同 → 无法创建执行尝试（合同门禁）
+        </div>
+      )}
+      {approvedContracts.map((c) => (
+        <div key={c.contract_id} className="flex items-center justify-between mb-1">
+          <span className="text-[10px] truncate" style={{ color: "var(--text-secondary)", maxWidth: "180px" }}>
+            {c.title}
+          </span>
+          <button
+            onClick={() => handleRun(c.contract_id)}
+            className="text-[9px] px-1.5 py-0.5 rounded"
+            style={{ backgroundColor: "var(--accent-green)", color: "#fff" }}
+          >
+            创建尝试
+          </button>
+        </div>
+      ))}
+
+      {loading && <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>加载中…</div>}
+      {!loading && attempts.length === 0 && (
+        <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>暂无执行尝试</div>
+      )}
+      <div className="space-y-1 max-h-44 overflow-y-auto mt-1">
+        {attempts.map((a) => (
+          <div
+            key={a.attempt_id}
+            className="text-[10px] rounded px-2 py-1"
+            style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+          >
+            <div className="flex items-center justify-between">
+              <span className="truncate" style={{ maxWidth: "150px" }}>
+                {a.worker_label ?? "worker"}
+              </span>
+              <span
+                className="text-[9px] px-1 rounded"
+                style={{ color: statusColor[a.status], border: `1px solid ${statusColor[a.status]}` }}
+              >
+                {a.status}
+              </span>
+            </div>
+            <div className="text-[9px]" style={{ color: "var(--text-faint)" }}>
+              模式: {a.execution_mode}
+            </div>
+            {a.result_summary && (
+              <div className="text-[9px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                {a.result_summary}
+              </div>
+            )}
+            {(a.status === "queued" || a.status === "running") && (
+              <button
+                onClick={() => handleCancel(a)}
+                className="text-[9px] px-1.5 py-0.5 rounded mt-1"
+                style={{ color: "var(--text-faint)", border: "1px solid var(--border-subtle)" }}
+              >
+                取消
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface ManagerWorkspaceProps {
   userId: string;
 }
@@ -794,6 +986,7 @@ export function ManagerWorkspace({ userId }: ManagerWorkspaceProps) {
         <MemoryContextPanel userId={userId} conversationId={selectedConversationId} />
         <TrustEvidencePanel userId={userId} conversationId={selectedConversationId} />
         <WorkerDelegationPanel userId={userId} conversationId={selectedConversationId} />
+        <WorkerExecutionPanel userId={userId} conversationId={selectedConversationId} />
         <ManagerConversation
           key={conversationId}
           userId={userId}

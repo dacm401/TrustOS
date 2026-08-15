@@ -28,7 +28,13 @@
  *   POST   /v1/manager-conversations/:id/contracts/:cId/status           — set contract status
  *   DELETE /v1/manager-conversations/:id/contracts/:cId                  — delete a draft contract
  *
- * Wires the MWT-13/MWT-15/MWT-16/MWT-17 services into the HTTP boundary, reusing the existing
+ * Controlled worker execution harness endpoints (MWT-18):
+ *   GET    /v1/manager-conversations/:id/attempts                       — list execution attempts for conversation
+ *   POST   /v1/manager-conversations/:id/contracts/:cId/attempts        — create controlled attempt from approved contract
+ *   GET    /v1/manager-conversations/:id/attempts/:aId                  — get a single attempt
+ *   POST   /v1/manager-conversations/:id/attempts/:aId/cancel           — cancel a queued/running attempt
+ *
+ * Wires the MWT-13/MWT-15/MWT-16/MWT-17/MWT-18 services into the HTTP boundary, reusing the existing
  * identity convention (getContextUserId) and ownership scoping. No new auth/RBAC
  * logic, no Trust Spine / Memory semantic change. Both bridges are REFERENCE-ONLY:
  * they never mutate the referenced memory entry, evidence record, or Trust Spine
@@ -62,6 +68,12 @@ import {
   type DelegationContractStore,
   type ContractStatus,
 } from "../services/manager/delegation-contract-service.js";
+import {
+  WorkerExecutionHarnessService,
+  PostgresExecutionAttemptStore,
+  type ExecutionAttemptStore,
+  type ExecutionMode,
+} from "../services/manager/execution-attempt-service.js";
 
 // Test seam: allow injecting an in-memory fake store for deterministic tests.
 let activeStore: ConversationStore = PostgresConversationStore;
@@ -116,6 +128,19 @@ export function __setDelegationStoreForTesting(store: DelegationContractStore | 
 }
 function getDelegationService() {
   return new WorkerDelegationContractService(activeDelegationStore);
+}
+
+// Test seam: allow injecting a fake execution-attempt store (no live DB).
+let activeAttemptStore: ExecutionAttemptStore = PostgresExecutionAttemptStore;
+export function __setAttemptStoreForTesting(store: ExecutionAttemptStore | null) {
+  activeAttemptStore = store ?? PostgresExecutionAttemptStore;
+}
+function getHarnessService() {
+  // Contract gate uses the delegation service (respects __setDelegationStoreForTesting seam).
+  return new WorkerExecutionHarnessService(
+    activeAttemptStore,
+    (userId, contractId) => getDelegationService().getContract(userId, contractId)
+  );
 }
 
 export const managerConversationsRouter = new Hono();
@@ -442,6 +467,85 @@ managerConversationsRouter.delete("/:id/contracts/:cId", async (c) => {
     console.error("[MWT-17] delete contract error:", error.message);
     const msg = error.message;
     if (msg.includes("Only draft")) return c.json({ error: msg }, 409);
+    return c.json({ error: msg }, 400);
+  }
+});
+
+// ── MWT-18: Controlled Worker Execution Harness endpoints ──────────────────────
+// Creates a CONTROLLED attempt ONLY from an APPROVED contract. The harness runs a
+// LOCAL deterministic executor with NO external calls, NO live gateway, NO network,
+// NO scheduling, NO autonomous loop. Output is explicitly local harness output,
+// NOT live evidence and NOT proof of real-world completion.
+
+// GET /v1/manager-conversations/:id/attempts — list attempts for conversation
+managerConversationsRouter.get("/:id/attempts", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const conversationId = c.req.param("id");
+  try {
+    const attempts = await getHarnessService().listAttempts(userId, conversationId);
+    return c.json({ attempts, total: attempts.length });
+  } catch (error: any) {
+    console.error("[MWT-18] list attempts error:", error.message);
+    return c.json({ error: error.message }, 400);
+  }
+});
+
+// POST /v1/manager-conversations/:id/contracts/:cId/attempts — create controlled attempt
+managerConversationsRouter.post("/:id/contracts/:cId/attempts", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const cId = c.req.param("cId");
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    /* default empty body allowed */
+  }
+  const mode = (body.execution_mode as ExecutionMode) ?? "deterministic_local";
+  try {
+    const attempt = await getHarnessService().createAttemptFromContract(userId, cId, {
+      execution_mode: mode,
+    });
+    return c.json({ attempt }, 201);
+  } catch (error: any) {
+    console.error("[MWT-18] create attempt error:", error.message);
+    const msg = error.message;
+    if (msg.includes("Contract gate")) return c.json({ error: msg }, 409);
+    if (msg.includes("not found")) return c.json({ error: msg }, 404);
+    if (msg.includes("execution_mode") || msg.includes("Invalid")) return c.json({ error: msg }, 400);
+    return c.json({ error: msg }, 500);
+  }
+});
+
+// GET /v1/manager-conversations/:id/attempts/:aId — get a single attempt
+managerConversationsRouter.get("/:id/attempts/:aId", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const aId = c.req.param("aId");
+  try {
+    const attempt = await getHarnessService().getAttempt(userId, aId);
+    if (!attempt) return c.json({ error: "attempt not found" }, 404);
+    return c.json({ attempt });
+  } catch (error: any) {
+    console.error("[MWT-18] get attempt error:", error.message);
+    return c.json({ error: error.message }, 400);
+  }
+});
+
+// POST /v1/manager-conversations/:id/attempts/:aId/cancel — cancel queued/running
+managerConversationsRouter.post("/:id/attempts/:aId/cancel", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const aId = c.req.param("aId");
+  try {
+    const attempt = await getHarnessService().cancelAttempt(userId, aId);
+    return c.json({ attempt });
+  } catch (error: any) {
+    console.error("[MWT-18] cancel attempt error:", error.message);
+    const msg = error.message;
+    if (msg.includes("not found")) return c.json({ error: msg }, 404);
+    if (msg.includes("terminal")) return c.json({ error: msg }, 409);
     return c.json({ error: msg }, 400);
   }
 });

@@ -669,6 +669,76 @@ export async function deleteContract(userId: string, conversationId: string, con
   return res.json() as Promise<{ deleted: boolean }>;
 }
 
+// MWT-18: Controlled Worker Execution Harness (controlled attempt layer only — local, non-live)
+export type AttemptStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+export type ExecutionMode = "deterministic_local" | "dry_run" | "manual_placeholder";
+
+export interface WorkerExecutionAttempt {
+  attempt_id: string;
+  conversation_id: string;
+  contract_id: string;
+  user_id: string;
+  worker_label: string | null;
+  input_summary: string | null;
+  constraints: string | null;
+  status: AttemptStatus;
+  result_summary: string | null;
+  error_summary: string | null;
+  execution_mode: ExecutionMode;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export async function fetchAttempts(userId: string, conversationId: string) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/attempts`,
+    { headers: { "X-User-Id": userId } }
+  );
+  if (!res.ok) throw new Error(`加载执行尝试失败 (${res.status})`);
+  return res.json() as Promise<{ attempts: WorkerExecutionAttempt[]; total: number }>;
+}
+
+export async function createAttempt(
+  userId: string,
+  conversationId: string,
+  contractId: string,
+  executionMode: ExecutionMode = "deterministic_local"
+) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/contracts/${contractId}/attempts`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId },
+      body: JSON.stringify({ execution_mode: executionMode }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `创建执行尝试失败 (${res.status})`);
+  }
+  return res.json() as Promise<{ attempt: WorkerExecutionAttempt }>;
+}
+
+export async function cancelAttempt(
+  userId: string,
+  conversationId: string,
+  attemptId: string
+) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/attempts/${attemptId}/cancel`,
+    { method: "POST", headers: { "X-User-Id": userId } }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `取消执行尝试失败 (${res.status})`);
+  }
+  return res.json() as Promise<{ attempt: WorkerExecutionAttempt }>;
+}
+
 export async function fetchSessionEvents(userId: string, sessionId: string, limit = 200) {
   const { apiBase } = await getApiConfig();
   const res = await fetch(
