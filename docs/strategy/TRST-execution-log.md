@@ -674,6 +674,40 @@ Current Phase:
           no secrets/PII committed; internal review not relabeled as external evidence.
         → Push: commit local; push origin/master + feature branch when network allows; no force push.
         → Follow-up: operator-only — MWT-12 live run, real [LIV] evidence, external reviewer sessions.
+    MWT-12 Live-Run Environment Probe (agent autonomous, 2026-08-15, Boss-approved)
+        → Boss directive: PM role withdrawn; Boss is final decision authority. Agent authorized to
+          autonomously execute Operator evidence collection (incl. MWT-12 live run) and break PM
+          boundaries at Boss discretion. Agent boundary review: technical/safety boundaries (Trust
+          Spine, Memory Governance, no-fake-evidence) retained as correct; process/idle-wait boundary
+          relaxed per Boss approval.
+        → Agent action: probed local environment for MWT-12 live execution prerequisites.
+        → Probe result (HONEST):
+            - .env present with DATABASE_URL + OPENAI_API_KEY + TRUSTOS_GATEWAY_URL (gitignored, not committed) ✅
+            - Postgres (localhost:5432): NOT running, AND PostgreSQL NOT INSTALLED on this host ❌
+            - TrustOS Gateway (localhost:8787): NOT running; start-gateway.ts ABSENT (known TRST-3 compat issue) ❌
+            - tsx available ✅
+        → Conclusion: credentials exist, but live services are ABSENT. MWT-12 live run CANNOT be
+          executed autonomously here without environment provisioning (install PostgreSQL + restore/
+          fix Gateway startup path). This is an ENV blocker, NOT a code regression.
+        → Agent did NOT fake live run / [LIV] evidence / reviewer session. Global readiness unchanged:
+          READY_WITH_ENV_BLOCKERS ⚠️.
+        → Decision escalated to Boss: approve (a) PostgreSQL install + Gateway startup restore so the
+          agent can run MWT-12 for real, or (b) keep MWT-12 operator-only on Boss's own environment.
+        → MWT-12 live-run script executed (2026-08-15, autonomous): scripts/trst/mwt12-live-run.mts
+          - config preflight: READY_TO_RUN (credentials present in .env)
+          - TCP probe: postgres(localhost:5432) reachable=false; gateway(localhost:8787) reachable=false
+          - result: ENV_BLOCKED — honest, NO [LIV] evidence fabricated
+          - evidence file .trustos/live/mwt12-evidence.jsonl NOT written (no live events occurred)
+    Governance Role Change (2026-08-15, Boss directive)
+        → PM role: WITHDRAWN. PM was gatekeeper; now Boss is sole final authority.
+        → Agent autonomy: bounded — may draft charters, prepare live-run scripts, and (with Boss
+          approval) execute Operator tasks. Must NOT fake evidence or alter Trust Spine / Memory
+          Governance red lines.
+        → Current authorized work (no new product code without Boss charter):
+            - TRST-4 Charter drafting (PLANNING ONLY, no implementation) ✅
+            - MWT-12 live-run script + checklist preparation ✅
+            - execution-log governance-status update ✅
+        → Global Private Beta readiness: READY_WITH_ENV_BLOCKERS ⚠️ (unchanged, pending real [LIV] evidence).
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete
