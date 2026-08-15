@@ -645,9 +645,35 @@ Current Phase:
         → Boundaries preserved: no external tools/gateway/network/scheduling/autonomous loop; additive migration
           only; no raw memory/trust payload; no Trust Spine/Memory mutation; no readiness taxonomy change; no new
           dependency; not a full policy engine / external reviewer workflow / HITL governance product.
-        → Push: PENDING (commit local). Master already synced at 172373f; feature branch was BLOCKED at MWT-18.
-          Will push MWT-19 to both branches when network allows; do not force push.
+        → Push: PUSHED. origin/master = 0e83545. Feature branch retry succeeded 2026-08-15
+          (6807d31..0e83545 -> feature/trst-3-private-beta-readiness). Both branches synced; no force push.
         → Follow-up (out of v0 scope): MWT-20 Private Beta Product Walkthrough v1.
+    MWT-20 Private Beta Product Walkthrough v1 → AUTHORIZED 2026-08-15 (Active Development)
+        → Objective: consolidate MWT-13~MWT-19 Manager Loop v0 into a concise, honest Private Beta
+          Walkthrough v1. Make the product path tangible without pretending live readiness or external
+          reviewer validation. Walkthrough/handoff milestone — NOT new feature, NOT live execution,
+          NOT external reviewer feedback, NOT full READY claim.
+        → Capability readiness: MWT-13~19 READY ✅ | Global Private Beta readiness: READY_WITH_ENV_BLOCKERS ⚠️ (unchanged)
+        → Deliverables: docs/strategy/MWT20-private-beta-product-walkthrough.md (8 sections: honest readiness,
+          Manager Loop overview, step-by-step user path, distinctions table, capability summary MWT-13~19,
+          known limits + operator-only tasks, deterministic-run instructions, screenshot/live-run policy).
+          scripts/trst/mwt20-walkthrough-smoke.test.mts (end-to-end Manager Loop smoke, zero-DB).
+        → Evidence honesty: explicit sections state (a) no MWT-12 live run performed by agent, (b) no real
+          [LIV] DB/gateway evidence, (c) no external reviewer session, (d) global readiness stays
+          READY_WITH_ENV_BLOCKERS. Internal Manager review ≠ external beta reviewer feedback; local
+          deterministic output ≠ real completion proof. No invented screenshots/quotes/telemetry.
+        → Walkthrough user path (asserted by smoke): Conversation → Memory/Trust refs (ID-only) →
+          Delegation Contract (draft) → internal review approve → explicit approve transition →
+          controlled attempt (deterministic_local, NON-LIVE labeled) → internal review accept_result →
+          review history listed (additive, ordered). Review does NOT mutate contract/attempt state.
+        → Validation: mwt20 walkthrough smoke 12/12 PASS; mwt18 20/20 + mwt19 17/17 (no regress);
+          cumulative MWT-13~20 assertions = 129; beta:check 48/0 READY_WITH_ENV_BLOCKERS. No backend/
+          frontend code change → tsc unchanged (still EXIT=0 from MWT-19).
+        → Boundaries preserved: no live env/gateway/network calls; no new feature/architecture; no raw
+          memory/trust payload expansion; no Trust Spine/Memory mutation; no readiness taxonomy change;
+          no secrets/PII committed; internal review not relabeled as external evidence.
+        → Push: commit local; push origin/master + feature branch when network allows; no force push.
+        → Follow-up: operator-only — MWT-12 live run, real [LIV] evidence, external reviewer sessions.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete
