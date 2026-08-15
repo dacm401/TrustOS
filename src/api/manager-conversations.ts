@@ -34,6 +34,11 @@
  *   GET    /v1/manager-conversations/:id/attempts/:aId                  — get a single attempt
  *   POST   /v1/manager-conversations/:id/attempts/:aId/cancel           — cancel a queued/running attempt
  *
+ * Manager Review / Approve Loop endpoints (MWT-19):
+ *   GET    /v1/manager-conversations/:id/reviews                       — list manager review records for conversation
+ *   POST   /v1/manager-conversations/:id/reviews                       — create a review record for a contract or attempt
+ *   GET    /v1/manager-conversations/:id/reviews/target/:type/:tId      — list reviews by target
+ *
  * Wires the MWT-13/MWT-15/MWT-16/MWT-17/MWT-18 services into the HTTP boundary, reusing the existing
  * identity convention (getContextUserId) and ownership scoping. No new auth/RBAC
  * logic, no Trust Spine / Memory semantic change. Both bridges are REFERENCE-ONLY:
@@ -74,6 +79,14 @@ import {
   type ExecutionAttemptStore,
   type ExecutionMode,
 } from "../services/manager/execution-attempt-service.js";
+import {
+  ManagerReviewService,
+  InMemoryManagerReviewStore,
+  type ManagerReviewStore,
+  type ManagerReviewRecord,
+  type ReviewTargetType,
+  type ReviewDecision,
+} from "../services/manager/manager-review-service.js";
 
 // Test seam: allow injecting an in-memory fake store for deterministic tests.
 let activeStore: ConversationStore = PostgresConversationStore;
@@ -141,6 +154,15 @@ function getHarnessService() {
     activeAttemptStore,
     (userId, contractId) => getDelegationService().getContract(userId, contractId)
   );
+}
+
+// Test seam: allow injecting a fake review store (no live DB).
+let activeReviewStore: ManagerReviewStore = new InMemoryManagerReviewStore();
+export function __setReviewStoreForTesting(store: ManagerReviewStore | null) {
+  activeReviewStore = store ?? new InMemoryManagerReviewStore();
+}
+function getReviewService() {
+  return new ManagerReviewService(activeReviewStore);
 }
 
 export const managerConversationsRouter = new Hono();
@@ -547,5 +569,87 @@ managerConversationsRouter.post("/:id/attempts/:aId/cancel", async (c) => {
     if (msg.includes("not found")) return c.json({ error: msg }, 404);
     if (msg.includes("terminal")) return c.json({ error: msg }, 409);
     return c.json({ error: msg }, 400);
+  }
+});
+
+// ── MWT-19: Manager Review / Approve Loop endpoints ────────────────────────────
+// Records explicit human/manager review decisions for Worker Delegation Contracts
+// (MWT-17) and Worker Execution Attempts (MWT-18). Review records are additive and
+// auditable; they do NOT mutate contract/attempt state, Trust Spine, or Memory, and
+// they are explicitly INTERNAL manager review — NOT external beta reviewer evidence
+// and NOT a Private Beta READY proof.
+
+// GET /v1/manager-conversations/:id/reviews — list manager review records
+managerConversationsRouter.get("/:id/reviews", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const conversationId = c.req.param("id");
+  try {
+    const reviews = await getReviewService().listByConversation(conversationId);
+    return c.json({ reviews, total: reviews.length });
+  } catch (error: any) {
+    console.error("[MWT-19] list reviews error:", error.message);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// POST /v1/manager-conversations/:id/reviews — create a review record
+managerConversationsRouter.post("/:id/reviews", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const conversationId = c.req.param("id");
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+
+  const target_type = body.target_type as ReviewTargetType;
+  const target_id = typeof body.target_id === "string" ? body.target_id : "";
+  const decision = body.decision as ReviewDecision;
+  if (!target_type || !target_id || !decision) {
+    return c.json({ error: "target_type, target_id and decision are required" }, 400);
+  }
+  if (target_type !== "delegation_contract" && target_type !== "execution_attempt") {
+    return c.json({ error: "target_type must be delegation_contract or execution_attempt" }, 400);
+  }
+
+  try {
+    const review = await getReviewService().createReview({
+      conversation_id: conversationId,
+      user_id: userId,
+      target_type,
+      target_id,
+      decision,
+      reason: typeof body.reason === "string" ? body.reason : undefined,
+      reviewer_label: typeof body.reviewer_label === "string" ? body.reviewer_label : undefined,
+    });
+    return c.json({ review }, 201);
+  } catch (error: any) {
+    console.error("[MWT-19] create review error:", error.message);
+    const msg = error.message;
+    if (msg.includes("invalid decision") || msg.includes("required")) {
+      return c.json({ error: msg }, 400);
+    }
+    return c.json({ error: msg }, 500);
+  }
+});
+
+// GET /v1/manager-conversations/:id/reviews/target/:type/:tId — list by target
+managerConversationsRouter.get("/:id/reviews/target/:type/:tId", async (c) => {
+  const userId = getContextUserId(c);
+  if (!userId) return c.json({ error: "Authentication required" }, 401);
+  const targetType = c.req.param("type") as ReviewTargetType;
+  const targetId = c.req.param("tId");
+  if (targetType !== "delegation_contract" && targetType !== "execution_attempt") {
+    return c.json({ error: "target type must be delegation_contract or execution_attempt" }, 400);
+  }
+  try {
+    const reviews = await getReviewService().listByTarget(targetType, targetId);
+    return c.json({ reviews, total: reviews.length });
+  } catch (error: any) {
+    console.error("[MWT-19] list reviews by target error:", error.message);
+    return c.json({ error: error.message }, 500);
   }
 });

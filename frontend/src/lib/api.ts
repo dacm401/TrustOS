@@ -749,6 +749,69 @@ export async function fetchSessionEvents(userId: string, sessionId: string, limi
   return res.json();
 }
 
+// MWT-19: Manager Review / Approve Loop (internal manager review — NOT external beta reviewer evidence)
+export type ReviewTargetType = "delegation_contract" | "execution_attempt";
+export type ReviewDecision =
+  | "approve"
+  | "reject"
+  | "request_changes"
+  | "accept_result"
+  | "reject_result"
+  | "request_rerun";
+
+export interface ManagerReviewRecord {
+  review_id: string;
+  conversation_id: string;
+  user_id: string;
+  target_type: ReviewTargetType;
+  target_id: string;
+  decision: ReviewDecision;
+  reason: string | null;
+  reviewer_label: string | null;
+  created_at: string;
+}
+
+export async function fetchReviews(userId: string, conversationId: string) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/reviews`,
+    { headers: { "X-User-Id": userId } }
+  );
+  if (!res.ok) throw new Error(`加载评审记录失败 (${res.status})`);
+  return res.json() as Promise<{ reviews: ManagerReviewRecord[]; total: number }>;
+}
+
+export async function createReview(
+  userId: string,
+  conversationId: string,
+  targetType: ReviewTargetType,
+  targetId: string,
+  decision: ReviewDecision,
+  reason?: string,
+  reviewerLabel?: string
+) {
+  const { apiBase } = await getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${conversationId}/reviews`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId },
+      body: JSON.stringify({
+        target_type: targetType,
+        target_id: targetId,
+        decision,
+        reason,
+        reviewer_label: reviewerLabel,
+      }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `创建评审记录失败 (${res.status})`);
+  }
+  return res.json() as Promise<{ review: ManagerReviewRecord }>;
+}
+
 /* ── Gateway Health ─────────────────────────────────────────────────────────── */
 
 const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:3000";

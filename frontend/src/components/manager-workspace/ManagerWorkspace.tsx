@@ -23,6 +23,8 @@ import {
   fetchAttempts,
   createAttempt,
   cancelAttempt,
+  fetchReviews,
+  createReview,
   type ManagerConversationRecord,
   type MemoryRefRecord,
   type TrustRefRecord,
@@ -32,6 +34,9 @@ import {
   type WorkerExecutionAttempt,
   type ExecutionMode,
   type AttemptStatus,
+  type ManagerReviewRecord,
+  type ReviewTargetType,
+  type ReviewDecision,
 } from "@/lib/api";
 
 // MWT-15: Manager ↔ Memory Context Bridge — read-only context-reference panel.
@@ -854,6 +859,158 @@ function WorkerExecutionPanel({
   );
 }
 
+// MWT-19: Manager Review / Approve Loop — internal manager review panel.
+// Records explicit human/manager review decisions for contracts (approve/reject/request_changes)
+// and execution attempts (accept_result/reject_result/request_rerun). UI makes explicit that
+// this is INTERNAL manager review, NOT external beta reviewer evidence and NOT a Private Beta
+// READY proof. Review records are additive/auditable; they do not mutate contract/attempt state.
+const CONTRACT_DECISIONS: ReviewDecision[] = ["approve", "reject", "request_changes"];
+const ATTEMPT_DECISIONS: ReviewDecision[] = ["accept_result", "reject_result", "request_rerun"];
+
+function ReviewPanel({
+  userId,
+  conversationId,
+}: {
+  userId: string;
+  conversationId: string | null;
+}) {
+  const [reviews, setReviews] = useState<ManagerReviewRecord[]>([]);
+  const [targetType, setTargetType] = useState<ReviewTargetType>("delegation_contract");
+  const [targetId, setTargetId] = useState<string>("");
+  const [decision, setDecision] = useState<ReviewDecision>("approve");
+  const [reason, setReason] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadReviews = useCallback(() => {
+    if (!conversationId) return;
+    fetchReviews(userId, conversationId)
+      .then((data) => setReviews(data.reviews ?? []))
+      .catch(() => setReviews([]));
+  }, [userId, conversationId]);
+
+  useEffect(() => {
+    loadReviews();
+  }, [loadReviews]);
+
+  const handleCreate = useCallback(async () => {
+    if (!conversationId || !targetId) {
+      setError("请选择目标（合同或执行尝试）");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await createReview(userId, conversationId, targetType, targetId, decision, reason || undefined);
+      setReason("");
+      loadReviews();
+    } catch (e: any) {
+      setError(e?.message ?? "创建评审记录失败");
+    } finally {
+      setBusy(false);
+    }
+  }, [userId, conversationId, targetType, targetId, decision, reason, loadReviews]);
+
+  if (!conversationId) {
+    return (
+      <div className="px-3 py-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
+        选择一个会话后可查看评审记录
+      </div>
+    );
+  }
+
+  const decisions = targetType === "delegation_contract" ? CONTRACT_DECISIONS : ATTEMPT_DECISIONS;
+
+  return (
+    <div className="px-3 py-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+      <div className="text-[11px] font-medium mb-1" style={{ color: "var(--text-muted)" }}>
+        经理评审 / 审批循环
+        <span className="ml-1.5 rounded px-1 py-0.5 text-[9px]" style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-faint)" }}>
+          内部经理评审 · 非 beta 评审证据
+        </span>
+      </div>
+      <div className="text-[9px] mb-1.5" style={{ color: "var(--text-faint)" }}>
+        记录对合同与执行尝试的人工评审决策 · 仅追加审计 · 非真实完成证明 · 非 Private Beta READY
+      </div>
+
+      <div className="flex items-center gap-1 mb-1">
+        <select
+          value={targetType}
+          onChange={(e) => { setTargetType(e.target.value as ReviewTargetType); setTargetId(""); setDecision(targetType === "delegation_contract" ? "approve" : "accept_result"); }}
+          className="text-[9px] rounded px-1 py-0.5"
+          style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+        >
+          <option value="delegation_contract">合同</option>
+          <option value="execution_attempt">执行尝试</option>
+        </select>
+        <input
+          value={targetId}
+          onChange={(e) => setTargetId(e.target.value)}
+          placeholder="目标 ID"
+          className="text-[9px] rounded px-1 py-0.5 flex-1"
+          style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+        />
+      </div>
+
+      <div className="flex items-center gap-1 mb-1">
+        <select
+          value={decision}
+          onChange={(e) => setDecision(e.target.value as ReviewDecision)}
+          className="text-[9px] rounded px-1 py-0.5"
+          style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+        >
+          {decisions.map((d) => (
+            <option key={d} value={d}>{d}</option>
+          ))}
+        </select>
+        <button
+          onClick={handleCreate}
+          disabled={busy || !targetId}
+          className="text-[9px] px-1.5 py-0.5 rounded disabled:opacity-40"
+          style={{ backgroundColor: "var(--accent-purple)", color: "#fff" }}
+        >
+          {busy ? "记录中…" : "记录评审"}
+        </button>
+      </div>
+
+      <input
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="评审理由（安全文本，仅记录评论）"
+        className="text-[9px] rounded px-1 py-0.5 w-full mb-1"
+        style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+      />
+
+      {error && <div className="text-[9px] mb-1" style={{ color: "var(--text-error)" }}>{error}</div>}
+
+      <div className="text-[9px] mb-1" style={{ color: "var(--text-faint)" }}>评审历史（按时间）</div>
+      <div className="space-y-1 max-h-40 overflow-y-auto">
+        {reviews.length === 0 && (
+          <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>暂无评审记录</div>
+        )}
+        {reviews.map((r) => (
+          <div
+            key={r.review_id}
+            className="text-[9px] rounded px-2 py-1"
+            style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-secondary)" }}
+          >
+            <div className="flex items-center justify-between">
+              <span className="truncate" style={{ maxWidth: "150px" }}>{r.decision}</span>
+              <span style={{ color: "var(--text-faint)" }}>
+                {r.target_type === "delegation_contract" ? "合同" : "尝试"}:{r.target_id}
+              </span>
+            </div>
+            {r.reason && <div className="text-[9px] mt-0.5" style={{ color: "var(--text-muted)" }}>{r.reason}</div>}
+            <div className="text-[9px]" style={{ color: "var(--text-faint)" }}>
+              {new Date(r.created_at).toLocaleString()}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface ManagerWorkspaceProps {
   userId: string;
 }
@@ -987,6 +1144,7 @@ export function ManagerWorkspace({ userId }: ManagerWorkspaceProps) {
         <TrustEvidencePanel userId={userId} conversationId={selectedConversationId} />
         <WorkerDelegationPanel userId={userId} conversationId={selectedConversationId} />
         <WorkerExecutionPanel userId={userId} conversationId={selectedConversationId} />
+        <ReviewPanel userId={userId} conversationId={selectedConversationId} />
         <ManagerConversation
           key={conversationId}
           userId={userId}

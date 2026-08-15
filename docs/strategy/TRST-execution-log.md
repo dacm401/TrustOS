@@ -615,8 +615,39 @@ Current Phase:
         → Boundaries preserved: no external tools/gateway/network/scheduling/autonomous loop, additive
           migration only, no raw payload, no Trust Spine/Memory mutation, no readiness taxonomy change, no
           new dependency, no full worker runtime/policy engine/scheduler.
-        → Push: committed + pushed → origin/master = <MWT-18 commit hash>; feature branch synced.
+        → Push: PARTIAL_SYNC. origin/master PUSHED 172373f (2026-08-15). feature/trst-3-private-beta-readiness
+          PUSH BLOCKED_BY_NETWORK on retry (exit 128); master-only sync. Worktree cleaned (mwt18out.txt removed).
         → Follow-up (out of v0 scope): MWT-19 Manager Review / Approve Loop.
+    MWT-19 Manager Review / Approve Loop v0 → AUTHORIZED 2026-08-15 (Active Development)
+        → Objective: add a minimal Manager Review / Approve Loop on top of MWT-17 contracts and MWT-18 attempts,
+          so the Manager surface supports explicit human/manager review decisions BEFORE/AFTER controlled
+          execution. Internal manager review — NOT autonomous policy enforcement, NOT external beta reviewer
+          evidence, NOT Private Beta READY proof.
+        → Capability readiness: READY LOCALLY ✅ | Global Private Beta readiness: READY_WITH_ENV_BLOCKERS ⚠️ (unchanged)
+        → Migration 031 (additive/reversible): manager_review_records
+          (review_id, conversation_id, user_id, target_type, target_id, decision, reason, reviewer_label, created_at).
+          target_type CHECK: delegation_contract|execution_attempt. decision CHECK: approve|reject|request_changes|
+          accept_result|reject_result|request_rerun. Reversible: DROP TABLE IF EXISTS.
+        → Service: manager-review-service.ts (ManagerReviewService, injectable review store, InMemory + Postgres
+          stores, decision-by-target-type guard via isValidDecisionForTarget). Safe reason cap (4000) / label cap
+          (120). Additive/auditable; never rewrites contract/attempt state, Trust Spine, or Memory.
+        → API: GET /:id/reviews, POST /:id/reviews, GET /:id/reviews/target/:type/:tId — under manager-conversations,
+          ownership via getContextUserId, test seam __setReviewStoreForTesting. 401 no auth; 400 invalid decision /
+          target_type; 201 on valid.
+        → Frontend: ReviewPanel in ManagerWorkspace center column (after WorkerExecutionPanel). api.ts:
+          fetchReviews/createReview + types (ReviewTargetType/ReviewDecision/ManagerReviewRecord). Wording:
+          "内部经理评审 · 非 beta 评审证据 · 仅追加审计 · 非真实完成证明 · 非 Private Beta READY". Review history
+          shows timestamp + decision + target id + safe reason.
+        → Integrity: contract/attempt status untouched by review records; rejected/superseded contracts still
+          cannot run (MWT-18 gate unchanged); review records reference targets by ID only.
+        → Validation: MWT-19 17/17 PASS. MWT-18 regression 20/20 PASS (no regress). Backend tsc EXIT=0, Frontend
+          tsc EXIT=0, beta:check 48/0 READY_WITH_ENV_BLOCKERS. Total assertions MWT-13~19 = 117.
+        → Boundaries preserved: no external tools/gateway/network/scheduling/autonomous loop; additive migration
+          only; no raw memory/trust payload; no Trust Spine/Memory mutation; no readiness taxonomy change; no new
+          dependency; not a full policy engine / external reviewer workflow / HITL governance product.
+        → Push: PENDING (commit local). Master already synced at 172373f; feature branch was BLOCKED at MWT-18.
+          Will push MWT-19 to both branches when network allows; do not force push.
+        → Follow-up (out of v0 scope): MWT-20 Private Beta Product Walkthrough v1.
     MWT-5 Manager Policy & Approval Dry-run → MWT-4 complete
     MWT-6 Memory Governance → MWT-4F complete
     MWT-7 Productionization / Validation Health → MWT-6 complete
