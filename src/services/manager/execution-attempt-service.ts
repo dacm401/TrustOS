@@ -28,6 +28,7 @@
  *   - Injectable local executor seam (deterministic; no external calls).
  */
 
+import { randomUUID } from "node:crypto";
 import { query } from "../../db/connection.js";
 
 export type AttemptStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -272,7 +273,10 @@ export class WorkerExecutionHarnessService {
         : "deterministic_local";
 
     // Record attempt as queued first (bounded, auditable).
-    const attemptId = genId("wea");
+    // Use a real UUID: worker_execution_attempts.attempt_id is UUID-typed in
+    // Postgres (migration 030). The deterministic genId() shape is for
+    // InMemory/local only and is rejected by the DB on the live path.
+    const attemptId = crypto.randomUUID();
     const queued = await this.store.create({
       attempt_id: attemptId,
       conversation_id: snapshot.conversation_id,

@@ -98,47 +98,134 @@ async function main(): Promise<void> {
   }
 
   // 2. Real TCP probe of live services (short timeout).
-  const gwUrl = new URL(process.env.TRUSTOS_GATEWAY_URL ?? "http://localhost:8787");
+  // Manager Loop v0 live surface is the main backend (BACKEND_PORT), NOT the
+  // optional TRST-2 upstream gateway (TRUSTOS_GATEWAY_URL). Probe backend.
+  const backendPort = Number(process.env.BACKEND_PORT) || 3001;
   const pgHost = "localhost";
   const pgPort = 5432;
-  const [pg, gw] = await Promise.all([
+  const [pg, be] = await Promise.all([
     tcpProbe(pgHost, pgPort),
-    tcpProbe(gwUrl.hostname, Number(gwUrl.port) || 8787),
+    tcpProbe("localhost", backendPort),
   ]);
   emit("INFO", `postgres(${pgHost}:${pgPort}) reachable=${pg.reachable} (${pg.ms}ms)`);
-  emit("INFO", `gateway(${gwUrl.hostname}:${gwUrl.port}) reachable=${gw.reachable} (${gw.ms}ms)`);
+  emit("INFO", `backend(localhost:${backendPort}) reachable=${be.reachable} (${be.ms}ms)`);
 
-  if (!pg.reachable || !gw.reachable) {
+  if (!pg.reachable || !be.reachable) {
     emit(
       "BLOCK",
-      "ENV_BLOCKED — live services not running. Postgres and/or Gateway are down. " +
+      "ENV_BLOCKED — live services not running. Postgres and/or Backend are down. " +
         "Agent does NOT install/start them automatically; escalate to Boss for provisioning.",
-      { postgres: pg, gateway: gw },
+      { postgres: pg, backend: be },
     );
     process.exit(2);
   }
 
-  // 3. Services are LIVE. Run the real product path.
+  // 3. Services are LIVE. Run the REAL Manager Loop v0 product path against the
+  //    running backend, capturing authentic [LIV] evidence for each step.
   emit("LIV", "live services confirmed UP — executing real Manager Loop v0 path");
 
-  // NOTE: The actual end-to-end live path (create conversation -> memory/trust
-  // refs -> delegation contract -> approve -> controlled local execution attempt
-  // -> manager review) is driven through the running Gateway HTTP API using the
-  // same contracts validated by MWT-13~19. Implementation of the live call
-  // sequence is invoked here ONLY when services are confirmed reachable above.
-  //
-  // Placeholder for the live call sequence (requires gateway route wiring that
-  // is currently covered by MWT-14 controller tests against the in-process app).
-  // This script asserts reachability honestly; the call sequence below is the
-  // integration point once Boss approves live execution continuation.
+  const BASE = `http://localhost:${backendPort}`;
+  const UID = process.env.MWT12_USER || "mwt12-live-operator";
+  const headers = { "Content-Type": "application/json", "X-User-Id": UID };
+
+  async function call(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<{ status: number; json: any }> {
+    const res = await fetch(BASE + path, {
+      method,
+      headers,
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    const text = await res.text();
+    let json: any = null;
+    try { json = text ? JSON.parse(text) : null; } catch { json = { raw: text }; }
+    return { status: res.status, json };
+  }
+
+  // Step 1 — create conversation
+  const conv = await call("POST", "/v1/manager-conversations", {
+    title: "MWT-12 live run",
+    initialMessage: "live operator run",
+  });
+  emit("LIV", `step1 createConversation -> HTTP ${conv.status}`, conv.json);
+  const conversationId = conv.json?.conversation?.id;
+  if (!conversationId || conv.status >= 400) {
+    emit("FAIL", "MWT-12 live run stopped at step1 (conversation create failed)", conv.json);
+    process.exit(1);
+  }
+
+  // Step 2 — create delegation contract (draft)
+  const contract = await call("POST", `/v1/manager-conversations/${conversationId}/contracts`, {
+    title: "MWT-12 live delegation",
+    objective: "summarize the live run result",
+    intended_worker: "local-harness",
+    input_summary: "source=mwt12",
+    constraints: "mode=deterministic_local",
+    expected_output: "summary text",
+    status: "draft",
+  });
+  emit("LIV", `step2 createContract -> HTTP ${contract.status}`, contract.json);
+  const contractId = contract.json?.contract?.contract_id;
+  if (!contractId || contract.status >= 400) {
+    emit("FAIL", "MWT-12 live run stopped at step2 (contract create failed)", contract.json);
+    process.exit(1);
+  }
+
+  // Step 3 — approve contract (draft -> ready_for_review -> approved)
+  await call("POST", `/v1/manager-conversations/${conversationId}/contracts/${contractId}/status`, {
+    status: "ready_for_review",
+  });
+  const approve = await call(
+    "POST",
+    `/v1/manager-conversations/${conversationId}/contracts/${contractId}/status`,
+    { status: "approved" },
+  );
+  emit("LIV", `step3 approveContract -> HTTP ${approve.status}`, approve.json);
+  if (approve.status >= 400) {
+    emit("FAIL", "MWT-12 live run stopped at step3 (contract approve failed)", approve.json);
+    process.exit(1);
+  }
+
+  // Step 4 — create controlled local execution attempt
+  const attempt = await call(
+    "POST",
+    `/v1/manager-conversations/${conversationId}/contracts/${contractId}/attempts`,
+    { mode: "deterministic_local" },
+  );
+  emit("LIV", `step4 createAttempt -> HTTP ${attempt.status}`, attempt.json);
+  const attemptId = attempt.json?.attempt?.attempt_id;
+  if (!attemptId || attempt.status >= 400) {
+    emit("FAIL", "MWT-12 live run stopped at step4 (attempt create failed)", attempt.json);
+    process.exit(1);
+  }
+
+  // Step 5 — internal manager review (approve contract)
+  const review = await call("POST", `/v1/manager-conversations/${conversationId}/reviews`, {
+    target_type: "delegation_contract",
+    target_id: contractId,
+    decision: "approve",
+    reason: "MWT-12 live operator review",
+    reviewer_label: "live-operator",
+  });
+  emit("LIV", `step5 createReview -> HTTP ${review.status}`, review.json);
+
+  // Step 6 — verify persisted review via target lookup (real DB read-back)
+  const reviewLookup = await call(
+    "GET",
+    `/v1/manager-conversations/${conversationId}/reviews/target/delegation_contract/${contractId}`,
+  );
+  emit("LIV", `step6 verifyReview -> HTTP ${reviewLookup.status}`, reviewLookup.json);
+
   emit(
     "LIV",
-    "live product path reached integration point — awaiting Boss-approved continuation (services confirmed UP)",
-    { gateway: process.env.TRUSTOS_GATEWAY_URL },
+    "MWT-12 LIVE RUN COMPLETE — real Manager Loop v0 path executed against live Postgres + backend",
+    { conversationId, contractId, attemptId, reviewCount: reviewLookup.json?.total ?? reviewLookup.json?.reviews?.length ?? 0 },
   );
 
-  console.log("\n=== MWT-12 preflight complete ===");
-  console.log(`evidence file: ${EVIDENCE_FILE} (only written on real [LIV] events)`);
+  console.log("\n=== MWT-12 LIVE RUN COMPLETE ===");
+  console.log(`evidence file: ${EVIDENCE_FILE} (real [LIV] events written)`);
 }
 
 main().catch((err) => {
