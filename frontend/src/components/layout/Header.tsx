@@ -1,6 +1,8 @@
 "use client";
-import { useState } from "react";
-import { useHealth } from "@/hooks/useQueries";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { fetchHealth, fetchGatewayHealth } from "@/lib/api";
+import type { HealthStatus, GatewayHealth } from "@/lib/api";
 
 interface HeaderProps {
   userId: string;
@@ -9,10 +11,30 @@ interface HeaderProps {
   onToggleSidebar: () => void;
 }
 
-export function Header({ userId, onUserIdChange, sidebarOpen, onToggleSidebar }: HeaderProps) {
-  const { data: health } = useHealth();
-  const [editingUser, setEditingUser] = useState(false);
-  const [userInput, setUserInput] = useState(userId);
+export function Header({ userId, sidebarOpen, onToggleSidebar }: HeaderProps) {
+  const router = useRouter();
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [gwHealth, setGwHealth] = useState<GatewayHealth | null>(null);
+  const gwTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Backend health (once on mount)
+  useEffect(() => {
+    fetchHealth()
+      .then(setHealth)
+      .catch(() => {/* silent */});
+  }, []);
+
+  // Gateway health polling (every 15s)
+  useEffect(() => {
+    const poll = () => {
+      fetchGatewayHealth()
+        .then(setGwHealth)
+        .catch(() => setGwHealth(null));
+    };
+    poll();
+    gwTimerRef.current = setInterval(poll, 15_000);
+    return () => { if (gwTimerRef.current) clearInterval(gwTimerRef.current); };
+  }, []);
 
   const statusDot = health
     ? health.status === "ok"
@@ -22,12 +44,17 @@ export function Header({ userId, onUserIdChange, sidebarOpen, onToggleSidebar }:
       : { color: "bg-accent-red", label: "异常" }
     : { color: "bg-text-muted", label: "检测中…" };
 
-  const handleUserSave = () => {
-    const trimmed = userInput.trim();
-    if (trimmed) {
-      onUserIdChange(trimmed);
-    }
-    setEditingUser(false);
+  // Gateway / Trust Layer status
+  const gwStatus = gwHealth
+    ? gwHealth.status === "ok"
+      ? { color: "bg-accent-green", label: "TrustOS 在线", dotClass: "animate-pulse-dot" }
+      : { color: "bg-accent-amber", label: "TrustOS 降级", dotClass: "" }
+    : { color: "bg-accent-red", label: "TrustOS 离线", dotClass: "" };
+
+  const handleLogout = () => {
+    localStorage.removeItem("srp_jwt_token");
+    localStorage.removeItem("srp_auth_user");
+    router.push("/login");
   };
 
   return (
@@ -43,7 +70,7 @@ export function Header({ userId, onUserIdChange, sidebarOpen, onToggleSidebar }:
       <div className="flex items-center gap-2">
         <span className="text-base" style={{ color: "var(--accent-blue)" }}>◈</span>
         <span className="font-semibold text-sm tracking-tight" style={{ color: "var(--text-primary)" }}>
-          TrustOS
+          SmartRouter Pro
         </span>
         <span
           className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
@@ -56,20 +83,40 @@ export function Header({ userId, onUserIdChange, sidebarOpen, onToggleSidebar }:
         </span>
       </div>
 
-      {/* Center: Status badge */}
-      <div className="flex items-center gap-2">
-        <span className={`status-dot ${statusDot.color}`} />
-        <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-          {statusDot.label}
-        </span>
-        {health?.version && (
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            · {health.version}
+      {/* Center: Status badges */}
+      <div className="flex items-center gap-3">
+        {/* Backend health */}
+        <div className="flex items-center gap-1.5">
+          <span className={`status-dot ${statusDot.color}`} />
+          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+            {statusDot.label}
           </span>
-        )}
+        </div>
+        {/* Gateway / Trust Layer */}
+        <div
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full"
+          style={{
+            backgroundColor: gwHealth ? "var(--bg-elevated)" : "transparent",
+          }}
+          title={
+            gwHealth
+              ? `TrustOS Gateway · ${gwHealth.events_count} events · ${gwHealth.mode} mode`
+              : "TrustOS Gateway 不可达 — 信任层离线"
+          }
+        >
+          <span className={`status-dot ${gwStatus.color} ${gwStatus.dotClass}`} />
+          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+            {gwStatus.label}
+          </span>
+          {gwHealth && (
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+              · {gwHealth.events_count}
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Right: User + Sidebar toggle */}
+      {/* Right: User badge + logout + Sidebar toggle */}
       <div className="flex items-center gap-2">
         {/* Sidebar toggle */}
         <button
@@ -88,42 +135,32 @@ export function Header({ userId, onUserIdChange, sidebarOpen, onToggleSidebar }:
           </svg>
         </button>
 
-        {/* User ID */}
-        {editingUser ? (
-          <div className="flex items-center gap-1">
-            <input
-              autoFocus
-              value={userInput}
-              onChange={(e) => setUserInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleUserSave();
-                if (e.key === "Escape") setEditingUser(false);
-              }}
-              className="w-28 px-2 py-1 rounded text-xs outline-none"
-              style={{
-                backgroundColor: "var(--bg-elevated)",
-                border: "1px solid var(--accent-blue)",
-                color: "var(--text-primary)",
-              }}
-            />
-            <button onClick={handleUserSave} className="text-xs px-1.5 py-1 rounded" style={{ color: "var(--accent-blue)" }}>
-              ✓
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => { setUserInput(userId); setEditingUser(true); }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all hover:bg-bg-elevated"
-            style={{ color: "var(--text-secondary)" }}
-            title="点击修改用户ID"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M2 12c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-            <span className="max-w-[80px] truncate">{userId}</span>
-          </button>
-        )}
+        {/* User badge */}
+        <div
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs"
+          style={{ color: "var(--text-secondary)" }}
+          title={`已登录: ${userId}`}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M2 12c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <span className="max-w-[80px] truncate">{userId}</span>
+        </div>
+
+        {/* Logout */}
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs transition-all hover:opacity-80"
+          style={{ color: "var(--text-muted)" }}
+          title="退出登录"
+        >
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+            <path d="M5 2H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M9 10l3-3-3-3M12 7H5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="hidden sm:inline">退出</span>
+        </button>
       </div>
     </header>
   );

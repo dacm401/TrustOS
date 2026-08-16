@@ -1,50 +1,59 @@
-﻿import { getSecureApiKey } from "./crypto-utils";
+const RAW_API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002").trim();
+const DEFAULT_API_BASE = RAW_API_BASE || "http://localhost:3002";
 
-// 模块级缓存：解密后的 API Key（避免每次请求都解密）
-let _cachedApiKey: string | null | undefined = undefined; // undefined = 未加载，null = 未存储
-
-async function getCachedApiKey(): Promise<string> {
-  if (_cachedApiKey !== undefined) return _cachedApiKey ?? "";
-  _cachedApiKey = (await getSecureApiKey()) ?? "";
-  return _cachedApiKey;
-}
-
-/** 同步获取 API 配置（API Key 取自缓存，首次调用触发懒解密） */
-export async function getApiConfig() {
-  const DEFAULT_API_BASE = "http://localhost:3002";
+// 获取API配置
+export function getApiConfig() {
   if (typeof window !== "undefined") {
+    // 强制纠正：不允许 api_url 指向外部 API，只能是本地后端
+    const storedUrl = localStorage.getItem("api_url");
+    if (storedUrl && storedUrl.trim() !== DEFAULT_API_BASE) {
+      localStorage.setItem("api_url", DEFAULT_API_BASE);
+    }
     return {
       apiBase: DEFAULT_API_BASE,
-      llmBaseUrl: localStorage.getItem("llm_base_url") || "",
-      apiKey: await getCachedApiKey(),
-      fastModel: localStorage.getItem("fast_model") || "",
-      slowModel: localStorage.getItem("slow_model") || "",
+      apiKey: localStorage.getItem("api_key") || "",
+      fastModel: localStorage.getItem("fast_model") || "Qwen/Qwen2.5-7B-Instruct",
+      slowModel: localStorage.getItem("slow_model") || "deepseek-ai/DeepSeek-V3",
     };
   }
   return {
-    apiBase: process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE,
-    llmBaseUrl: "",
+    apiBase: DEFAULT_API_BASE,
     apiKey: "",
-    fastModel: "",
-    slowModel: "",
+    fastModel: "Qwen/Qwen2.5-7B-Instruct",
+    slowModel: "deepseek-ai/DeepSeek-V3",
   };
 }
 
 /** Exported so components can build streaming fetch URLs directly */
-export const API_BASE = "http://localhost:3001";
+export const API_BASE = DEFAULT_API_BASE;
 
-export async function sendMessage(message: string, history: Array<{ role: string; content: string }>, userId: string, sessionId: string) {
-  const { apiBase, llmBaseUrl, apiKey, fastModel, slowModel } = await getApiConfig();
-  const body: Record<string, string | number | boolean | object> = { user_id: userId, session_id: sessionId, message, history };
-  // 如果前端设置里有 Key / 模型 / LLM地址，透传给后端覆盖环境变量
-  if (llmBaseUrl) body.llm_base_url = llmBaseUrl;
+// ── Auth helpers ──────────────────────────────────────────────────────────────
+
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("srp_jwt_token");
+}
+
+function buildHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = getToken();
+  const headers: Record<string, string> = extra ?? {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+export async function sendMessage(message: string, history: any[], userId: string, sessionId: string) {
+  const { apiBase, apiKey, fastModel, slowModel } = getApiConfig();
+  const body: Record<string, any> = { user_id: userId, session_id: sessionId, message, history };
+  // 如果前端设置里有 Key / 模型，透传给后端覆盖环境变量
   if (apiKey) body.api_key = apiKey;
   if (fastModel) body.fast_model = fastModel;
   if (slowModel) body.slow_model = slowModel;
 
   const res = await fetch(`${apiBase}/api/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...buildHeaders() },
     body: JSON.stringify(body),
   });
   const data = await res.json();
@@ -54,14 +63,28 @@ export async function sendMessage(message: string, history: Array<{ role: string
   return data;
 }
 
-export async function sendFeedback(decisionId: string, type: string, userId: string, reason?: string) {
-  const { apiBase } = await getApiConfig();
-  const body: Record<string, string> = { decision_id: decisionId, feedback_type: type, user_id: userId };
-  if (reason) body.reason = reason;
+export async function getDashboard(userId: string) {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/api/dashboard/${userId}`, {
+    headers: buildHeaders(),
+  });
+  return res.json();
+}
+
+export async function getGrowth(userId: string) {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/api/growth/${userId}`, {
+    headers: buildHeaders(),
+  });
+  return res.json();
+}
+
+export async function sendFeedback(decisionId: string, type: string, userId: string) {
+  const { apiBase } = getApiConfig();
   await fetch(`${apiBase}/api/feedback`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json", ...buildHeaders() },
+    body: JSON.stringify({ decision_id: decisionId, feedback_type: type, user_id: userId }),
   });
 }
 
@@ -69,68 +92,53 @@ export async function sendFeedback(decisionId: string, type: string, userId: str
 // NOTE: tasks and evidence live under /v1/* (backend index.ts app.route("/v1/tasks/...", taskRouter))
 
 export async function fetchTasks(userId: string, sessionId?: string) {
-  const { apiBase } = await getApiConfig();
+  const { apiBase } = getApiConfig();
   const url = sessionId
     ? `${apiBase}/v1/tasks/all?session_id=${encodeURIComponent(sessionId)}`
     : `${apiBase}/v1/tasks/all`;
   const res = await fetch(url, {
-    headers: { "X-User-Id": userId },
+    headers: { "X-User-Id": userId, ...buildHeaders() },
   });
   if (!res.ok) throw new Error(`加载任务列表失败 (${res.status})`);
   return res.json();
 }
 
 export async function fetchTaskDetail(taskId: string, userId: string) {
-  const { apiBase } = await getApiConfig();
+  const { apiBase } = getApiConfig();
   const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}`, {
-    headers: { "X-User-Id": userId },
+    headers: { "X-User-Id": userId, ...buildHeaders() },
   });
   if (!res.ok) throw new Error(`加载任务详情失败 (${res.status})`);
   return res.json();
 }
 
 export async function fetchTaskSummary(taskId: string, userId: string) {
-  const { apiBase } = await getApiConfig();
+  const { apiBase } = getApiConfig();
   const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}/summary`, {
-    headers: { "X-User-Id": userId },
+    headers: { "X-User-Id": userId, ...buildHeaders() },
   });
   if (!res.ok) throw new Error(`加载任务摘要失败 (${res.status})`);
   return res.json();
 }
 
 export async function fetchEvidence(taskId: string, userId: string) {
-  const { apiBase } = await getApiConfig();
+  const { apiBase } = getApiConfig();
   const res = await fetch(
     `${apiBase}/v1/evidence?task_id=${encodeURIComponent(taskId)}`,
-    { headers: { "X-User-Id": userId } }
+    { headers: { "X-User-Id": userId, ...buildHeaders() } }
   );
   if (!res.ok) throw new Error(`加载证据列表失败 (${res.status})`);
   return res.json();
 }
 
 export async function fetchTraces(taskId: string, userId: string) {
-  const { apiBase } = await getApiConfig();
+  const { apiBase } = getApiConfig();
   const res = await fetch(
     `${apiBase}/v1/tasks/${encodeURIComponent(taskId)}/traces`,
-    { headers: { "X-User-Id": userId } }
+    { headers: { "X-User-Id": userId, ...buildHeaders() } }
   );
   if (!res.ok) throw new Error(`加载执行轨迹失败 (${res.status})`);
   return res.json();
-}
-
-// MWT-4B — download a task's evidence export as a JSON file.
-export function downloadEvidenceExport(taskId: string, artifact: unknown): void {
-  const blob = new Blob([JSON.stringify(artifact, null, 2)], {
-    type: "application/json",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `evidence-export-${taskId}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 // H1: Runtime Health Dashboard
@@ -153,9 +161,50 @@ export interface HealthStatus {
 }
 
 export async function fetchHealth(): Promise<HealthStatus> {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(`${apiBase}/health`);
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/health`, {
+    headers: buildHeaders(),
+  });
   if (!res.ok) throw new Error(`加载健康状态失败 (${res.status})`);
+  return res.json();
+}
+
+// ── Gateway Health (TrustOS Gateway on port 8787) ──────────────────────────
+
+export interface GatewayHealth {
+  status: "ok" | "degraded" | "error";
+  service: string;
+  mode: string;
+  streaming: string;
+  events_count: number;
+  uptime_seconds: number;
+  index: string;
+}
+
+const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8787";
+
+// Gateway is OPTIONAL. When NEXT_PUBLIC_GATEWAY_URL is not explicitly set,
+// the backend (SmartRouter) performs observation directly, so we must not
+// report "Unobserved" just because the standalone gateway isn't running.
+export const GATEWAY_CONFIGURED = Boolean(process.env.NEXT_PUBLIC_GATEWAY_URL);
+
+export async function fetchGatewayHealth(): Promise<GatewayHealth> {
+  // Not configured → treat as online (backend self-observes). Avoids false
+  // "Unobserved" on direct-to-SiliconFlow deployments.
+  if (!GATEWAY_CONFIGURED) {
+    return {
+      status: "ok",
+      service: "trustos-backend",
+      mode: "direct",
+      streaming: "n/a",
+      uptime_seconds: 0,
+      index: "n/a",
+    };
+  }
+  const res = await fetch(`${GATEWAY_URL}/health`, {
+    signal: AbortSignal.timeout(3000),
+  });
+  if (!res.ok) throw new Error(`Gateway 健康检查失败 (${res.status})`);
   return res.json();
 }
 
@@ -170,20 +219,20 @@ export interface MemoryEntry {
 }
 
 export async function fetchMemory(userId: string, category?: string): Promise<{ entries: MemoryEntry[] }> {
-  const { apiBase } = await getApiConfig();
+  const { apiBase } = getApiConfig();
   const url = category
     ? `${apiBase}/v1/memory?category=${encodeURIComponent(category)}`
     : `${apiBase}/v1/memory`;
-  const res = await fetch(url, { headers: { "X-User-Id": userId } });
+  const res = await fetch(url, { headers: { "X-User-Id": userId, ...buildHeaders() } });
   if (!res.ok) throw new Error(`加载记忆列表失败 (${res.status})`);
   return res.json() as Promise<{ entries: MemoryEntry[] }>;
 }
 
 export async function deleteMemory(id: string, userId: string): Promise<void> {
-  const { apiBase } = await getApiConfig();
+  const { apiBase } = getApiConfig();
   const res = await fetch(`${apiBase}/v1/memory/${encodeURIComponent(id)}`, {
     method: "DELETE",
-    headers: { "X-User-Id": userId },
+    headers: { "X-User-Id": userId, ...buildHeaders() },
   });
   if (!res.ok) throw new Error(`删除记忆失败 (${res.status})`);
 }
@@ -194,10 +243,10 @@ export async function createMemoryEntry(
   content: string,
   source: string = "manual"
 ): Promise<MemoryEntry> {
-  const { apiBase } = await getApiConfig();
+  const { apiBase } = getApiConfig();
   const res = await fetch(`${apiBase}/v1/memory`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-User-Id": userId },
+    headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
     body: JSON.stringify({ category, content, source }),
   });
   if (!res.ok) {
@@ -209,20 +258,19 @@ export async function createMemoryEntry(
 }
 
 export async function fetchDecision(taskId: string, userId: string) {
-  const { apiBase } = await getApiConfig();
+  const { apiBase } = getApiConfig();
   const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}/decision`, {
-    headers: { "X-User-Id": userId },
+    headers: { "X-User-Id": userId, ...buildHeaders() },
   });
-  if (res.status === 404) return null; // 没有决策数据是正常情况
   if (!res.ok) throw new Error(`加载决策数据失败 (${res.status})`);
   return res.json();
 }
 
 export async function patchTask(taskId: string, userId: string, action: "resume" | "pause" | "cancel"): Promise<boolean> {
-  const { apiBase } = await getApiConfig();
+  const { apiBase } = getApiConfig();
   const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", "X-User-Id": userId },
+    headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
     body: JSON.stringify({ action }),
   });
   return res.ok;
@@ -238,795 +286,258 @@ export interface CostStats {
 }
 
 export async function fetchCostStats(userId: string): Promise<CostStats> {
-  const { apiBase } = await getApiConfig();
+  const { apiBase } = getApiConfig();
   const res = await fetch(`${apiBase}/api/cost-stats/${encodeURIComponent(userId)}`, {
-    headers: { "X-User-Id": userId },
+    headers: buildHeaders(),
   });
   if (!res.ok) throw new Error(`加载成本统计失败 (${res.status})`);
   return res.json() as Promise<CostStats>;
 }
 
-// Performance time-series charts (latency / QPS / tokens)
-export interface PerformanceData {
-  latency: Array<{ timestamp: string; p50: number; p95: number; p99: number }>;
-  qps: Array<{ timestamp: string; qps: number; errors: number }>;
-  tokens: Array<{ timestamp: string; inputTokens: number; outputTokens: number }>;
-}
-
-export async function fetchPerformance(userId: string, range: string = "7d"): Promise<PerformanceData> {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(`${apiBase}/api/performance/${encodeURIComponent(userId)}?range=${range}`, {
-    headers: { "X-User-Id": userId },
-  });
-  if (!res.ok) throw new Error(`加载性能数据失败 (${res.status})`);
-  return res.json() as Promise<PerformanceData>;
-}
-
-// ── S94P: Observability API ─────────────────────────────────────────────────
-
-export interface ObservabilitySummary {
-  summary: {
-    total_requests_24h: number;
-    success_count_24h: number;
-    failure_count_24h: number;
-    cancelled_count_24h: number;
-    success_rate_pct: number;
-    avg_duration_sec: number;
-    p95_duration_sec: number;
-  };
-  cost: {
-    today_cost_usd: number;
-    today_input_tokens: number;
-    today_output_tokens: number;
-  };
-  sessions: {
-    active_24h: number;
-  };
-  health: {
-    database: string;
-    llm_api: string;
-    overall: string;
-  };
-}
-
-export async function fetchObservability(userId: string): Promise<ObservabilitySummary> {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(`${apiBase}/v1/observability/summary`, {
-    headers: { "X-User-Id": userId },
-  });
-  if (!res.ok) throw new Error(`加载可观测性数据失败 (${res.status})`);
-  return res.json() as Promise<ObservabilitySummary>;
-}
-
-// S94P: Paginated task list
-export async function fetchTasksRecent(
-  userId: string,
-  options?: { limit?: number; offset?: number; status?: string }
-) {
-  const { apiBase } = await getApiConfig();
-  const params = new URLSearchParams();
-  if (options?.limit) params.set("limit", String(options.limit));
-  if (options?.offset) params.set("offset", String(options.offset));
-  if (options?.status) params.set("status", options.status);
-
-  const res = await fetch(`${apiBase}/v1/tasks/recent?${params.toString()}`, {
-    headers: { "X-User-Id": userId },
-  });
-  if (!res.ok) throw new Error(`加载任务列表失败 (${res.status})`);
-  return res.json();
-}
-
-// S94P: Get task result
-export async function fetchTaskResult(taskId: string, userId: string) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(taskId)}/result`, {
-    headers: { "X-User-Id": userId },
-  });
-  if (!res.ok) throw new Error(`加载任务结果失败 (${res.status})`);
-  return res.json();
-}
-
-// ── S100P: Manager Workspace APIs ─────────────────────────────────────────────
-
-export async function fetchAgentSessions(userId: string, options?: { status?: string; limit?: number }) {
-  const { apiBase } = await getApiConfig();
-  const params = new URLSearchParams();
-  if (options?.status) params.set("status", options.status);
-  if (options?.limit) params.set("limit", String(options.limit));
-  const qs = params.toString();
-  const url = `${apiBase}/v1/agent-sessions${qs ? `?${qs}` : ""}`;
-  const res = await fetch(url, { headers: { "X-User-Id": userId } });
-  if (!res.ok) throw new Error(`加载 Session 列表失败 (${res.status})`);
-  return res.json();
-}
-
-export async function fetchAgentSessionDetail(sessionId: string, userId: string) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(`${apiBase}/v1/agent-sessions/${encodeURIComponent(sessionId)}`, {
-    headers: { "X-User-Id": userId },
-  });
-  if (!res.ok) throw new Error(`加载 Session 详情失败 (${res.status})`);
-  return res.json();
-}
-
-export async function routeManagerMessage(
-  userId: string,
-  body: { conversationId: string; message: string; targetSessionId?: string }
-) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(`${apiBase}/v1/manager/route-message`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-User-Id": userId },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `路由消息失败 (${res.status})`);
-  }
-  return res.json();
-}
-
-export async function fetchManagerMessages(userId: string, conversationId: string, limit = 100) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-messages?conversationId=${encodeURIComponent(conversationId)}&limit=${limit}`,
-    { headers: { "X-User-Id": userId } }
-  );
-  if (!res.ok) throw new Error(`加载对话消息失败 (${res.status})`);
-  return res.json();
-}
-
-export async function createManagerMessage(
-  userId: string,
-  body: { conversationId: string; role: string; content: string; relatedSessionId?: string }
-) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(`${apiBase}/v1/manager-messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-User-Id": userId },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`创建消息失败 (${res.status})`);
-  return res.json();
-}
-
-// MWT-14: ManagerConversation list + create
-export interface ManagerConversationRecord {
+// G4: Delegation logs API helpers
+export interface DelegationLog {
   id: string;
+  routed_action: string;
+  routing_reason: string | null;
+  g2_final_action: string | null;
+  g3_final_action: string | null;
+  did_rerank: boolean;
+  llm_confidence: number;
+  system_confidence: number;
+  execution_status: string | null;
+  execution_correct: boolean | null;
+  routing_success: boolean | null;
+  value_success: boolean | null;
+  user_success: boolean | null;
+  latency_ms: number | null;
+  cost_usd: number | null;
+  model_used: string | null;
+  created_at: string;
+  executed_at: string | null;
+}
+
+export interface DelegationStats {
+  metrics: {
+    total_decisions: number;
+    action_distribution: Record<string, number>;
+    execution_success_rate: number;
+    avg_latency_ms: number;
+    avg_cost_usd: number;
+    rerank_stats: { rate: number; correction_rate: number };
+    routing_agreement_rate: number;
+    routing_success_rate: number;      // G4-1: 路由准确率
+    execution_correct_rate: number;    // G4-2: 执行正确率
+    value_success_rate: number;        // G4-3: 价值增益率
+    user_success_rate: number;         // G4-4: 用户满意率
+  };
+  rerankStats: {
+    total: number;
+    rerank_count: number;
+    rerank_rate: number;
+    corrected_count: number;
+    correction_rate: number;
+  };
+  actionDistribution: Record<string, number>;
+}
+
+export async function fetchDelegationLogs(userId: string, limit = 50, offset = 0): Promise<{ logs: DelegationLog[]; limit: number; offset: number }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/api/delegation-logs/${encodeURIComponent(userId)}?limit=${limit}&offset=${offset}`, {
+    headers: buildHeaders(),
+  });
+  if (!res.ok) throw new Error(`加载委托日志失败 (${res.status})`);
+  return res.json();
+}
+
+export async function fetchDelegationStats(userId: string): Promise<DelegationStats> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/api/delegation-stats/${encodeURIComponent(userId)}`, {
+    headers: buildHeaders(),
+  });
+  if (!res.ok) throw new Error(`加载委托统计失败 (${res.status})`);
+  return res.json();
+}
+
+// ── Sprint 66: Permissions & Workspaces ──────────────────────────────────────
+
+export interface PermissionRequest {
+  id: string;
+  task_id: string;
+  worker_id: string;
   user_id: string;
-  title: string | null;
+  session_id: string;
+  field_name: string;
+  field_key: string;
+  purpose: string;
+  value_preview?: string;
+  status: "pending" | "approved" | "denied" | "expired";
+  expires_in: number;
+  approved_scope?: string;
+  created_at: string;
+  resolved_at?: string;
+  resolved_by?: string;
+}
+
+export interface TaskWorkspace {
+  id: string;
+  task_id: string;
+  user_id: string;
+  session_id: string;
+  objective: string;
+  constraints: string[];
+  shared_outputs: Record<string, unknown>;
+  access_log: any[];
   created_at: string;
   updated_at: string;
 }
 
-export async function fetchConversations(userId: string, limit = 50) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations?limit=${limit}`,
-    { headers: { "X-User-Id": userId } }
-  );
-  if (!res.ok) throw new Error(`加载会话列表失败 (${res.status})`);
-  return res.json() as Promise<{ conversations: ManagerConversationRecord[]; total: number }>;
-}
-
-export async function createConversation(userId: string, title?: string) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(`${apiBase}/v1/manager-conversations`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-User-Id": userId },
-    body: JSON.stringify(title ? { title } : {}),
+export async function fetchPendingPermissions(userId: string): Promise<{ requests: PermissionRequest[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/permissions/pending`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `创建会话失败 (${res.status})`);
-  }
-  return res.json() as Promise<{ conversation: ManagerConversationRecord }>;
+  if (!res.ok) throw new Error(`加载待审批权限失败 (${res.status})`);
+  return res.json();
 }
 
-// MWT-15: Manager ↔ Memory Context Bridge (read-only references)
-export interface MemoryRefRecord {
-  conversation_id: string;
-  memory_id: string;
-  user_id: string;
-  created_at: string;
-  preview: string;
-  category: string | null;
-  importance: number | null;
-  source: string | null;
-  tags: string[];
+export async function fetchPermissionsByTask(taskId: string, userId: string): Promise<{ requests: PermissionRequest[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/permissions/task/${encodeURIComponent(taskId)}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载任务权限失败 (${res.status})`);
+  return res.json();
 }
 
-// Lightweight memory entry metadata for the "link memory" picker (no raw content).
-export interface MemoryEntryMeta {
-  id: string;
-  category: string | null;
-  importance: number | null;
-  source: string | null;
-  tags: string[];
-  preview: string;
+export async function approvePermission(id: string, userId: string, approvedScope?: string): Promise<void> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/permissions/${encodeURIComponent(id)}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+    body: JSON.stringify({ approved_scope: approvedScope }),
+  });
+  if (!res.ok) throw new Error(`授权失败 (${res.status})`);
 }
 
-export async function fetchMemoryRefs(userId: string, conversationId: string) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/memory-refs`,
-    { headers: { "X-User-Id": userId } }
-  );
-  if (!res.ok) throw new Error(`加载记忆引用失败 (${res.status})`);
-  return res.json() as Promise<{ memory_refs: MemoryRefRecord[]; total: number }>;
+export async function denyPermission(id: string, userId: string): Promise<void> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/permissions/${encodeURIComponent(id)}/deny`, {
+    method: "POST",
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`拒绝失败 (${res.status})`);
 }
 
-export async function attachMemoryRef(userId: string, conversationId: string, memoryId: string) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/memory-refs`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-User-Id": userId },
-      body: JSON.stringify({ memory_id: memoryId }),
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `关联记忆失败 (${res.status})`);
-  }
-  return res.json() as Promise<{ memory_ref: MemoryRefRecord }>;
+export async function fetchActiveWorkspaces(userId: string): Promise<{ workspaces: TaskWorkspace[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/workspaces/user/mine?user_id=${encodeURIComponent(userId)}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载工作区失败 (${res.status})`);
+  return res.json();
 }
 
-export async function detachMemoryRef(userId: string, conversationId: string, memoryId: string) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/memory-refs/${memoryId}`,
-    { method: "DELETE", headers: { "X-User-Id": userId } }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `取消关联失败 (${res.status})`);
-  }
-  return res.json() as Promise<{ detached: boolean }>;
+export async function fetchWorkspaceByTask(taskId: string, userId: string): Promise<{ workspace: TaskWorkspace | null }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/workspaces/${encodeURIComponent(taskId)}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载工作区详情失败 (${res.status})`);
+  return res.json();
 }
 
-// MWT-16: Manager ↔ Trust Evidence Bridge (read-only references)
-export type TrustRefKind = "evidence" | "trace" | "event" | "task" | "run";
-export interface TrustRefRecord {
-  conversation_id: string;
-  ref_kind: TrustRefKind;
-  ref_id: string;
-  user_id: string;
-  created_at: string;
-  source?: string | null;
-  relevance_score?: number | null;
-  related_task_id?: string | null;
-}
+// ── MWT-14/19: Manager Loop (会话 → 契约 → 审批) ───────────────────────────────
 
-export async function fetchTrustRefs(userId: string, conversationId: string) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/trust-refs`,
-    { headers: { "X-User-Id": userId } }
-  );
-  if (!res.ok) throw new Error(`加载信任引用失败 (${res.status})`);
-  return res.json() as Promise<{ trust_refs: TrustRefRecord[]; total: number }>;
-}
-
-export async function attachTrustRef(
-  userId: string,
-  conversationId: string,
-  refKind: TrustRefKind,
-  refId: string
-) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/trust-refs`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-User-Id": userId },
-      body: JSON.stringify({ ref_kind: refKind, ref_id: refId }),
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `关联信任证据失败 (${res.status})`);
-  }
-  return res.json() as Promise<{ trust_ref: TrustRefRecord }>;
-}
-
-export async function detachTrustRef(
-  userId: string,
-  conversationId: string,
-  refKind: TrustRefKind,
-  refId: string
-) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/trust-refs/${refKind}/${encodeURIComponent(refId)}`,
-    { method: "DELETE", headers: { "X-User-Id": userId } }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `取消关联失败 (${res.status})`);
-  }
-  return res.json() as Promise<{ detached: boolean }>;
-}
-
-// MWT-17: Worker Delegation Contract (contract layer only — no execution)
-export type ContractStatus =
-  | "draft"
-  | "ready_for_review"
-  | "approved"
-  | "rejected"
-  | "superseded";
-
-export interface WorkerDelegationContract {
+export interface ManagerContract {
   contract_id: string;
   conversation_id: string;
-  user_id: string;
   title: string;
   objective: string;
-  intended_worker: string | null;
-  input_summary: string | null;
-  memory_ref_ids: string[];
-  trust_ref_ids: string[];
-  constraints: string | null;
-  expected_output: string | null;
-  status: ContractStatus;
+  intended_worker: string;
+  constraints?: string[];
+  status: "draft" | "ready_for_review" | "approved" | "rejected";
   created_at: string;
   updated_at: string;
 }
 
-export interface CreateContractInput {
+export interface ManagerConversation {
+  id: string;
+  user_id: string;
   title: string;
-  objective: string;
-  intended_worker?: string | null;
-  input_summary?: string | null;
-  memory_ref_ids?: string[];
-  trust_ref_ids?: string[];
-  constraints?: string | null;
-  expected_output?: string | null;
+  status: "active" | "closed" | "archived";
+  created_at: string;
+  updated_at: string;
 }
 
-export async function fetchContracts(userId: string, conversationId: string) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/contracts`,
-    { headers: { "X-User-Id": userId } }
-  );
-  if (!res.ok) throw new Error(`加载委派合同失败 (${res.status})`);
-  return res.json() as Promise<{ contracts: WorkerDelegationContract[]; total: number }>;
+export async function fetchManagerConversations(userId: string): Promise<{ conversations: ManagerConversation[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/manager-conversations`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载 Manager 会话失败 (${res.status})`);
+  return res.json();
 }
 
-export async function createContract(userId: string, conversationId: string, input: CreateContractInput) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/contracts`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-User-Id": userId },
-      body: JSON.stringify(input),
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `创建委派合同失败 (${res.status})`);
-  }
-  return res.json() as Promise<{ contract: WorkerDelegationContract }>;
-}
-
-export async function updateContract(
-  userId: string,
-  conversationId: string,
-  contractId: string,
-  patch: Partial<CreateContractInput & { status: ContractStatus }>
-) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/contracts/${contractId}`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", "X-User-Id": userId },
-      body: JSON.stringify(patch),
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `更新委派合同失败 (${res.status})`);
-  }
-  return res.json() as Promise<{ contract: WorkerDelegationContract }>;
+export async function fetchManagerContracts(conversationId: string, userId: string): Promise<{ contracts: ManagerContract[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/contracts`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载契约失败 (${res.status})`);
+  return res.json();
 }
 
 export async function setContractStatus(
-  userId: string,
   conversationId: string,
   contractId: string,
-  status: ContractStatus
-) {
-  const { apiBase } = await getApiConfig();
+  status: "ready_for_review" | "approved" | "rejected",
+  userId: string
+): Promise<void> {
+  const { apiBase } = getApiConfig();
   const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/contracts/${contractId}/status`,
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/contracts/${encodeURIComponent(contractId)}/status`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-User-Id": userId },
+      headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
       body: JSON.stringify({ status }),
     }
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `设置合同状态失败 (${res.status})`);
-  }
-  return res.json() as Promise<{ contract: WorkerDelegationContract }>;
+  if (!res.ok) throw new Error(`更新契约状态失败 (${res.status})`);
 }
 
-export async function deleteContract(userId: string, conversationId: string, contractId: string) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/contracts/${contractId}`,
-    { method: "DELETE", headers: { "X-User-Id": userId } }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `删除委派合同失败 (${res.status})`);
-  }
-  return res.json() as Promise<{ deleted: boolean }>;
-}
-
-// MWT-18: Controlled Worker Execution Harness (controlled attempt layer only — local, non-live)
-export type AttemptStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
-export type ExecutionMode = "deterministic_local" | "dry_run" | "manual_placeholder";
-
-export interface WorkerExecutionAttempt {
-  attempt_id: string;
-  conversation_id: string;
-  contract_id: string;
-  user_id: string;
-  worker_label: string | null;
-  input_summary: string | null;
-  constraints: string | null;
-  status: AttemptStatus;
-  result_summary: string | null;
-  error_summary: string | null;
-  execution_mode: ExecutionMode;
-  created_at: string;
-  updated_at: string;
-  completed_at: string | null;
-}
-
-export async function fetchAttempts(userId: string, conversationId: string) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/attempts`,
-    { headers: { "X-User-Id": userId } }
-  );
-  if (!res.ok) throw new Error(`加载执行尝试失败 (${res.status})`);
-  return res.json() as Promise<{ attempts: WorkerExecutionAttempt[]; total: number }>;
-}
-
-export async function createAttempt(
-  userId: string,
+export async function reviewContract(
   conversationId: string,
   contractId: string,
-  executionMode: ExecutionMode = "deterministic_local"
-) {
-  const { apiBase } = await getApiConfig();
+  decision: "accept_result" | "reject_result" | "request_rerun",
+  userId: string,
+  comment?: string
+): Promise<void> {
+  const { apiBase } = getApiConfig();
   const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/contracts/${contractId}/attempts`,
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/reviews`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-User-Id": userId },
-      body: JSON.stringify({ execution_mode: executionMode }),
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `创建执行尝试失败 (${res.status})`);
-  }
-  return res.json() as Promise<{ attempt: WorkerExecutionAttempt }>;
-}
-
-export async function cancelAttempt(
-  userId: string,
-  conversationId: string,
-  attemptId: string
-) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/attempts/${attemptId}/cancel`,
-    { method: "POST", headers: { "X-User-Id": userId } }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `取消执行尝试失败 (${res.status})`);
-  }
-  return res.json() as Promise<{ attempt: WorkerExecutionAttempt }>;
-}
-
-export async function fetchSessionEvents(userId: string, sessionId: string, limit = 200) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/session-events?sessionId=${encodeURIComponent(sessionId)}&limit=${limit}`,
-    { headers: { "X-User-Id": userId } }
-  );
-  if (!res.ok) throw new Error(`加载 Session 事件失败 (${res.status})`);
-  return res.json();
-}
-
-// MWT-19: Manager Review / Approve Loop (internal manager review — NOT external beta reviewer evidence)
-export type ReviewTargetType = "delegation_contract" | "execution_attempt";
-export type ReviewDecision =
-  | "approve"
-  | "reject"
-  | "request_changes"
-  | "accept_result"
-  | "reject_result"
-  | "request_rerun";
-
-export interface ManagerReviewRecord {
-  review_id: string;
-  conversation_id: string;
-  user_id: string;
-  target_type: ReviewTargetType;
-  target_id: string;
-  decision: ReviewDecision;
-  reason: string | null;
-  reviewer_label: string | null;
-  created_at: string;
-}
-
-export async function fetchReviews(userId: string, conversationId: string) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/reviews`,
-    { headers: { "X-User-Id": userId } }
-  );
-  if (!res.ok) throw new Error(`加载评审记录失败 (${res.status})`);
-  return res.json() as Promise<{ reviews: ManagerReviewRecord[]; total: number }>;
-}
-
-export async function createReview(
-  userId: string,
-  conversationId: string,
-  targetType: ReviewTargetType,
-  targetId: string,
-  decision: ReviewDecision,
-  reason?: string,
-  reviewerLabel?: string
-) {
-  const { apiBase } = await getApiConfig();
-  const res = await fetch(
-    `${apiBase}/v1/manager-conversations/${conversationId}/reviews`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-User-Id": userId },
+      headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
       body: JSON.stringify({
-        target_type: targetType,
-        target_id: targetId,
+        target_type: "execution_attempt",
+        contract_id: contractId,
         decision,
-        reason,
-        reviewer_label: reviewerLabel,
+        comment,
       }),
     }
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `创建评审记录失败 (${res.status})`);
-  }
-  return res.json() as Promise<{ review: ManagerReviewRecord }>;
+  if (!res.ok) throw new Error(`评审契约失败 (${res.status})`);
 }
 
-/* ── Gateway Health ─────────────────────────────────────────────────────────── */
-
-const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:3000";
-
-export interface GatewayHealth {
-  status: "online" | "offline" | "degraded" | "unknown";
-  uptime_seconds?: number;
-  request_count?: number;
-  error_count?: number;
-  last_check?: string;
-  // Backend /health may also return operational detail (optional, not required).
-  service?: string;
-  mode?: "shadow" | "enforce" | string;
-  timestamp?: string;
-  gateway_overhead_ms?: number;
-  events_count?: number;
-  index?: string;
-  providers?: unknown;
-  streaming?: string | { supported?: boolean; error?: string | null } | null;
-  mcp_lifecycle?: string | { supported?: boolean; error?: string | null } | null;
-}
-
-export async function fetchGatewayHealth(): Promise<GatewayHealth> {
-  try {
-    const res = await fetch(`${GATEWAY_URL}/health`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  } catch {
-    return { status: "offline" };
-  }
-}
-
-/* ── Gateway Events ────────────────────────────────────────────────────────── */
-
-export interface GatewayEvent {
-  event_id: string;
-  event_type: string;
-  timestamp: string;
-  status?: string;
-  agent_id?: string;
-  model?: string;
-  [key: string]: unknown;
-}
-
-export interface GatewayEventsResponse {
-  events: GatewayEvent[];
-  total: number;
-  // Optional backend metadata (not all responses include these).
-  status?: string;
-  service?: string;
-  mode?: string;
-  returned_count?: number;
-  has_more?: boolean;
-  page?: number;
-  limit?: number;
-  events_count?: number;
-}
-
-export async function fetchGatewayEvents(
-  params: GatewayEventsParams = {}
-): Promise<GatewayEventsResponse> {
-  const { limit = 50, page = 1, session_id, event_type, agent_id, task_id, unassigned } = params;
-  const qs = new URLSearchParams();
-  qs.set("limit", String(limit));
-  qs.set("page", String(page));
-  if (session_id) qs.set("session_id", session_id);
-  if (event_type) qs.set("event_type", event_type);
-  if (agent_id) qs.set("agent_id", agent_id);
-  if (task_id != null) qs.set("task_id", task_id);
-  if (unassigned) qs.set("unassigned", "true");
-  try {
-    const res = await fetch(`${GATEWAY_URL}/events?${qs.toString()}`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  } catch {
-    return { events: [], total: 0 };
-  }
-}
-
-// MWT-4A: task-correlated event projection (frontend-only; reuses MWT-3B1 endpoint).
-export async function fetchGatewayEventsByTask(
-  taskId: string,
-  limit = 200
-): Promise<GatewayEventsResponse> {
-  if (!taskId) return { events: [], total: 0 };
-  try {
-    const res = await fetch(`${GATEWAY_URL}/events?task_id=${encodeURIComponent(taskId)}&limit=${limit}`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  } catch {
-    return { events: [], total: 0 };
-  }
-}
-
-// Query params accepted by the Gateway events endpoint (optional, frontend-only typing).
-export interface GatewayEventsParams {
-  limit?: number;
-  page?: number;
-  session_id?: string;
-  event_type?: string;
-  agent_id?: string;
-  task_id?: string | null;
-  unassigned?: boolean;
-}
-
-// ── Gateway Sessions ─────────────────────────────────────────────────────────
-
-export interface GatewaySession {
-  session_id: string;
-  user_id?: string;
-  started_at?: string;
-  last_active_at?: string;
-  status?: string;
-  task_count?: number;
-  request_count?: number;
-  agents?: string[];
-  event_count?: number;
-  model_calls?: number;
-  total_tokens?: number;
-}
-
-export interface GatewaySessionsResponse {
-  status?: string;
-  service?: string;
-  mode?: string;
-  limit?: number;
-  returned_count?: number;
-  sessions: GatewaySession[];
-}
-
-export async function fetchGatewaySessions(limit = 50): Promise<GatewaySessionsResponse> {
-  try {
-    const res = await fetch(`${GATEWAY_URL}/sessions?limit=${limit}`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  } catch {
-    return { sessions: [] };
-  }
-}
-
-/* ── Evidence Report ───────────────────────────────────────────────────────── */
-
-export interface ReportSummary {
-  stats: {
-    model_calls: number;
-    tool_calls: number;
-    hash_coverage_pct: number;
-    failure_events: number;
-    failure_count?: number;
-    unique_sessions?: number;
-    total_tokens: number;
-    estimated_cost: number | null;
-    sessions: number;
-    control_decisions: {
-      allow: number;
-      warn: number;
-      block: number;
-      unknown: number;
-    };
-    top_models: Array<{
-      model: string;
-      calls: number;
-      tokens: number;
-      cost: number | null;
-    }>;
-  };
-  event_count: number;
-  generated_at: string | null;
-}
-
-export async function fetchGatewayReportSummary(): Promise<ReportSummary> {
-  try {
-    const res = await fetch(`${GATEWAY_URL}/report/summary`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  } catch {
-    return {
-      stats: {
-        model_calls: 0,
-        tool_calls: 0,
-        hash_coverage_pct: 0,
-        failure_events: 0,
-        total_tokens: 0,
-        estimated_cost: null,
-        sessions: 0,
-        control_decisions: { allow: 0, warn: 0, block: 0, unknown: 0 },
-        top_models: [],
-      },
-      event_count: 0,
-      generated_at: null,
-    };
-  }
-}
-
-export async function fetchGatewayReport(format: "html" | "download" | "md" = "html"): Promise<Response> {
-  const qs = format === "download" ? "" : `?format=${format}`;
-  const res = await fetch(`${GATEWAY_URL}/report${qs}`, {
-    cache: "no-store",
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res;
+export async function triggerAttempt(conversationId: string, contractId: string, userId: string): Promise<void> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/contracts/${encodeURIComponent(contractId)}/attempts`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+      body: JSON.stringify({ execution_mode: "deterministic_local" }),
+    }
+  );
+  if (!res.ok) throw new Error(`触发执行失败 (${res.status})`);
 }

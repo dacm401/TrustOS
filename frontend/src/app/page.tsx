@@ -1,249 +1,238 @@
 "use client";
-import { useState } from "react";
-import { QueryClientProvider } from '@tanstack/react-query';
-import { queryClient } from '@/lib/query-client';
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { v4 as uuid } from "uuid";
+import { useAuth } from "@/contexts/AuthContext";
+import { ChatInterface } from "@/components/chat/ChatInterface";
 import { SettingsModal } from "@/components/chat/SettingsModal";
+import { TaskPanel } from "@/components/workbench/TaskPanel";
 import { EvidencePanel } from "@/components/workbench/EvidencePanel";
+import { TracePanel } from "@/components/workbench/TracePanel";
 import { HealthPanel } from "@/components/workbench/HealthPanel";
 import { DebugPanel } from "@/components/workbench/DebugPanel";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { ChatInterface } from "@/components/chat/ChatInterface";
-import OverviewView from "@/components/views/OverviewView";
-import AdminPanel from "@/components/dashboard/AdminPanel";
-import EventChainViewer from "@/components/dashboard/EventChainViewer";
-import GatewayStatusCard from "@/components/dashboard/GatewayStatusCard";
-import EvidenceReportPanel from "@/components/dashboard/EvidenceReportPanel";
-import { AuditReviewSurface } from "@/components/audit/AuditReviewSurface";
-import MemoryGovernanceSurface from "@/components/memory/MemoryGovernanceSurface";
-import { ManagerWorkspace } from "@/components/manager-workspace/ManagerWorkspace";
-import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import MemoryView from "@/components/views/MemoryView";
+import DashboardView from "@/components/views/DashboardView";
+import TasksView from "@/components/views/TasksView";
+import ArchiveView from "@/components/views/ArchiveView";
+import PermissionsView from "@/components/views/PermissionsView";
+import ManagerView from "@/components/views/ManagerView";
+import { fetchPendingPermissions, fetchGatewayHealth, GATEWAY_CONFIGURED } from "@/lib/api";
 
-type NavView = "chat" | "tasks" | "overview" | "evidence" | "audit" | "memory" | "events" | "gateway" | "advanced";
-type AdvancedTab = "diagnostics" | "admin";
+type NavView = "chat" | "tasks" | "memory" | "dashboard" | "archive" | "permissions" | "manager";
 
-const DEFAULT_USER_ID = "dev-user";
+type WorkbenchTab = "evidence" | "trace" | "health" | "debug";
 
 export default function HomePage() {
+  const router = useRouter();
+  const { user, token, isLoading } = useAuth();
   const [showSettings, setShowSettings] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [selectedTaskId] = useState<string | null>(null);
-  const [userId] = useState(DEFAULT_USER_ID);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  // UI-1: 追踪选中任务的运行状态（用于 TracePanel 轮询决策）
+  const [selectedTaskStatus, setSelectedTaskStatus] = useState<string | undefined>(undefined);
+  const [workbenchTab, setWorkbenchTab] = useState<WorkbenchTab>("evidence");
+  // userId derived from auth — falls back to username so backend can route by identity
+  const userId = user?.username ?? "anonymous";
   const [activeNav, setActiveNav] = useState<NavView>("chat");
-  const [advancedTab, setAdvancedTab] = useState<AdvancedTab>("diagnostics");
-  const [adminKey] = useState("admin-changeme");
+  const [sessionId, setSessionId] = useState<string>(() => uuid());
+  const [pendingPermCount, setPendingPermCount] = useState(0);
+  // Gateway is optional. When not configured, the backend self-observes,
+  // so we start as "observed" (true) instead of flashing "Unobserved".
+  const [gatewayOnline, setGatewayOnline] = useState<boolean>(GATEWAY_CONFIGURED);
+  const gwTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Auth guard: redirect to login if not authenticated
+  useEffect(() => {
+    if (!isLoading && !token) {
+      router.replace("/login");
+    }
+  }, [isLoading, token, router]);
+
+  // Poll pending permission count every 15s
+  useEffect(() => {
+    if (!token || !userId || userId === "anonymous") return;
+    const poll = () => {
+      fetchPendingPermissions(userId)
+        .then((r) => setPendingPermCount(r.requests?.length ?? 0))
+        .catch(() => {});
+    };
+    poll();
+    const iv = setInterval(poll, 15000);
+    return () => clearInterval(iv);
+  }, [token, userId]);
+
+  // Poll Gateway health every 15s for observation tracking
+  useEffect(() => {
+    const poll = () => {
+      fetchGatewayHealth()
+        .then((gh) => setGatewayOnline(gh.status === "ok"))
+        .catch(() => setGatewayOnline(false));
+    };
+    poll();
+    gwTimerRef.current = setInterval(poll, 15_000);
+    return () => { if (gwTimerRef.current) clearInterval(gwTimerRef.current); };
+  }, []);
+
+  const tabs: { id: WorkbenchTab; icon: string; label: string }[] = [
+    { id: "evidence", icon: "🔍", label: "证据" },
+    { id: "trace", icon: "⚡", label: "轨迹" },
+    { id: "health", icon: "💚", label: "健康" },
+    { id: "debug", icon: "🔧", label: "调试" },
+  ];
+
+  // Show loading spinner while hydrating auth state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen" style={{ backgroundColor: "var(--bg-base)" }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="text-3xl">🦀</div>
+          <div className="text-xs" style={{ color: "var(--text-muted)" }}>加载中…</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render app content if not authenticated (will redirect)
+  if (!token) return null;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <div
-        className="flex flex-col h-screen overflow-hidden"
-        style={{ backgroundColor: "var(--bg-base)" }}
-      >
-        {/* Header */}
-        <Header
-          userId={userId}
-          onUserIdChange={() => {}}
-          sidebarOpen={sidebarOpen}
-          onToggleSidebar={() => setSidebarOpen((v) => !v)}
+    <div
+      className="flex flex-col h-screen overflow-hidden"
+      style={{ backgroundColor: "var(--bg-base)" }}
+    >
+      {/* Header */}
+      <Header
+        userId={userId}
+        onUserIdChange={() => {}} // no-op: identity is locked to auth user
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
+      />
+
+      {/* Body: Sidebar + Chat + optional Workbench */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left: Sidebar */}
+        <Sidebar
+          activeNav={activeNav}
+          onNavChange={(id) => setActiveNav(id as NavView)}
+          onSettingsClick={() => setShowSettings(true)}
+          pendingPermCount={pendingPermCount}
         />
 
-        {/* Body: Sidebar + Main View */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left: Sidebar */}
-          <Sidebar
-            activeNav={activeNav}
-            onNavChange={(id) => setActiveNav(id as NavView)}
-            onSettingsClick={() => setShowSettings(true)}
-          />
+        {/* Center: View Area */}
+        <main
+          className="flex-1 overflow-hidden"
+          style={{ maxWidth: sidebarOpen ? undefined : "100%" }}
+        >
+          {activeNav === "chat" && (
+            <ChatInterface
+              onTaskIdChange={setSelectedTaskId}
+              userId={userId}
+              sessionId={sessionId}
+              onSessionIdChange={setSessionId}
+              gatewayOnline={gatewayOnline}
+            />
+          )}
 
-          {/* Center: Main View Area */}
-          <main className="flex-1 overflow-hidden">
-            {/* Chat — primary interaction */}
-            {activeNav === "chat" && (
-              <ErrorBoundary>
-                <ChatInterface userId={userId} />
-              </ErrorBoundary>
-            )}
+          {activeNav === "tasks" && (
+            <TasksView userId={userId} />
+          )}
 
-            {/* Tasks — MWT-3A: read-only session/task discovery via ManagerWorkspace */}
-            {activeNav === "tasks" && (
-              <ErrorBoundary>
-                <ManagerWorkspace userId={userId} />
-              </ErrorBoundary>
-            )}
+          {activeNav === "memory" && (
+            <MemoryView userId={userId} />
+          )}
 
-            {/* Overview */}
-            {activeNav === "overview" && (
-              <ErrorBoundary>
-                <OverviewView />
-              </ErrorBoundary>
-            )}
+          {activeNav === "dashboard" && (
+            <DashboardView userId={userId} onNavChange={(v) => setActiveNav(v as NavView)} />
+          )}
 
-            {/* Evidence Report */}
-            {activeNav === "evidence" && (
-              <ErrorBoundary>
-                <div className="h-full overflow-y-auto p-6">
-                  <div className="max-w-5xl mx-auto space-y-6">
-                    <h1
-                      className="text-xl font-semibold"
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      📋 Evidence Report
-                    </h1>
-                    <p
-                      className="text-sm"
-                      style={{ color: "var(--text-secondary)" }}
-                    >
-                      TRST-4A — Reviewer-facing evidence report with hash verification,
-                      privacy statement, and known limitations.
-                    </p>
-                    <EvidenceReportPanel />
-                    {/* Task-level evidence (when task selected) */}
-                    <EvidencePanel taskId={selectedTaskId} userId={userId} />
-                  </div>
-                </div>
-              </ErrorBoundary>
-            )}
+          {activeNav === "archive" && (
+            <ArchiveView sessionId={sessionId} userId={userId} />
+          )}
 
-            {/* Audit Review — MWT-5R-UI-II: honest approval review replay surface */}
-            {activeNav === "audit" && (
-              <ErrorBoundary>
-                <AuditReviewSurface />
-              </ErrorBoundary>
-            )}
+          {activeNav === "permissions" && (
+            <PermissionsView userId={userId} />
+          )}
 
-            {/* Memory Governance — MWT-6-UI: honest memory governance surface */}
-            {activeNav === "memory" && (
-              <ErrorBoundary>
-                <MemoryGovernanceSurface />
-              </ErrorBoundary>
-            )}
+          {activeNav === "manager" && (
+            <ManagerView userId={userId} />
+          )}
+        </main>
 
-            {/* Events & Traces */}
-            {activeNav === "events" && (
-              <ErrorBoundary>
-                <div style={{ height: "100%" }}>
-                  <EventChainViewer />
-                </div>
-              </ErrorBoundary>
-            )}
+        {/* Right: Workbench Sidebar */}
+        {sidebarOpen && (
+          <aside
+            className="w-96 flex-shrink-0 flex flex-col overflow-hidden"
+            style={{
+              backgroundColor: "var(--bg-surface)",
+              borderLeft: "1px solid var(--border-subtle)",
+            }}
+          >
+            {/* Task Panel: top fixed height */}
+            <div
+              className="flex-shrink-0 overflow-hidden"
+              style={{ height: 220, borderBottom: "1px solid var(--border-subtle)" }}
+            >
+              <TaskPanel
+                userId={userId}
+                onTaskSelect={(taskId, status) => {
+                  setSelectedTaskId(taskId);
+                  setSelectedTaskStatus(status);
+                }}
+                selectedTaskId={selectedTaskId}
+              />
+            </div>
 
-            {/* Gateway */}
-            {activeNav === "gateway" && (
-              <ErrorBoundary>
-                <div className="h-full overflow-y-auto p-6">
-                  <div className="max-w-5xl mx-auto space-y-6">
-                    <h1
-                      className="text-xl font-semibold"
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      ⚙️ Gateway
-                    </h1>
-                    <GatewayStatusCard />
-                    <div className="rounded-xl border p-6" style={{
-                      backgroundColor: "var(--bg-surface)",
-                      borderColor: "var(--border-subtle)",
-                    }}>
-                      <h3 className="text-sm font-semibold mb-4" style={{ color: "var(--text-primary)" }}>
-                        System Health
-                      </h3>
-                      <HealthPanel />
-                    </div>
-                  </div>
-                </div>
-              </ErrorBoundary>
-            )}
-
-            {/* Advanced */}
-            {activeNav === "advanced" && (
-              <ErrorBoundary>
-                <div className="h-full flex flex-col overflow-hidden">
-                  {/* Advanced tab bar */}
-                  <div
-                    className="flex flex-shrink-0 border-b px-4"
+            {/* Tab content area: flex-1 */}
+            <div className="flex flex-col flex-1 overflow-hidden">
+              {/* Tab bar */}
+              <div
+                className="flex flex-shrink-0"
+                style={{ borderBottom: "1px solid var(--border-subtle)" }}
+              >
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setWorkbenchTab(tab.id)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs transition-all relative"
                     style={{
-                      backgroundColor: "var(--bg-surface)",
-                      borderColor: "var(--border-subtle)",
+                      color: workbenchTab === tab.id ? "var(--text-accent)" : "var(--text-muted)",
+                      backgroundColor: workbenchTab === tab.id ? "var(--bg-overlay)" : "transparent",
                     }}
                   >
-                    <button
-                      onClick={() => setAdvancedTab("diagnostics")}
-                      className="px-4 py-2.5 text-sm transition-all relative"
-                      style={{
-                        color: advancedTab === "diagnostics" ? "var(--text-accent)" : "var(--text-muted)",
-                      }}
-                    >
-                      🔍 Diagnostics
-                      {advancedTab === "diagnostics" && (
-                        <span
-                          className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
-                          style={{ backgroundColor: "var(--accent-blue)" }}
-                        />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setAdvancedTab("admin")}
-                      className="px-4 py-2.5 text-sm transition-all relative"
-                      style={{
-                        color: advancedTab === "admin" ? "var(--text-accent)" : "var(--text-muted)",
-                      }}
-                    >
-                      🛡️ Admin
-                      {advancedTab === "admin" && (
-                        <span
-                          className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
-                          style={{ backgroundColor: "var(--accent-blue)" }}
-                        />
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Advanced tab content */}
-                  <div className="flex-1 overflow-y-auto">
-                    {advancedTab === "diagnostics" && (
-                      <div className="p-6 max-w-5xl mx-auto space-y-6">
-                        <div
-                          className="rounded-xl border p-4 mb-4"
-                          style={{
-                            backgroundColor: "var(--bg-warning-subtle, rgba(245,158,11,0.08))",
-                            borderColor: "var(--border-warning, var(--border-subtle))",
-                          }}
-                        >
-                          <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                            ⚠️ <strong>Developer Diagnostics</strong> — Local development only.
-                            Not authenticated RBAC. Not production admin.
-                          </p>
-                        </div>
-                        <DebugPanel taskId={selectedTaskId} userId={userId} />
-                        <HealthPanel />
-                      </div>
+                    <span className="text-[11px]">{tab.icon}</span>
+                    <span className="hidden xl:inline">{tab.label}</span>
+                    {/* Active underline */}
+                    {workbenchTab === tab.id && (
+                      <span
+                        className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
+                        style={{ backgroundColor: "var(--accent-blue)" }}
+                      />
                     )}
-                    {advancedTab === "admin" && (
-                      <div className="p-6 max-w-5xl mx-auto space-y-6">
-                        <div
-                          className="rounded-xl border p-4 mb-4"
-                          style={{
-                            backgroundColor: "var(--bg-warning-subtle, rgba(245,158,11,0.08))",
-                            borderColor: "var(--border-warning, var(--border-subtle))",
-                          }}
-                        >
-                          <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                            ⚠️ <strong>Local diagnostic only</strong> — Not production RBAC.
-                            Admin key: <code style={{ color: "var(--text-accent)" }}>admin-changeme</code>
-                          </p>
-                        </div>
-                        <AdminPanel adminKey={adminKey} />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </ErrorBoundary>
-            )}
-          </main>
-        </div>
+                  </button>
+                ))}
+              </div>
 
-        <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+              {/* Tab content */}
+              <div className="flex-1 overflow-hidden">
+                {workbenchTab === "evidence" && (
+                  <EvidencePanel taskId={selectedTaskId} userId={userId} sessionId={sessionId} />
+                )}
+                {workbenchTab === "trace" && (
+                  <TracePanel taskId={selectedTaskId} userId={userId} taskStatus={selectedTaskStatus} />
+                )}
+                {workbenchTab === "health" && <HealthPanel />}
+                {workbenchTab === "debug" && (
+                  <DebugPanel taskId={selectedTaskId} userId={userId} />
+                )}
+              </div>
+            </div>
+          </aside>
+        )}
       </div>
-    </QueryClientProvider>
+
+      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+    </div>
   );
 }
