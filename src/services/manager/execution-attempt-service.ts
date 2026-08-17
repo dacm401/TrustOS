@@ -21,18 +21,30 @@
  *     NOT proof of real-world completion.
  *   - No Trust Spine / Memory mutation. No raw memory/trust payload copy.
  *
+ * MWT-21 (real execution seam, additive):
+ *   - A NEW `real` execution_mode allows an attempt to invoke the REAL worker
+ *     execution path (TaskPlanner + ExecutionLoop) instead of the local harness.
+ *   - This is OPT-IN: callers must pass `execution_mode: "real"` explicitly.
+ *     The default path (deterministic_local) is unchanged — no behaviour change
+ *     to existing callers.
+ *   - Red lines (PM MWT-21): real output is captured as a SHA-256 `output_hash`
+ *     ONLY. The raw final content is NEVER persisted to the attempt record.
+ *     Contract gate (approved-only) and ownership scoping still apply.
+ *   - The real executor is injectable for zero-DB tests (deterministic fake).
+ *
  * Design:
  *   - Injectable attempt store (in-memory fake for zero-DB tests).
  *   - Injectable contract lookup seam (verifies approved + ownership without a
  *     live JOIN; the API wires the real delegation service).
  *   - Injectable local executor seam (deterministic; no external calls).
+ *   - Injectable real executor seam (TaskPlanner + ExecutionLoop; hash-only).
  */
 
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { query } from "../../db/connection.js";
 
 export type AttemptStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
-export type ExecutionMode = "deterministic_local" | "dry_run" | "manual_placeholder";
+export type ExecutionMode = "deterministic_local" | "dry_run" | "manual_placeholder" | "real";
 
 export const ATTEMPT_STATUSES: AttemptStatus[] = [
   "queued",
@@ -45,6 +57,7 @@ export const EXECUTION_MODES: ExecutionMode[] = [
   "deterministic_local",
   "dry_run",
   "manual_placeholder",
+  "real",
 ];
 
 export interface WorkerExecutionAttemptRecord {
@@ -59,6 +72,8 @@ export interface WorkerExecutionAttemptRecord {
   result_summary: string | null;
   error_summary: string | null;
   execution_mode: ExecutionMode;
+  /** MWT-21: SHA-256 of real worker output (hash-only; raw content never stored). */
+  output_hash: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -105,6 +120,91 @@ export type LocalExecutorFn = (
   mode: ExecutionMode
 ) => Promise<LocalExecutorResult> | LocalExecutorResult;
 
+// ── Real executor seam (MWT-21) ────────────────────────────────────────────────
+/**
+ * Result of a REAL worker execution. Raw `finalContent` is passed in but the
+ * harness MUST only persist `output_hash` (SHA-256) — never the raw content.
+ * This is the core red line: real execution becomes hash-only evidence, not a
+ * raw-payload store.
+ */
+export interface RealExecutorResult {
+  status: AttemptStatus; // completed | failed
+  /** Raw final content from the worker (used to derive output_hash, NOT stored). */
+  final_content: string;
+  /** SHA-256 of final_content; persisted on the attempt record. */
+  output_hash: string;
+  error_summary: string | null;
+  /** Short, safe human-readable summary (no raw payload). */
+  result_summary: string | null;
+}
+export type RealExecutorFn = (
+  snapshot: ContractGateSnapshot,
+  attemptId: string
+) => Promise<RealExecutorResult>;
+
+/** Default REAL executor: TaskPlanner + ExecutionLoop, hash-only output. */
+export const defaultRealExecutor: RealExecutorFn = async (snapshot, attemptId) => {
+  // Lazy import to avoid pulling the planner/loop into the zero-DB test path.
+  const { taskPlanner } = await import("../task-planner.js");
+  const { executionLoop } = await import("../execution-loop.js");
+  const { config } = await import("../../config.js");
+
+  const goal = snapshot.objective || snapshot.title;
+  const sessionId = attemptId; // reuse attempt_id as session_id (bounded, auditable)
+
+  let plan;
+  try {
+    plan = await taskPlanner.plan({
+      taskId: attemptId,
+      goal,
+      userId: snapshot.user_id,
+      sessionId,
+    });
+  } catch (planErr: any) {
+    return {
+      status: "failed",
+      final_content: "",
+      output_hash: createHash("sha256").update("").digest("hex"),
+      error_summary: `planner failed: ${String(planErr?.message ?? planErr)}`,
+      result_summary: null,
+    };
+  }
+
+  let finalContent = "";
+  try {
+    const loopResult = await executionLoop.run(plan, {
+      taskId: attemptId,
+      userId: snapshot.user_id,
+      sessionId,
+      model: config.slowModel,
+      maxSteps: 10,
+      maxToolCalls: 20,
+    });
+    finalContent = loopResult.finalContent ?? "";
+  } catch (loopErr: any) {
+    return {
+      status: "failed",
+      final_content: "",
+      output_hash: createHash("sha256").update("").digest("hex"),
+      error_summary: `execution failed: ${String(loopErr?.message ?? loopErr)}`,
+      result_summary: null,
+    };
+  }
+
+  const outputHash = finalContent.length > 0
+    ? createHash("sha256").update(finalContent).digest("hex")
+    : createHash("sha256").update("").digest("hex");
+
+  const label = snapshot.intended_worker || "default-worker";
+  return {
+    status: "completed",
+    final_content: finalContent,
+    output_hash: outputHash,
+    error_summary: null,
+    result_summary: `[real] Contract "${snapshot.title}" executed by ${label}. output_hash=${outputHash.slice(0, 12)}… (hash-only evidence; raw content not stored).`,
+  };
+};
+
 function clampStr(value: unknown, max: number): string | null {
   if (value === null || value === undefined) return null;
   const s = String(value).trim();
@@ -144,8 +244,8 @@ export const PostgresExecutionAttemptStore: ExecutionAttemptStore = {
     const result = await query(
       `INSERT INTO worker_execution_attempts
         (attempt_id, conversation_id, contract_id, user_id, worker_label, input_summary,
-         constraints, status, result_summary, error_summary, execution_mode)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+         constraints, status, result_summary, error_summary, execution_mode, output_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         rec.attempt_id,
         rec.conversation_id,
@@ -158,6 +258,7 @@ export const PostgresExecutionAttemptStore: ExecutionAttemptStore = {
         rec.result_summary,
         rec.error_summary,
         rec.execution_mode,
+        rec.output_hash ?? null,
       ]
     );
     return rowToRecord(result.rows[0]);
@@ -197,6 +298,7 @@ export const PostgresExecutionAttemptStore: ExecutionAttemptStore = {
     if (patch.result_summary !== undefined) add("result_summary", patch.result_summary);
     if (patch.error_summary !== undefined) add("error_summary", patch.error_summary);
     if (patch.worker_label !== undefined) add("worker_label", patch.worker_label);
+    if (patch.output_hash !== undefined) add("output_hash", patch.output_hash);
     if (patch.completed_at !== undefined) add("completed_at", patch.completed_at);
     if (sets.length === 0) return this.get(userId, attemptId);
     add("updated_at", new Date());
@@ -229,6 +331,7 @@ function rowToRecord(r: any): WorkerExecutionAttemptRecord {
     result_summary: r.result_summary ?? null,
     error_summary: r.error_summary ?? null,
     execution_mode: r.execution_mode as ExecutionMode,
+    output_hash: r.output_hash ?? null,
     created_at: new Date(r.created_at).toISOString(),
     updated_at: new Date(r.updated_at).toISOString(),
     completed_at: r.completed_at ? new Date(r.completed_at).toISOString() : null,
@@ -244,12 +347,16 @@ export class WorkerExecutionHarnessService {
   constructor(
     private store: ExecutionAttemptStore = PostgresExecutionAttemptStore,
     private lookupContract: ContractLookupFn = async () => null,
-    private executor: LocalExecutorFn = defaultLocalExecutor
+    private executor: LocalExecutorFn = defaultLocalExecutor,
+    private realExecutor: RealExecutorFn = defaultRealExecutor
   ) {}
 
   /**
    * Create + run a controlled execution attempt from an APPROVED contract.
-   * Runs the LOCAL deterministic executor only; never touches the external world.
+   * Default mode (deterministic_local) runs the LOCAL deterministic executor only
+   * — never touches the external world. MWT-21: when `execution_mode: "real"` is
+   * passed explicitly, the REAL worker path (TaskPlanner + ExecutionLoop) runs and
+   * the result is recorded as a hash-only `output_hash` (raw content NOT stored).
    */
   async createAttemptFromContract(
     userId: string,
@@ -289,11 +396,27 @@ export class WorkerExecutionHarnessService {
       result_summary: null,
       error_summary: null,
       execution_mode: mode,
+      output_hash: null,
     });
 
-    // Move to running (bounded lifecycle, no real execution).
+    // Move to running (bounded lifecycle).
     const running = await this.store.update(userId, attemptId, { status: "running" });
     if (!running) throw new Error(`Attempt disappeared after create: ${attemptId}`);
+
+    if (mode === "real") {
+      // MWT-21: REAL worker execution. Raw content is consumed to derive the
+      // SHA-256 output_hash and is NEVER persisted (red line).
+      const real = await this.realExecutor(snapshot, attemptId);
+      const completed = await this.store.update(userId, attemptId, {
+        status: real.status,
+        result_summary: clampStr(real.result_summary, 4000),
+        error_summary: clampStr(real.error_summary, 2000),
+        output_hash: real.output_hash,
+        completed_at: new Date().toISOString(),
+      });
+      if (!completed) throw new Error(`Attempt disappeared after execution: ${attemptId}`);
+      return completed;
+    }
 
     // Local deterministic executor — NO external calls.
     const exec = await this.executor(snapshot, mode);

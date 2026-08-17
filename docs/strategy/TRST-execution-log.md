@@ -1554,6 +1554,18 @@ MWT-21 Real Worker Wiring (upgrade MWT-18 harness from deterministic_local → r
   - Effort: M (integration, not greenfield). Depends on: none (can start post MWT-20).
   - Validation: zero-DB test seam for real executor; live run via MWT-12-style script; beta:check no regress.
 
+  **IMPLEMENTATION STATUS (2026-08-17): IN PROGRESS ✅ wiring done.**
+    - execution-attempt-service.ts: added `real` ExecutionMode + `RealExecutorFn` seam
+      (`defaultRealExecutor` = TaskPlanner + ExecutionLoop, hash-only output_hash).
+      `createAttemptFromContract` now branches on `mode === "real"`; default path
+      (deterministic_local) UNCHANGED — opt-in only.
+    - migration 031: additive `output_hash` column + index on worker_execution_attempts.
+    - zero-DB test: scripts/trst/mwt21-real-executor.test.mts — 9/9 PASS
+      (real mode → hash-only; raw NOT stored; default mode unchanged; contract gate holds).
+    - backend tsc --noEmit: 0 errors.
+    - Pending: apply migration 031 on live Postgres; optional live run (MWT-12-style) for real mode.
+    - Red lines HONORED: no raw payload persisted; contract gate enforced; Trust Spine / Memory untouched.
+
 MWT-22 Backend Assessment API (TRST-4D, unpause)
   - Current: assessment is FRONTEND-ONLY (frontend/src/lib/assess-utils.ts: assessEvents,
     computeControlRecommendation, controlRecommendationText, reason). Backend has NO assessment endpoint.
