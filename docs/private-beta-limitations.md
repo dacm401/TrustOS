@@ -21,6 +21,7 @@ TrustOS is an AI governance observation layer. In Private Beta, it provides:
 | **Risk Assessment** | Automated governance signal detection (privacy, operational, evidence-integrity) |
 | **Dry-Run Control** | Recommend allow/review actions without blocking or modifying requests |
 | **Evidence Bundles** | Privacy-safe evidence export with hashes and metadata |
+| **Context Curation** | Manager curates/compresses context before dispatch; worker receives minimal necessary instruction, not full raw prompt |
 | **Hash Verification** | Reviewer-side SHA256 verification of output consistency |
 
 ---
@@ -94,16 +95,33 @@ The `agent_id` field is a **source label** set by the caller (via `x-trustos-age
 
 Use it for trace labeling, not for identity assurance.
 
-### Evidence
+### Evidence (Trusted Observation Layer)
 
-Evidence bundles are **privacy-safe by design**:
+Evidence bundles are **privacy-safe by design** — this is the *integrity-verification* model, **not** a secrecy model for operators:
 
 - **Included**: event hashes, metadata, assessment, dry-run control outcome
-- **Excluded**: raw prompts, raw outputs, raw model responses
+- **Excluded from the bundle**: raw prompts, raw outputs, raw model responses (reviewer verifies integrity via hashes without reading content)
 - **Export**: copy-only (frontend), not persisted by TrustOS backend
 - **Verification**: reviewer-side SHA256 hash comparison (requires independent access to original content)
+- **Operator access**: in a private deployment the operator/data-owner can still view raw content via the operator/debug channels — the hash-only bundle protects *external reviewers and the storage layer*, not the deploying operator.
 
 Evidence bundles are **not signed or notarized** compliance records.
+
+### Context Curation (Execution Dispatch Layer)
+
+TrustOS is a *Manager Loop*: before a task is dispatched to a worker, the Manager **curates / processes the context** so the worker receives only the minimal necessary instruction — not the full raw prompt or redundant history. This is a product behavior of the dispatch layer, **distinct** from the evidence privacy model above.
+
+Implemented today (Sprint 60/61/62P + context compressor):
+
+- `ContextPackage` contract built at dispatch time records exactly what context is *allowed* vs *denied* to each role.
+- Invariants enforced by `context-package-builder`:
+  - artifact source text is **never** sent to the Manager
+  - **raw conversation history is never sent to the worker**
+  - **memory is never sent to the Manager**; worker receives only an optional `memorySummary`
+  - worker receives a trimmed `brief` (instruction substring) + optional artifact summary, not the complete prompt
+- History compression (`compressor` L0–L3): redundant turn removal, LLM summarization of early history, structured context extraction, gated by `token-budget` to keep context under the model limit.
+
+> Note: context curation keeps the worker *efficient and on-task*. It does **not** hide content from the deploying operator — the operator can still see raw prompts/outputs through operator/debug views.
 
 ---
 
