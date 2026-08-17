@@ -1591,7 +1591,11 @@ TRST-4F Policy Enforcement (the observation→governance paradigm shift)
   - Why deferred: paradigm shift from "can observe" to "can govern"; needs careful charter, rollback
     plan, and red-line guards (Trust Spine / Memory Governance untouched). Couples with #2+#7 of the
     earlier 7-area map (autonomous policy execution + enforcement are the same capability).
-  - Effort: L. Status: RECORDED_ONLY ⏸️ (NOT authorized yet; requires separate Boss charter after MWT-21/22).
+  - Effort: L. Status: **DRAFT CHARTER WRITTEN ✍️** (2026-08-17) — upgraded from
+    RECORDED_ONLY now that MWT-21 ✅ (`6e5a6af` + migration 031 applied) and
+    MWT-22 ✅ (`22049fd`) are COMPLETE, satisfying the "完成中等后进行" gate.
+    Charter: `docs/strategy/TRST-4F-policy-enforcement-charter.md`.
+    NOT authorized yet — requires explicit Boss `APPROVE_TRST-4F_IMPLEMENTATION`.
   - Honesty note: until 4F ships, the limitations statement ❌ "no autonomous policy execution / no real
     enforcement" REMAINS TRUE and must stay in private-beta-limitations.md.
 
@@ -1602,7 +1606,7 @@ TRST-4F Policy Enforcement (the observation→governance paradigm shift)
   - 4C Durable Evidence Store: CLOSED ✅
   - 4D Backend Assessment API: PLANNED (MWT-22) ⏸️→▶️
   - 4E Authenticated Identity: DEFERRED (Boss) ⏸️
-  - 4F Policy Enforcement: RECORDED, deferred ⏸️
+  - 4F Policy Enforcement: DRAFT CHARTER ✍️ (medium items done; NOT authorized)
   - 4G Production Ops: DEFERRED (Boss) ⏸️
   → Completion moved from ~35–45% to ~55–60% (4A/4B/4C done; 4D in plan; 4E/4F/4G pending).
   → Private Beta maturity unchanged: still validated observation/recording, NOT governance.
