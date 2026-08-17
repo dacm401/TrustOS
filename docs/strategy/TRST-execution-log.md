@@ -1519,6 +1519,82 @@ Product completeness:
   Full Governance:      35-45% (MWT-5/6/7 address identity, enforcement, ops)
 ```
 
+### Governance Closure Plan — From Observation to Governance (Boss directive 2026-08-17)
+
+> Context: Private Beta = PRIVATE_BETA_READY ✅ (MWT-12 LIVE_PASS, external reviewer CANCELLED).
+> The product is a *validated trusted observation/recording system*. Remaining gap to a *governance-grade*
+> product was assessed 2026-08-17. Operator decisions:
+>   - EXCLUDED from scope: TRST-4E (Authenticated Identity) and TRST-4G (Production Ops) — deferred.
+>   - RECORDED (not started): high-risk core = Policy Enforcement (TRST-4F), deferred until after medium items.
+>   - PLANNED (medium effort, integration-heavy): Real Worker Wiring + Backend Assessment API.
+
+#### Corrected scope vs earlier estimate (important)
+
+Earlier Backend Assessment estimate listed three "medium" items: (1) Real Worker Wiring,
+(2) Durable Evidence Store, (3) Backend Assessment API. Re-check against log shows:
+  - **TRST-4C Durable Event Index = CLOSED ✅ (2026-08-09)** — already done. REMOVE from backlog.
+  - **TRST-4B Streaming = SEALED ✅ (2026-08-09)** — already done at chat/TRST-2 gateway layer.
+    Caveat (DOC BUG): `private-beta-limitations.md` + TRST-1 smoke still claim `stream=true →
+    UNSUPPORTED_STREAMING`. This is TRUE only for the legacy TRST-1 gateway path; the production
+    Chat→Gateway path streams. Action: correct the limitations doc (honesty boundary #4) — logged,
+    not yet edited.
+  - Remaining TRUE medium items: **(1) Real Worker Wiring**, **(3) Backend Assessment API (TRST-4D)**.
+
+#### Medium-effort integration plan (Boss: "先规划下一步，中等投入先做")
+
+MWT-21 Real Worker Wiring (upgrade MWT-18 harness from deterministic_local → real execution)
+  - Current: execution-attempt-service.ts runs `defaultLocalExecutor` (placeholder string), mode
+    `deterministic_local|dry_run|manual_placeholder`. Real `execute-worker-loop` exists but un-wired.
+  - Goal: map an APPROVED Worker Delegation Contract → real worker task; capture REAL output_hash
+    (not harness string); keep contract gate (only approved may run).
+  - Files: src/services/manager/execution-attempt-service.ts (wire real executor seam),
+    src/services/worker/* (real loop), migration 030 (add `real_output_hash`/`executor_kind` cols, additive).
+  - Risk: crosses dry-run boundary assumption — MUST keep Trust Spine / Memory Governance red lines;
+    real output must still be hash-only, no raw payload expansion.
+  - Effort: M (integration, not greenfield). Depends on: none (can start post MWT-20).
+  - Validation: zero-DB test seam for real executor; live run via MWT-12-style script; beta:check no regress.
+
+MWT-22 Backend Assessment API (TRST-4D, unpause)
+  - Current: assessment is FRONTEND-ONLY (frontend/src/lib/assess-utils.ts: assessEvents,
+    computeControlRecommendation, controlRecommendationText, reason). Backend has NO assessment endpoint.
+  - Goal: relocate assessment logic to backend; expose `/v1/assess` (events → assessment + control rec).
+    Frontend calls backend instead of computing locally. Keep `runtimeEffect: dry_run` default.
+  - Files: src/api/assess.ts (new route, mount in src/index.ts), src/services/assess/* (port logic),
+    frontend/src/lib/assess-utils.ts (become thin client).
+  - Effort: M (logic already exists, port + API + contract). Unpause blocker "awaiting MWT-3 object model"
+    is RESOLVED (MWT-3 shipped) — 4D can restart.
+  - Validation: port assess-utils unit tests to backend; Hono app test; frontend tsc; beta:check no regress.
+
+Sequencing: MWT-21 → MWT-22 (independent but 21 first to prove real-execution evidence feeds 22's assess).
+Both medium; est. 2–3 MWT-sized units total.
+
+#### High-risk core — RECORDED, deferred (Boss: "完成中等后进行")
+
+TRST-4F Policy Enforcement (the observation→governance paradigm shift)
+  - Current: `src/services/trst1/policy-engine.ts` DEFINED but NEVER CALLED. Control is dry-run
+    (`runtimeEffect: "dry_run"`) — system observes + records + allows, cannot block/modify.
+    Review (MWT-19) is internal audit, NOT governance.
+  - Goal (when started): wire policy-engine into execution path; turn `would_block` into real action
+    (block / mandatory-approval / redact) at Gateway interception point; add human-override/appeal flow.
+  - Why deferred: paradigm shift from "can observe" to "can govern"; needs careful charter, rollback
+    plan, and red-line guards (Trust Spine / Memory Governance untouched). Couples with #2+#7 of the
+    earlier 7-area map (autonomous policy execution + enforcement are the same capability).
+  - Effort: L. Status: RECORDED_ONLY ⏸️ (NOT authorized yet; requires separate Boss charter after MWT-21/22).
+  - Honesty note: until 4F ships, the limitations statement ❌ "no autonomous policy execution / no real
+    enforcement" REMAINS TRUE and must stay in private-beta-limitations.md.
+
+#### Updated Full Governance completion (post-correction)
+
+  - 4A Evidence Report UX: SEALED ✅
+  - 4B Streaming: SEALED ✅ (doc bug to fix)
+  - 4C Durable Evidence Store: CLOSED ✅
+  - 4D Backend Assessment API: PLANNED (MWT-22) ⏸️→▶️
+  - 4E Authenticated Identity: DEFERRED (Boss) ⏸️
+  - 4F Policy Enforcement: RECORDED, deferred ⏸️
+  - 4G Production Ops: DEFERRED (Boss) ⏸️
+  → Completion moved from ~35–45% to ~55–60% (4A/4B/4C done; 4D in plan; 4E/4F/4G pending).
+  → Private Beta maturity unchanged: still validated observation/recording, NOT governance.
+
 ### MWT-1 Start Gate
 
 MWT-1 implementation authorized ONLY after:
