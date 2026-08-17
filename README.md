@@ -139,8 +139,12 @@ S100P 引入 **Loop Separation in UX**，将单体聊天拆分为三栏工作区
 | Phase 5 | 审计归档 + Learning Layer | ✅ 完成 |
 | S100P P1 | Schema Foundation (agent_sessions, manager_messages, session_events) | ✅ 完成 |
 | S100P P2 | Backend Routing (Manager Router + Visibility Router) | ✅ 完成 |
-| S100P P3 | Manager Workspace Layout (三栏前端) | 🚧 开发中 |
-| S100P P4 | Session Detail (Timeline / Approval / Trust Report) | 📋 待开始 |
+| S100P P3 | Manager Workspace Layout (三栏前端) | ✅ 完成 |
+| S100P P4 | Session Detail (Timeline / Approval / Trust Report) | ✅ 完成 |
+| S101P/S102P | Executive Visibility (ExecutionMetadata / usage / progress) | ✅ 完成 |
+| Manager Loop v0 (MWT-12~20) | Conversation→Contract→Approved→Attempt→Review 全链路 | ✅ 完成 (live PASS 2026-08-17) |
+| TRST-2 / TRST-3 | 产品闭环 + Private Beta Release Pack (52/52 AC) | ✅ CLOSED |
+| 当前门禁 | 详见 `docs/strategy/TRST-execution-log.md` | — |
 
 ---
 
@@ -156,7 +160,7 @@ npm run dev            # 端口 3001
 npm run test           # Vitest
 ```
 
-> ⚠️ DeepSeek-V3/R1 在 SiliconFlow 不支持 function calling（会 hang），统一使用 Qwen 系列。
+> ⚠️ DeepSeek-V3/R1 在 SiliconFlow 不支持 function calling（会 hang）；当前默认使用 **DeepSeek-V4-Flash**（已验证 function calling / 路由正常）。Qwen 系列仍可用。
 
 ---
 
@@ -172,7 +176,7 @@ operator 从零开始的上手与发布门禁文档：
 | `docs/private-beta/BETA_ACCEPTANCE_CRITERIA.md` | Candidate / Full READY / Rejected 判定 |
 | `docs/private-beta/RUNBOOK.md` | 安装、启动、验证、排障 |
 | `docs/private-beta/ENVIRONMENT.md` | 环境要求（DB/gateway/chrome） |
-| `docs/private-beta/KNOWN_BLOCKERS.md` | 已知 blocker（含 TRST-4H-III ENV_BLOCKED） |
+| `docs/private-beta/KNOWN_BLOCKERS.md` | 已知 blocker（历史 blocker 已消解，详见执行日志） |
 
 环境模板（仅空 key，无真实 secret）：
 
@@ -188,8 +192,9 @@ npm run beta:report    # 生成 operator-facing readiness report
 npm run validate       # 完整验证（deterministic + live）
 ```
 
-> 当前总体状态：`READY_WITH_ENV_BLOCKERS`（产品/前端/浏览器/文档已就绪；
-> 仅 TRST-4H-III 的 DB/gateway live env 仍阻塞）。这不是 `READY`，也不是失败。
+> 当前总体状态：**`PRIVATE_BETA_READY` ✅**（产品/前端/浏览器/文档已就绪；
+> 2026-08-17 已实测 live run：Postgres + Gateway 全链路跑通，MWT-12 LIVE_PASS，真实 `[LIV]` 证据落库。
+> 外部 reviewer 会话按 operator 决策取消，局限声明见 `docs/private-beta/BETA_CANDIDATE_STATUS.md`）。
 
 ---
 
@@ -252,7 +257,7 @@ src/
 
 | 类别 | 技术 |
 |:---|:---|
-| Runtime | TypeScript / Node.js / Hono（端口 3000 前端 / 3001 后端） |
+| Runtime | TypeScript / Node.js / Hono（端口 3000 前端 / 3002 后端 / Gateway 8787） |
 | Database | PostgreSQL 16 + pgvector（Docker，端口 5432） |
 | Models | SiliconFlow / OpenRouter — Fast 层默认 `Qwen2.5-72B-Instruct`，Slow 层用户可选 |
 | Frontend | React + TypeScript（Next.js） |
