@@ -43,6 +43,35 @@ The following capabilities are **not available** in Private Beta:
 
 ---
 
+## Honest Boundary (No Overclaiming)
+
+Private Beta validates the **full product loop** (Observe → Visualize → Correlate → Assess → Control → Prove → Evidence Export). It does **not** constitute a production-grade governance system. The following four boundaries are explicitly stated to prevent overclaiming:
+
+| Boundary | What it means |
+|---|---|
+| **❌ No real worker runtime execution** | The `Attempt` step is executed by a **local deterministic harness**, not a real worker running production workloads. The loop is verified end-to-end, but "execution" itself is constructed/simulated. |
+| **❌ No autonomous policy execution** | `Review` is an **internal audit** (evidence completeness, hash coverage, missing-signal detection) — not governance. The system can observe and record, but cannot yet manage (policy enforcement is TRST-4F+). |
+| **❌ No external beta reviewer evidence** | External reviewer recruitment (3–5 real reviewers) was **cancelled by operator decision** (no external participants). This evidence gap is covered by this limitations statement — we do not claim it occurred. |
+| **❌ No full streaming / production ops / real enforcement** | Streaming is incomplete (`stream=true` returns `UNSUPPORTED_STREAMING`). No production-grade monitoring/alerting/SLA. No real enforcement (no DLP blocking, no mandatory approval flow) — control is dry-run observe + record + allow only. |
+
+### Full Governance Product (TRST-4)
+
+The target "governance-grade" product shape. Current completion ≈ **35–45%** (Private Beta ≈ 75–80%). Per priority order *evidence/reporting first → identity/policy → enforcement last*:
+
+| Charter | Scope | Status |
+|---|---|---|
+| 4A | Evidence Report UX | Not implemented |
+| 4B | Full Streaming Support | Not implemented |
+| 4C | Durable Evidence Store | Not implemented |
+| 4D | Backend Assessment API | Not implemented |
+| 4E | Authenticated Identity | Not implemented |
+| 4F | Policy Enforcement | Not implemented |
+| 4G | Production Ops | Not implemented |
+
+**One-line summary**: TrustOS today is a *product-loop-validated trusted observation/recording system* (Private Beta), **not** an *autonomously-governed production system* (Full Governance). The four ❌ above mark that gap honestly.
+
+---
+
 ## Key Concepts
 
 ### Dry-Run Control
