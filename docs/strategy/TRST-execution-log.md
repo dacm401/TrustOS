@@ -38,11 +38,32 @@ Current Phase:
     TRST-4A Evidence Report UX: SEALED ✅
     TRST-4B Streaming Validation & Hardening: SEALED ✅
     TRST-4C Durable Event Index: CLOSED ✅ (smoke 22/0 PASS, 358 events, closure report 2026-08-09)
-    TRST-4D Backend Assessment API: PAUSED ✅ (awaiting MWT-3 object model)
+    TRST-4D Backend Assessment API: COMPLETE ✅ (MWT-22, `22049fd`; /v1/assess LIVE, dry-run default)
     TRST-4X Console Surface Rebaseline: COMPLETE ✅
     TRST-F1 Chat→Gateway Integration: VALIDATED_INFRA ✅ (health check pass, Gateway 330 events, 2026-08-08)
     TRST-F2 Streaming Smoke 29/37→37/37: FIXED ✅ (field name mismatch, camelCase→snake_case, 2026-08-08)
     TRST-F3 Admin Panel Boundary Disclaimer: COMPLETE ✅ (frontend disclaimer + production gate, 2026-08-08)
+
+  MWT-21/22 (medium Governance Closure items, COMPLETE ✅):
+    MWT-21 Real Worker Wiring: COMPLETE ✅ (2026-08-17/19)
+      → execution-attempt-service.ts: `real` ExecutionMode + `RealExecutorFn` seam wired
+        (`defaultRealExecutor` = TaskPlanner + ExecutionLoop, hash-only output_hash)
+      → migration 031: additive `output_hash` col + index; CHECK constraint relaxed to include `real`
+        (applied to live Postgres)
+      → MWT-21 real live run: PASS ✅ (2026-08-19) — real worker executed, token consumed,
+        `output_hash` SHA-256 bound, raw NOT stored (red line honored)
+      → commit `6da33ec` pushed to origin feature/trst-3-private-beta-readiness
+    MWT-22 Backend Assessment API: COMPLETE ✅ (`22049fd`, 2026-08-17)
+      → src/api/assess.ts POST /v1/assess LIVE; src/services/assessment/assess-engine.ts ported
+        from frontend; runtimeEffect dry_run default; 6 tests PASS
+
+  Governance Closure gate: "完成中等后进行" SATISFIED ✅
+    → 4F Policy Enforcement: RECORDED_ONLY ⏸️ → DRAFT CHARTER ✍️ (2026-08-17,
+      docs/strategy/TRST-4F-policy-enforcement-charter.md)
+    → 4E Authenticated Identity: DEFERRED (Boss) ⏸️
+    → 4G Production Ops: DEFERRED (Boss) ⏸️
+    → 4F IMPLEMENTATION NOT AUTHORIZED — requires explicit Boss
+      `APPROVE_TRST-4F_IMPLEMENTATION` with chosen scope (block/hold/override)
 
   MWT Roadmap (supersedes TRST-4D~4G linear plan):
     MWT-0 Architecture Rebaseline → CLOSED ✅
@@ -818,6 +839,8 @@ TRST-1A/1B Real Upstream Validation — PASS_FULL ACCEPTED / CLOSED
 | AD-8 Gateway Graceful Degradation | CONFIRMED ✅ | Health 200, degradation logic PASS, frontend awareness PASS, 2026-08-09 |
 | MWT-2 Worker Run Lifecycle | SEALED ✅ | 39/0 smoke, snake_case wire, 10/10 AC + scope, 2026-08-10 |
 | MWT-1 Manager Shell Baseline | SEALED ✅ | 10/10 checklist PASS, Build PASS, TypeScript PASS, 7 files, PM+Boss visual confirmation PASS, 2026-08-09 |
+| MWT-21 Real Worker Wiring | COMPLETE ✅ | `real` ExecutionMode + `RealExecutorFn` seam wired; migration 031 applied (output_hash + CHECK relax); real live run PASS (output_hash SHA-256, raw not stored), `6da33ec` pushed, 2026-08-19 |
+| MWT-22 Backend Assessment API | COMPLETE ✅ | POST /v1/assess LIVE, dry-run default, assess-engine ported from frontend, 6 tests PASS, `22049fd`, 2026-08-17 |
 
 ### TRST-4B Streaming Support Validation & Hardening
 
@@ -1604,12 +1627,28 @@ TRST-4F Policy Enforcement (the observation→governance paradigm shift)
   - 4A Evidence Report UX: SEALED ✅
   - 4B Streaming: SEALED ✅ (doc bug to fix)
   - 4C Durable Evidence Store: CLOSED ✅
-  - 4D Backend Assessment API: PLANNED (MWT-22) ⏸️→▶️
+  - 4D Backend Assessment API: COMPLETE ✅ (MWT-22, `22049fd`, 2026-08-17)
   - 4E Authenticated Identity: DEFERRED (Boss) ⏸️
   - 4F Policy Enforcement: DRAFT CHARTER ✍️ (medium items done; NOT authorized)
   - 4G Production Ops: DEFERRED (Boss) ⏸️
-  → Completion moved from ~35–45% to ~55–60% (4A/4B/4C done; 4D in plan; 4E/4F/4G pending).
+  → Completion moved from ~35–45% to ~55–60% (4A/4B/4C done; 4D COMPLETE; 4E/4F/4G pending).
   → Private Beta maturity unchanged: still validated observation/recording, NOT governance.
+
+#### 2026-08-19 Long-Running Workstream progress (agent autonomous, within authorized bounds)
+
+- Action: execution-log state anchor reconciled to TRUE code state (was stale at
+  2026-08-10/13 narrative). Added MWT-21/22 COMPLETE to Current Gate + status table;
+  corrected 4D from PAUSED/PLANNED → COMPLETE (`22049fd`).
+- MWT-21 final: real live run PASS (2026-08-19), `6da33ec` pushed to origin. Red line
+  honored (output_hash SHA-256, raw not stored).
+- 4F: DRAFT IMPLEMENTATION PLAN written — `docs/strategy/TRST-4F-implementation-plan.md`
+  (plan-only, names real files/symbols: `TrustPolicyEngine`, assess control label, Gateway
+  forwarder, enforcement events). STILL UNAUTHORIZED.
+- Boundary check: no code written; no Trust Spine / Memory / raw-content change; 4F
+  implementation gated on explicit `APPROVE_TRST-4F_IMPLEMENTATION` + scope choice
+  (block / hold / override / dry-run window). 4E/4G remain Boss-deferred.
+- Next decision required from Boss: authorize 4F (scope) OR un-defer 4E/4G OR run MWT-12
+  operator live session. Agent will not start 4F code without the directive.
 
 ### MWT-1 Start Gate
 
