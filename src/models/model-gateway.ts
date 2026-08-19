@@ -8,6 +8,8 @@ import { callOpenAIWithOptions as _callOpenAIWithOptions } from "./providers/ope
 import { anthropicProvider } from "./providers/anthropic.js";
 import { getRequestTrace, recordLlmCall } from "../services/runtime-trace.js";
 import { config } from "../config.js";
+import { enforceBeforeLlmCall, PolicyBlockedError } from "../trust/policy-enforcement.js";
+import type { PolicyCheckRequest } from "../trust/policy-engine.js";
 
 const providers: ModelProvider[] = [openaiProvider, anthropicProvider];
 
@@ -481,6 +483,25 @@ function buildMockModelResponse(messages: ChatMessage[], isManagerRole: boolean,
   };
 }
 
+/**
+ * TRST-4F: enforcement checkpoint before any real upstream provider call.
+ * Computes a policy decision; in dry_run mode it only logs divergence events
+ * (never blocks). In live mode a deny decision throws PolicyBlockedError.
+ * Fail-open by design: with no deny rule matched, the call proceeds.
+ */
+function preLlmEnforce(model: string, llmCallKind?: LlmCallKind): void {
+  const trace = getRequestTrace();
+  const req: PolicyCheckRequest = {
+    data: { model, kind: llmCallKind ?? "unknown" },
+    dataType: "user_message",
+    recipient: "external_api",
+    userId: "system",
+    sessionId: trace?.traceId ?? "unknown",
+    source: `model-gateway:${model}`,
+  };
+  enforceBeforeLlmCall(req);
+}
+
 export async function callModel(
   model: string,
   messages: ChatMessage[],
@@ -521,12 +542,16 @@ export async function callModelFull(
     throw new Error(`[mock-llm] BLOCKED external provider call for ${model} — MOCK_LLM_ENABLED is true but mock gate was bypassed`);
   }
   try {
+    // TRST-4F: enforcement checkpoint (dry_run logs only; live may throw PolicyBlockedError)
+    preLlmEnforce(model, llmCallKind);
     // S93P: 带超时的 provider 调用
     const timeoutMs = getTimeoutMs(llmCallKind);
     const response = await callProviderWithTimeout(provider, model, messages, tools, timeoutMs);
     recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
     return response;
   } catch (error: any) {
+    // PolicyBlockedError is a legitimate enforcement outcome — rethrow as-is
+    if (error instanceof PolicyBlockedError) throw error;
     const mapped = mapProviderError(error, model);
     recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, mapped.code);
     // 只打印 code，不打印 raw provider error（隐私保护）
@@ -567,12 +592,16 @@ export async function callModelWithTools(
     throw new Error(`[mock-llm] BLOCKED external provider call for ${model} (callModelWithTools) — mock gate was bypassed`);
   }
   try {
+    // TRST-4F: enforcement checkpoint (dry_run logs only; live may throw PolicyBlockedError)
+    preLlmEnforce(model, llmCallKind);
     // S93P: 带超时的 provider 调用
     const timeoutMs = getTimeoutMs(llmCallKind);
     const response = await callProviderWithTimeout(provider, model, messages, tools, timeoutMs);
     recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
     return response;
   } catch (error: any) {
+    // PolicyBlockedError is a legitimate enforcement outcome — rethrow as-is
+    if (error instanceof PolicyBlockedError) throw error;
     const mapped = mapProviderError(error, model);
     recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), false, mapped.code);
     console.error(`[model-gateway] callModelWithTools failed: model=${model} code=${mapped.code}`);

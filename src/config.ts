@@ -31,6 +31,13 @@ export const config = {
   openaiBaseUrl: process.env.OPENAI_BASE_URL || "",
   // TRST-2: Gateway URL for real caller correlation (feature-flagged, unset = direct upstream)
   trustosGatewayUrl: process.env.TRUSTOS_GATEWAY_URL || "",
+
+  // TRST-4F: Policy Enforcement mode (Private Beta).
+  // "dry_run" (default): decisions are computed + logged as divergence events,
+  //   but NOTHING is blocked — all traffic passes through (honesty: no real enforcement yet).
+  // "live": deny/block decisions actually prevent the upstream call.
+  // Boss flips to "live" only after the dry-run divergence window is clean.
+  policyEnforcementMode: (process.env.POLICY_ENFORCEMENT_MODE as "dry_run" | "live") || "dry_run",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
   routerConfidenceThreshold: parseFloat(process.env.ROUTER_CONFIDENCE_THRESHOLD || "0.75"),
   qualityGateEnabled: process.env.QUALITY_GATE_ENABLED !== "false",

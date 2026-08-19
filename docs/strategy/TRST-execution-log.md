@@ -60,8 +60,12 @@ Current Phase:
   Governance Closure gate: "完成中等后进行" SATISFIED ✅
     → 4F Policy Enforcement: RECORDED_ONLY ⏸️ → DRAFT CHARTER ✍️ (2026-08-17,
       docs/strategy/TRST-4F-policy-enforcement-charter.md)
-    → 4E Authenticated Identity: DEFERRED (Boss) ⏸️
-    → 4G Production Ops: DEFERRED (Boss) ⏸️
+      → IMPLEMENTED ✅ (2026-08-19, v0 BLOCK only, dry_run default)
+        src/trust/policy-enforcement.ts (enforcement action half) + src/models/model-gateway.ts
+        checkpoint (callModelFull/callModelWithTools) + config.policyEnforcementMode.
+        6 tests PASS. live flip requires Boss directive (dry-run window clean).
+    → 4E Authenticated Identity: UNDEFERRED (Boss, 2026-08-19) — available for planning; not in v0 scope
+    → 4G Production Ops: UNDEFERRED (Boss, 2026-08-19) — available for planning; not in v0 scope
     → 4F IMPLEMENTATION NOT AUTHORIZED — requires explicit Boss
       `APPROVE_TRST-4F_IMPLEMENTATION` with chosen scope (block/hold/override)
 
@@ -1628,10 +1632,11 @@ TRST-4F Policy Enforcement (the observation→governance paradigm shift)
   - 4B Streaming: SEALED ✅ (doc bug to fix)
   - 4C Durable Evidence Store: CLOSED ✅
   - 4D Backend Assessment API: COMPLETE ✅ (MWT-22, `22049fd`, 2026-08-17)
-  - 4E Authenticated Identity: DEFERRED (Boss) ⏸️
-  - 4F Policy Enforcement: DRAFT CHARTER ✍️ (medium items done; NOT authorized)
-  - 4G Production Ops: DEFERRED (Boss) ⏸️
-  → Completion moved from ~35–45% to ~55–60% (4A/4B/4C done; 4D COMPLETE; 4E/4F/4G pending).
+  - 4E Authenticated Identity: UNDEFERRED (Boss, 2026-08-19) — available for planning; not in v0 scope
+  - 4F Policy Enforcement: IMPLEMENTED ✅ (v0 BLOCK only, dry_run default; 2026-08-19)
+      NOT "live" yet — Boss flips POLICY_ENFORCEMENT_MODE=live after dry-run window clean.
+  - 4G Production Ops: UNDEFERRED (Boss, 2026-08-19) — available for planning; not in v0 scope
+  → Completion moved from ~35–45% to ~55–60% (4A/4B/4C done; 4D COMPLETE; 4F IMPLEMENTED-dry_run; 4E/4G planning-ready).
   → Private Beta maturity unchanged: still validated observation/recording, NOT governance.
 
 #### 2026-08-19 Long-Running Workstream progress (agent autonomous, within authorized bounds)
@@ -1643,12 +1648,34 @@ TRST-4F Policy Enforcement (the observation→governance paradigm shift)
   honored (output_hash SHA-256, raw not stored).
 - 4F: DRAFT IMPLEMENTATION PLAN written — `docs/strategy/TRST-4F-implementation-plan.md`
   (plan-only, names real files/symbols: `TrustPolicyEngine`, assess control label, Gateway
-  forwarder, enforcement events). STILL UNAUTHORIZED.
+  forwarder, enforcement events).
 - Boundary check: no code written; no Trust Spine / Memory / raw-content change; 4F
   implementation gated on explicit `APPROVE_TRST-4F_IMPLEMENTATION` + scope choice
   (block / hold / override / dry-run window). 4E/4G remain Boss-deferred.
 - Next decision required from Boss: authorize 4F (scope) OR un-defer 4E/4G OR run MWT-12
   operator live session. Agent will not start 4F code without the directive.
+
+#### 2026-08-19 (2nd) 4F IMPLEMENTATION authorized + shipped (Boss directive)
+
+- Boss authorized: `APPROVE_TRST-4F_IMPLEMENTATION` (scope: BLOCK only) +
+  un-defer 4E/4G (planning-ready, not in v0).
+- 4F v0 IMPLEMENTED ✅ (BLOCK/deny only; dry_run default):
+  - `src/trust/policy-enforcement.ts` (NEW): enforcement ACTION half. `enforceBeforeLlmCall()`
+    wraps `TrustPolicyEngine.check()` with **fail-open** (no catch-all allow rule — that
+    would shadow deny rules), emits hash-only `policy_enforcement` events to Event Backbone.
+  - `src/models/model-gateway.ts`: `preLlmEnforce()` checkpoint inserted into `callModelFull`
+    + `callModelWithTools` (every real upstream call). `PolicyBlockedError` rethrown as-is.
+  - `src/config.ts`: `policyEnforcementMode: "dry_run" | "live"` (default `dry_run`).
+  - `tests/trust/policy-enforcement.test.ts` (NEW): 6 tests PASS (dry_run no-block, dry_run
+    shadow-log, live+deny throws, live allow, hash-only event, rule isolation).
+- Backend Typecheck PASSED ✅. Full validate: 4 backend TRST-4F/Provenance suites PASS;
+  4 FAILs are PRE-EXISTING frontend defects (api.ts missing exports, ManagerWorkspace types,
+  build safe-delete intercept) — unrelated to 4F (zero frontend files touched). Logged as backlog.
+- Safety/red-line preserved: fail-open default (no silent mass-block); raw payload NEVER
+  stored (events hash-only); honesty: `private-beta-limitations.md` still states "no real
+  enforcement" because mode is dry_run — claim updated only when Boss flips live.
+- Live flip gated: Boss sets `POLICY_ENFORCEMENT_MODE=live` after dry-run divergence window
+  is clean (no real blocking until then).
 
 ### MWT-1 Start Gate
 
