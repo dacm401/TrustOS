@@ -105,6 +105,18 @@ Current Phase:
     - §4-5 readinessCheck 复用（DB+config+event-store，不抛）。
     - §4-4/6/7 operator runbook 写入 go-live pack §7（回滚/监控/over-block 调优）。
     - §4-9 private-beta-limitations 已更新：Request Blocking = live opt-in ON；Honest Boundary 同步。
+  → 2026-08-20 Boss 授权"做后续"：4H / 4R / MWT-4B / MWT-5 纳入 agent 自主执行范围（无需 PM review）。
+    经核查执行日志，代码层实际状态如下（此前理解滞后，本次同步）：
+    - TRST-4H Manager Routing Intelligence: 已于 2026-08-11 IMPLEMENTED ✅ (hybrid classifier v0, 13/13 validate PASS)。
+      无待办。旧 1452 行 DISCOVERY 段 + 2375 行 "gated behind APPROVE_TRST-4H" 描述已过时。
+    - 4R (R4 合规锚定): 已于 4F 实现中并入（addEnforcementEventHash + getEnforcementAnchorRoot，97 行）。
+      核心已落地，无独立待办。
+    - MWT-4B Task Evidence Export: SEALED_FRONTEND_ONLY_V0 ✅ (2026-08-10) — frontend-only 切片已落地。
+      完整实现仍受 MWT-4B-implementation-readiness-gate.md 约束（export 按钮/签名/后端等禁改），
+      唯一剩余阻塞 = CHECKPOINT_2 真实 reviewer 反馈（PENDING_EXTERNAL_HUMAN_ACTION，目录仅 template）。
+      → agent 自主推进：可整理 readiness 收尾，但**不能伪造人类 reviewer 反馈**触发实现（诚实边界）。
+    - MWT-5 Manager Policy & Approval: SEALED_ADVISORY_CLIENT_SIDE_ARTIFACT_V0 ✅ (2026-08-11) —
+      advisory approval dry-run + Ed25519 签名信封已落地（MWT-5+, MWT-5R 46 test PASS）。
     - 当前状态：live 已 opt-in-on（仅作用于 agent 内部 LLM 调用，HTTP 网关转发路径未覆盖）。
     - 下一步：push 到 origin（网络阻塞）；监控 blocked:"true" 计数；over-block 走 §7.3。
 
@@ -1476,6 +1488,11 @@ NOT Authorized (MWT-4A guardrails):
 
 **Decision**: TRST-4H Charter to be drafted when PM is ready. Implementation gated behind PM APPROVE_TRST-4H directive. No premature implementation.
 
+> **UPDATED 2026-08-20**: 此 DISCOVERY 段已过时。TRST-4H 实际已于 2026-08-11 IMPLEMENTED ✅
+> (hybrid classifier v0, 13/13 validate PASS, 见下方 "TRST-4H Manager Routing Intelligence v0 —
+> IMPLEMENTED" 章节)。本段保留为历史诊断记录，不作为待办。Boss 2026-08-20 授权 agent 自主执行，
+> 但 4H 已无剩余工作。
+
 ---
 
 ## Acceptance Criteria (Last Closed Gate)
@@ -2372,7 +2389,13 @@ Origin Push: PENDING — BLOCKED by GitHub network (github.com:443 reset), agent
   branch feature/trst-3-private-beta-readiness when network recovers.
 
 Result: TRST-4 family v0 COMPLETE (4A/4B/4C/4D/4E/4F/4G all SEALED/IMPLEMENTED).
-  Remaining: 4H (mid-term Hybrid, gated behind APPROVE_TRST-4H) + 4R (R4 anchoring, follow-up).
+  4H: ALREADY IMPLEMENTED 2026-08-11 (hybrid classifier, 13/13 PASS) — no pending work.
+  4R: ALREADY MERGED into 4F (addEnforcementEventHash + getEnforcementAnchorRoot) — no pending work.
+  MWT-4B: SEALED_FRONTEND_ONLY_V0 (2026-08-10); full impl blocked only by CHECKPOINT_2 real reviewer
+          feedback (external human input; agent cannot fabricate — honest boundary).
+  MWT-5:  SEALED_ADVISORY_CLIENT_SIDE_ARTIFACT_V0 (2026-08-11, MWT-5+/5R 46 test PASS) — no pending work.
+  Boss authorization 2026-08-20: agent may self-execute all of the above without PM review; cannot
+  bypass the external-human reviewer feedback gate by fabricating input.
 ```
 
 ---
