@@ -18,6 +18,16 @@ import { writeFileSync } from "node:fs";
 import { readAllEvents, getStorePath } from "../services/trst1/jsonl-event-store.js";
 import type { TrstEventEnvelope } from "../services/trst1/event-envelope.js";
 
+/**
+ * 4E v0 (2026-08-20): attribution metadata for a governance action.
+ * Local shape mirrors src/trust/policy-enforcement.ts#SignerIdentity to avoid
+ * cross-layer coupling. fingerprint optional (no key store introduced).
+ */
+export interface SignerIdentity {
+  user_id: string;
+  public_key_fingerprint?: string;
+}
+
 export interface EvidenceAnchor {
   /** Merkle root of all event_hash in the store */
   root_hash: string;
@@ -29,6 +39,8 @@ export interface EvidenceAnchor {
   store_path: string | undefined;
   /** Hash algorithm identifier */
   algorithm: "sha256-merkle";
+  /** 4E v0: who exported this anchor */
+  signer_identity: SignerIdentity;
 }
 
 /**
@@ -68,8 +80,10 @@ export function computeEvidenceRootHash(events: TrstEventEnvelope[]): string {
 
 /**
  * Build an anchor object from the current event store.
+ * @param signer 4E v0: who is exporting this anchor (defaults to "system")
+ * @param events Optional pre-read events; defaults to reading the live store
  */
-export function buildAnchor(events?: TrstEventEnvelope[]): EvidenceAnchor {
+export function buildAnchor(signer?: SignerIdentity, events?: TrstEventEnvelope[]): EvidenceAnchor {
   const store = events ?? (readAllEvents() as unknown as TrstEventEnvelope[]);
   const root = computeEvidenceRootHash(store);
   return {
@@ -78,6 +92,7 @@ export function buildAnchor(events?: TrstEventEnvelope[]): EvidenceAnchor {
     generated_at: new Date().toISOString(),
     store_path: getStorePath(),
     algorithm: "sha256-merkle",
+    signer_identity: signer ?? { user_id: "system" },
   };
 }
 
@@ -88,11 +103,16 @@ export function buildAnchor(events?: TrstEventEnvelope[]): EvidenceAnchor {
  * (upload to immutable storage, print QR, commit to blockchain, etc.).
  *
  * @param outPath Absolute path for the anchor JSON file
+ * @param signer  4E v0: who is exporting this anchor (defaults to "system")
  * @param events  Optional pre-read events; defaults to reading the live store
  * @returns The written EvidenceAnchor
  */
-export function exportAnchorFile(outPath: string, events?: TrstEventEnvelope[]): EvidenceAnchor {
-  const anchor = buildAnchor(events);
+export function exportAnchorFile(
+  outPath: string,
+  signer?: SignerIdentity,
+  events?: TrstEventEnvelope[],
+): EvidenceAnchor {
+  const anchor = buildAnchor(signer, events);
   writeFileSync(outPath, JSON.stringify(anchor, null, 2), "utf-8");
   return anchor;
 }

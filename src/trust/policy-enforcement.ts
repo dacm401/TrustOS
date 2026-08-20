@@ -42,6 +42,17 @@ export interface EnforcementOutcome {
 }
 
 /**
+ * 4E v0 (2026-08-20): attribution metadata for a governance action.
+ * Reuses local-identity concepts but does NOT introduce a key store.
+ * fingerprint is optional — populated only when caller supplies a local
+ * identity descriptor; default (X-User-Id) records userId only.
+ */
+export interface SignerIdentity {
+  user_id: string;
+  public_key_fingerprint?: string;
+}
+
+/**
  * Build the engine with fail-open semantics.
  * IMPORTANT: do NOT install an `allow-all` rule with `condition: () => true` —
  * TrustPolicyEngine.check() returns the FIRST matching rule, so a catch-all allow
@@ -88,6 +99,7 @@ function emitEnforcementEvent(
   result: PolicyCheckResult,
   mode: "dry_run" | "live",
   blocked: boolean,
+  signer?: SignerIdentity,
 ): void {
   try {
     appendEvent({
@@ -105,6 +117,10 @@ function emitEnforcementEvent(
       recipient: req.recipient,
       enforcement_mode: mode,
       blocked: blocked ? "true" : "false",
+      // 4E v0: attribution metadata (who triggered this enforcement decision)
+      signer_identity: signer
+        ? { user_id: signer.user_id, ...(signer.public_key_fingerprint ? { public_key_fingerprint: signer.public_key_fingerprint } : {}) }
+        : { user_id: req.userId ?? "unknown" },
     } as any);
   } catch {
     // Never let enforcement logging break the call path.
@@ -117,14 +133,14 @@ function emitEnforcementEvent(
  * @returns outcome (always allows the caller to proceed unless live+deny)
  * @throws PolicyBlockedError when mode=live and decision=deny
  */
-export function enforceBeforeLlmCall(req: PolicyCheckRequest): EnforcementOutcome {
+export function enforceBeforeLlmCall(req: PolicyCheckRequest, signer?: SignerIdentity): EnforcementOutcome {
   const mode = config.policyEnforcementMode;
   const result = engine.check(req);
   const blocked = result.decision === "deny";
 
   if (blocked) {
     // dry_run: log divergence, but DO NOT block (shadow).
-    emitEnforcementEvent(req, result, mode, mode === "live");
+    emitEnforcementEvent(req, result, mode, mode === "live", signer);
     if (mode === "live") {
       throw new PolicyBlockedError(result);
     }
@@ -133,7 +149,7 @@ export function enforceBeforeLlmCall(req: PolicyCheckRequest): EnforcementOutcom
 
   // allow / (transform|ask_user not in v0 scope) — pass through, optionally log.
   if (mode === "live") {
-    emitEnforcementEvent(req, result, mode, false);
+    emitEnforcementEvent(req, result, mode, false, signer);
   }
   return { decision: result.decision, blocked: false, mode, ruleId: result.ruleId };
 }

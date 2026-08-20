@@ -77,10 +77,15 @@ Current Phase:
           不引入任何第三方服务（守 R6 不生产化护栏）。新增 tests/trust/evidence-anchor.test.ts（6 PASS）。
         4F charter §4 Out-of-scope 已更新：No DLP → "No semantic DLP；模式 DLP 已重设为 opt-in"。
         raw payload 绝不落库、enforcement 事件仅 hash+标签 两条红线 **保持不变**。
-    → 4E Authenticated Identity: UNDEFERRED (Boss, 2026-08-19) — available for planning; not in v0 scope
-    → 4G Production Ops: UNDEFERRED (Boss, 2026-08-19) — available for planning; not in v0 scope
-    → 4F IMPLEMENTATION NOT AUTHORIZED — requires explicit Boss
-      `APPROVE_TRST-4F_IMPLEMENTATION` with chosen scope (block/hold/override)
+    → 4E Authenticated Identity: CONVERGED to v0 charter ✅ (Boss "可以开 4E/4G", 2026-08-20)
+        TRST-4E-authenticated-identity-charter.md 已收敛 MWT-4E Ed25519 + Sprint48 identity 中间件为正式
+        charter; v0 deliverable = enforcement/evidence 事件带 signer_identity（复用 local-identity 类型，
+        零新依赖、不引入 key store）。tests/trust/identity-signature.test.ts (4 PASS)。
+    → 4G Production Ops: CONVERGED to v0 charter ✅ (Boss "可以开 4E/4G", 2026-08-20)
+        TRST-4G-production-ops-baseline-charter.md 收敛 health/observability/metrics 为 Ops Baseline v0;
+        v0 deliverable = src/ops/readiness.ts 启动自检聚合（DB+config+event-store，零新依赖、degrade 不抛）。
+        tests/ops/readiness.test.ts (3 PASS)。
+    → 4F: IMPLEMENTED ✅ + R1/R4 红线重设已 commit (aed0fde)。v0 收口完成，待 PM seal。
 
   MWT Roadmap (supersedes TRST-4D~4G linear plan):
     MWT-0 Architecture Rebaseline → CLOSED ✅

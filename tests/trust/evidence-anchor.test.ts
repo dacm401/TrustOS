@@ -66,15 +66,19 @@ describe("R4 evidence anchor", () => {
     expect(() => computeEvidenceRootHash([])).toThrow();
   });
 
-  it("buildAnchor reads from store and reports event count", () => {
-    const anchor = buildAnchor([sealed("b1"), sealed("b2")]);
+  it("buildAnchor reads from provided events and reports event count", () => {
+    const anchor = buildAnchor({ user_id: "system" }, [sealed("b1"), sealed("b2")]);
     expect(anchor.event_count).toBe(2);
     expect(anchor.algorithm).toBe("sha256-merkle");
     expect(anchor.root_hash).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it("exportAnchorFile writes self-hosted WORM anchor (zero network deps)", async () => {
-    const anchor = exportAnchorFile(ANCHOR_PATH, [sealed("c1"), sealed("c2"), sealed("c3")]);
+    const anchor = exportAnchorFile(
+      ANCHOR_PATH,
+      { user_id: "system" },
+      [sealed("c1"), sealed("c2"), sealed("c3")],
+    );
     const onDisk = JSON.parse(await fs.readFile(ANCHOR_PATH, "utf8"));
     expect(onDisk.root_hash).toBe(anchor.root_hash);
     expect(onDisk.event_count).toBe(3);
