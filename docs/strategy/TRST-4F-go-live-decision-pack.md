@@ -30,11 +30,11 @@ safety boundary.
 
 | Env var | Default | Effect |
 |---|---|---|
-| `TRUSTOS_DLP_ENABLED` | `false` | Enables pattern DLP: `buildEngine()` injects `DEFAULT_POLICY_RULES` (field-classification + keyword/pattern PII). Off = Shadow zero-friction. **Enterprise profile recommends `1`.** |
+| `TRUSTOS_DLP_ENABLED` | `false` | Enables pattern DLP: `buildEngine()` injects `DEFAULT_POLICY_RULES` (field-classification + keyword/pattern PII). Off = Shadow zero-friction. **Enterprise profile recommends `true` (note: config parses `=== "true"`, so write `true`, not `1`).** |
 | `POLICY_ENFORCEMENT_MODE` | `dry_run` | `dry_run` = log divergence only, never block. `live` = deny decisions throw `PolicyBlockedError` and block the upstream call. |
 
 **Blocking only happens when BOTH are true AND a deny rule matches.**
-- `TRUSTOS_DLP_ENABLED=1` + `POLICY_ENFORCEMENT_MODE=live` → strictly_private → real `deny`, confidential → `ask_user`.
+- `TRUSTOS_DLP_ENABLED=true` + `POLICY_ENFORCEMENT_MODE=live` → strictly_private → real `deny`, confidential → `ask_user`.
 - Either switch off → no real blocking (safe default).
 
 ---
@@ -122,3 +122,39 @@ C wires live blocking end-to-end. Completed under Boss "按 ABC 顺序做" direc
 Validation: `evidence-anchor.test.ts` +3 merge cases (21 trust tests PASS), `tsc` 0 errors.
 
 C is complete; flipping `live` for production still requires the §4 checklist + explicit PM go-live directive.
+
+---
+
+## 7. Operator Runbook (live is ON — 2026-08-20)
+
+Covers checklist §4-4 (rollback), §4-6 (monitoring), §4-7 (over-block tuning).
+
+### 7.1 Rollback (instant, no code change)
+```bash
+# Disable real blocking immediately (default is dry_run, so unset also reverts):
+POLICY_ENFORCEMENT_MODE=dry_run
+# Full safety net — disable DLP detection entirely:
+TRUSTOS_DLP_ENABLED=false
+```
+Restart the gateway. Past enforcement events remain hash-chained in `events.jsonl`;
+the compliance anchor keeps its history. No event loss on rollback.
+
+### 7.2 Monitoring (what to watch)
+- Count of `policy_enforcement` events with `blocked:"true"` → real blocks.
+- Count of `decision:"ask_user"` → confidential holds queued for human review.
+- `getEnforcementAnchorRoot()` / `getEnforcementAnchorCount()` → compliance anchor growth.
+- `readinessCheck()` (4G) must stay `ready:true`; config check fails if
+  `dlpEnabled && !policyEnforcementMode`.
+
+### 7.3 Over-block playbook (false-positive spike)
+If would_block rate spikes above threshold after go-live:
+1. Tighten `DEFAULT_POLICY_RULES` (e.g. raise confidence threshold in `inferClassification`).
+2. Or drop a specific rule id from the injected set in `buildEngine()`.
+3. If urgent: rollback to `dry_run` (§7.1) while tuning — fail-open guarantees continuity.
+4. Re-run `4f-dryrun-divergence-report.mts` to confirm divergence back within threshold.
+
+### 7.4 Scope reminder
+4F enforcement acts on **agent-internal LLM calls** (worker / planner / compressor
+via `model-gateway`). The HTTP `/v1/chat/completions` forwarding path is NOT under
+enforcement — by design, the gateway is the observe entry point. If HTTP-path
+enforcement is later required, it needs a separate charter (gateway-side hook).

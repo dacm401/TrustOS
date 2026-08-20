@@ -99,6 +99,14 @@ Current Phase:
     live 拦截需双开关+显式 deny 规则（fail-open）。evidence-anchor.test.ts +3 合并用例，21 PASS, tsc 0。
     注：4F 拦截作用于 agent 内部 LLM 调用（model-gateway 路径），HTTP 网关转发路径不在此列。
   → 待办：push 本地 commit 链到 origin（网络阻塞）；PM 决策是否 flip live（go-live 决策包 §4）。
+  → APPROVE_TRST-4F_IMPLEMENTATION（Boss "是否 flip live：是", 2026-08-20）—— flip 已执行：
+    - .env 追加 TRUSTOS_DLP_ENABLED=true + POLICY_ENFORCEMENT_MODE=live（双开关开启，fail-open 保留）。
+    - §4-1 分歧报告：当前 0 enforcement 事件，would_block 率 0% → GO（阈值 2%）。
+    - §4-5 readinessCheck 复用（DB+config+event-store，不抛）。
+    - §4-4/6/7 operator runbook 写入 go-live pack §7（回滚/监控/over-block 调优）。
+    - §4-9 private-beta-limitations 已更新：Request Blocking = live opt-in ON；Honest Boundary 同步。
+    - 当前状态：live 已 opt-in-on（仅作用于 agent 内部 LLM 调用，HTTP 网关转发路径未覆盖）。
+    - 下一步：push 到 origin（网络阻塞）；监控 blocked:"true" 计数；over-block 走 §7.3。
 
   MWT Roadmap (supersedes TRST-4D~4G linear plan):
     MWT-0 Architecture Rebaseline → CLOSED ✅

@@ -35,7 +35,7 @@ The following capabilities are **not available** in Private Beta:
 
 | Limitation | Detail |
 |---|---|
-| **Request Blocking (default dry-run)** | Default control is dry-run (recommend only). Real blocking/holding is available via `POLICY_ENFORCEMENT_MODE=live` + `TRUSTOS_DLP_ENABLED=1`, but ships off by default and requires explicit operator opt-in (go-live decision package, see 4F charter §9). |
+| **Request Blocking (live opt-in ON)** | Real blocking is **enabled** in this deployment via `POLICY_ENFORCEMENT_MODE=live` + `TRUSTOS_DLP_ENABLED=true` (PM go-live directive, 2026-08-20). Pattern DLP flags strictly_private → real deny, confidential → ask_user. Fail-open: with no matching deny rule, traffic passes (no silent mass-blocking). Rollback: set `POLICY_ENFORCEMENT_MODE=dry_run` (see 4F go-live pack §2). |
 | **Authenticated Identity** | `agent_id` is a label, not an authenticated identity. No identity verification is performed. |
 | **RBAC / Access Control** | No user roles, permissions, or enterprise access control. |
 | **Tenant Isolation** | Single-environment. No multi-tenant data or policy separation. |
@@ -56,7 +56,7 @@ Private Beta validates the **full product loop** (Observe → Visualize → Corr
 | **❌ No real worker runtime execution** | The `Attempt` step is executed by a **local deterministic harness**, not a real worker running production workloads. The loop is verified end-to-end, but "execution" itself is constructed/simulated. |
 | **❌ No autonomous policy execution** | `Review` is an **internal audit** (evidence completeness, hash coverage, missing-signal detection) — not governance. The system can observe and record, but cannot yet manage (policy enforcement is TRST-4F+). |
 | **❌ No external beta reviewer evidence** | External reviewer recruitment (3–5 real reviewers) was **cancelled by operator decision** (no external participants). This evidence gap is covered by this limitations statement — we do not claim it occurred. |
-| **❌ No full streaming / production ops / mandatory enforcement** | Streaming SSE is supported for *completed* streams (TRST-4B), but *interrupted/cancelled* streams have no `output_hash` and there is no delivery guarantee or chunk-level evidence. No production-grade monitoring/alerting/SLA. Enforcement is **off by default** (dry-run observe + record + allow); real DLP blocking / mandatory approval flow is an **opt-in enterprise capability** (4F charter §9), not enabled in Private Beta out-of-the-box. |
+| **❌ No full streaming / production ops / mandatory enforcement** | Streaming SSE is supported for *completed* streams (TRST-4B), but *interrupted/cancelled* streams have no `output_hash` and there is no delivery guarantee or chunk-level evidence. No production-grade monitoring/alerting/SLA. Enforcement is **live opt-in ON** in this deployment (PM go-live directive 2026-08-20, fail-open by design): real DLP blocking / mandatory approval flow is available for agent-internal LLM calls, but the HTTP gateway `/v1/chat/completions` forwarding path is not yet under enforcement (gateway = observe entry point). |
 
 ### Full Governance Product (TRST-4)
 
