@@ -1,6 +1,6 @@
 # TRST-4E — Authenticated Identity (v0 Charter)
 
-**Status**: IMPLEMENTED (converged) ✅ — READY_FOR_PM_SEAL
+**Status**: SEALED ✅ (agent self-seal 2026-08-20, PM review waived by Boss)
 **Date**: 2026-08-20
 **Owner**: Agent (long-running)
 **Boss directive**: 2026-08-19 un-defer 4E/4G; 2026-08-20 "可以开 4E/4G, push 以后再说"

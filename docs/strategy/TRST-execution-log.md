@@ -98,7 +98,7 @@ Current Phase:
     preLlmEnforce signer 归因修正（req.userId ?? "system"）；默认仍 dry_run/dlpEnabled=false，
     live 拦截需双开关+显式 deny 规则（fail-open）。evidence-anchor.test.ts +3 合并用例，21 PASS, tsc 0。
     注：4F 拦截作用于 agent 内部 LLM 调用（model-gateway 路径），HTTP 网关转发路径不在此列。
-  → 待办：push 本地 commit 链到 origin（网络阻塞）；PM 决策是否 flip live（go-live 决策包 §4）。
+  → 待办：push 本地 commit 链到 origin（网络阻塞，agent 已获自主执行授权，网络恢复即推）。
   → APPROVE_TRST-4F_IMPLEMENTATION（Boss "是否 flip live：是", 2026-08-20）—— flip 已执行：
     - .env 追加 TRUSTOS_DLP_ENABLED=true + POLICY_ENFORCEMENT_MODE=live（双开关开启，fail-open 保留）。
     - §4-1 分歧报告：当前 0 enforcement 事件，would_block 率 0% → GO（阈值 2%）。
@@ -1410,10 +1410,10 @@ NOT Authorized (MWT-4A guardrails):
 | **4B** | Streaming Validation & Hardening | SEALED ✅ | COMPLETE ✅ | tsc 0, build 6/6, TRST-4A 14/14, overclaim PASS | 9 files, +322/-12 lines |
 | **4X** | Console Surface Rebaseline | COMPLETE ✅ | COMPLETE ✅ | tsc 0, build 5/5, 20/20 trst3 smoke, 14/14 trst4a smoke | 30 files, +3114/-2203 lines, commit cf4f6cf |
 | 4C | Durable Evidence Store | CLOSED ✅ | COMPLETE ✅ | 22/0 smoke, 358 events, write-through indexed | 3 commits |
-| 4D | Backend Assessment API | Pending | ❌ | — | — |
-| 4E | Authenticated Identity | Pending | ❌ | — | — |
-| 4F | Policy Enforcement | Pending | ❌ | — | — |
-| 4G | Production Ops Baseline | Pending | ❌ | — | — |
+| 4D | Backend Assessment API | COMPLETE ✅ | COMPLETE | MWT-22 `22049fd` | — |
+| 4E | Authenticated Identity | SEALED ✅ (converged v0) | IMPLEMENTED | 6/6 AC, 18 tests | `src/services/identity/local-identity.ts`, `src/middleware/identity.ts` |
+| 4F | Policy Enforcement | IMPLEMENTED ✅ + LIVE opt-in ON | COMPLETE | 21 PASS, tsc 0, `aed0fde`→`8b8a8f0`→`a57af6d` | `src/trust/policy-enforcement.ts`, `src/models/model-gateway.ts` |
+| 4G | Production Ops Baseline | SEALED ✅ (converged v0) | IMPLEMENTED | 6/6 AC, `readiness.test.ts` 3 PASS | `src/ops/readiness.ts` |
 | **4H** | **Manager Routing Intelligence (Hybrid)** | **Discovery** | **Short-term ✅** | **Keyword expansion done** | **1 file** |
 
 **TRST-4B Files (9):**
@@ -2339,6 +2339,40 @@ docs/strategy/
   CHECKPOINT_2-reviewer-recruitment-plan.md           — Reviewer recruitment plan (ACCEPTED ✅)
   CHECKPOINT_2-reviewer-packet.md                     — Reviewer outreach packet (ACCEPTED ✅, PM external outreach)
   CHECKPOINT_2-reviewer-gap-report.md                 — Reviewer gap report (ACCEPTED ✅, agent cannot fabricate)
+```
+
+---
+
+## 2026-08-20 — TRST-4E / 4G SEAL + 4F LIVE 自主执行授权
+
+```text
+Boss instruction (2026-08-20): "几项都授权你自己做，不需要 PM review."
+→ 4E SEAL、4G SEAL、4F live 监控/封板、origin push 全部授予 agent 自主执行权，
+  不再需要 PM walkthrough/签字门禁。
+
+TRST-4E Authenticated Identity: SEALED ✅ (agent self-seal 2026-08-20)
+  - Status: IMPLEMENTED (converged to v0 charter) — 6/6 AC PASS, 18 tests PASS
+  - Files: src/services/identity/local-identity.ts, src/middleware/identity.ts
+  - Scope: single-org seed (trustos-cli), local-identity.ts real impl, identity middleware
+  - Excluded from v0: org_id/RBAC/real auth infra/SSO (per guardrails)
+
+TRST-4G Production Ops Baseline: SEALED ✅ (agent self-seal 2026-08-20)
+  - Status: IMPLEMENTED (converged to v0 charter) — 6/6 AC PASS, readiness.test.ts 3 PASS
+  - Files: src/ops/readiness.ts
+  - Scope: aggregate readiness (DB+config+event-store), degrade-not-throw, /ops/healthz + /ops/ready
+  - Excluded from v0: external APM/alerting/metrics pipeline (per guardrails)
+
+TRST-4F Policy Enforcement: LIVE ✅ (already flipped 2026-08-20)
+  - POLICY_ENFORCEMENT_MODE=live + TRSTOS_DLP_ENABLED=true in local .env (gitignored)
+  - Commits: aed0fde → 63070b0 → 8b8a8f0 (A/B/C) → a57af6d (flip live)
+  - 21 PASS tests, tsc 0; go-live divergence report GO (0 events, 0%)
+  - Monitoring: watch policy_enforcement events blocked:"true"; over-block → go-live pack §7.3
+
+Origin Push: PENDING — BLOCKED by GitHub network (github.com:443 reset), agent authorized to push
+  branch feature/trst-3-private-beta-readiness when network recovers.
+
+Result: TRST-4 family v0 COMPLETE (4A/4B/4C/4D/4E/4F/4G all SEALED/IMPLEMENTED).
+  Remaining: 4H (mid-term Hybrid, gated behind APPROVE_TRST-4H) + 4R (R4 anchoring, follow-up).
 ```
 
 ---
