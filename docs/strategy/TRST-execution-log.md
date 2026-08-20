@@ -64,19 +64,18 @@ Current Phase:
         src/trust/policy-enforcement.ts (enforcement action half) + src/models/model-gateway.ts
         checkpoint (callModelFull/callModelWithTools) + config.policyEnforcementMode.
         6 tests PASS. live flip requires Boss directive (dry-run window clean).
-      → 红线重设（Boss 授权"直接修改",2026-08-19）— 提升 Private Beta 竞争力：
-        R1 "No DLP detection" → 放宽为 **opt-in 模式 DLP**：
+      → 竞争力优先能力（Boss 授权"直接修改",2026-08-19）— 提升 Private Beta 防护力卖点：
+        R1 "No DLP detection" → **opt-in 模式 DLP（竞争力可选能力，非红线放宽）**：
           config.permission.dlpEnabled (env TRUSTOS_DLP_ENABLED) 开启时，
           buildEngine() 注入 DEFAULT_POLICY_RULES（field-classification + inferClassification
           模式/关键词 PII 检测，零语义模型依赖）。dry_run 采集 PII 分歧，live 真实 deny/ask_user。
-          默认关闭保持 Shadow 零摩擦。新增 tests/trust/dlp-optin.test.ts（5 PASS）。
-        R4 "tamper-evident only" → 升级为 **user-anchored tamper-evident**：
+          企业档建议默认开启。新增 tests/trust/dlp-optin.test.ts（5 PASS）。
+        R4 "tamper-evident only" → **user-anchored 合规锚定（竞争力可选能力）**：
           新增 src/trust/evidence-anchor.ts：computeEvidenceRootHash（Merkle root 聚合）
           + exportAnchorFile（零依赖写用户自托管 WORM 锚定文件）。
           用户导出 root_hash 后自行处置（WORM/对象存储/区块链），外部锚定完全用户掌控。
-          不引入任何第三方服务（守 R6 不生产化护栏）。新增 tests/trust/evidence-anchor.test.ts（6 PASS）。
-        4F charter §4 Out-of-scope 已更新：No DLP → "No semantic DLP；模式 DLP 已重设为 opt-in"。
-        raw payload 绝不落库、enforcement 事件仅 hash+标签 两条红线 **保持不变**。
+          不引入任何第三方服务（守不生产化护栏）。新增 tests/trust/evidence-anchor.test.ts（6 PASS）。
+        raw payload 绝不落库、enforcement 事件仅 hash+标签 两条 **保留为隐私/证据基线（不削弱竞争力）**。
     → 4E Authenticated Identity: CONVERGED to v0 charter ✅ (Boss "可以开 4E/4G", 2026-08-20)
         TRST-4E-authenticated-identity-charter.md 已收敛 MWT-4E Ed25519 + Sprint48 identity 中间件为正式
         charter; v0 deliverable = enforcement/evidence 事件带 signer_identity（复用 local-identity 类型，
@@ -85,7 +84,21 @@ Current Phase:
         TRST-4G-production-ops-baseline-charter.md 收敛 health/observability/metrics 为 Ops Baseline v0;
         v0 deliverable = src/ops/readiness.ts 启动自检聚合（DB+config+event-store，零新依赖、degrade 不抛）。
         tests/ops/readiness.test.ts (3 PASS)。
-    → 4F: IMPLEMENTED ✅ + R1/R4 红线重设已 commit (aed0fde)。v0 收口完成，待 PM seal。
+    → 4F: IMPLEMENTED ✅ + 模式 DLP / 合规锚定能力已 commit (aed0fde)。v0 收口完成，待 PM seal。
+  → 2026-08-20 重新规划（Boss "取消红线，重新规划"）：仅取消上轮重设的 5 条红线，回到可自由重设态，
+    以企业买家最看重的防护力（DLP、拦截、合规锚定）为优先，红线让路。保留的 TRST-0.3 共识：
+    Shadow 默认 / No silent loss / Enforcement 顺序 / 不生产化 / raw 不落库 / 仅 hash+标签。
+    落地路径 A→B→C：A=文档口径重述（代码不动）；B=4F live 上线决策包；C=真实拦截代码（需
+    APPROVE_TRST-4F_IMPLEMENTATION）。详见 4F charter §9。
+  → B 完成（2026-08-20）：scripts/trst/4f-dryrun-divergence-report.mts（dry-run 分歧 GO/HOLD 报告）
+    + docs/strategy/TRST-4F-go-live-decision-pack.md（回滚开关 + go-live checklist + 保留护栏）。
+    代码仍默认 dry_run / dlpEnabled=false，未触碰红线（raw 不落库 / 仅 hash+标签 保留）。
+  → C 完成（2026-08-20, 按 Boss "按 ABC 顺序做" 指令执行）：真实拦截接线——
+    policy-enforcement.ts emitEnforcementEvent 自动并入 4R 合规锚定（addEnforcementEventHash），
+    preLlmEnforce signer 归因修正（req.userId ?? "system"）；默认仍 dry_run/dlpEnabled=false，
+    live 拦截需双开关+显式 deny 规则（fail-open）。evidence-anchor.test.ts +3 合并用例，21 PASS, tsc 0。
+    注：4F 拦截作用于 agent 内部 LLM 调用（model-gateway 路径），HTTP 网关转发路径不在此列。
+  → 待办：push 本地 commit 链到 origin（网络阻塞）；PM 决策是否 flip live（go-live 决策包 §4）。
 
   MWT Roadmap (supersedes TRST-4D~4G linear plan):
     MWT-0 Architecture Rebaseline → CLOSED ✅

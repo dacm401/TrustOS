@@ -19,7 +19,10 @@ TrustOS is an AI governance observation layer. In Private Beta, it provides:
 | **Event Hashing** | SHA256 hashes for events, inputs, and outputs |
 | **Trace Labeling** | Group events by `trace_id` for correlation |
 | **Risk Assessment** | Automated governance signal detection (privacy, operational, evidence-integrity) |
-| **Dry-Run Control** | Recommend allow/review actions without blocking or modifying requests |
+| **Dry-Run Control** | Recommend allow/review actions without blocking or modifying requests (default mode) |
+| **Pattern DLP (opt-in)** | When `TRUSTOS_DLP_ENABLED=1`, field-classification + keyword/pattern PII detection flags sensitive payloads; dry-run records divergences, live mode can deny/ask |
+| **Enforcement (live opt-in)** | When `POLICY_ENFORCEMENT_MODE=live`, high-severity privacy signals can block/hold requests (enterprise protection; default dry-run) |
+| **Compliance Anchoring** | `evidence-anchor.ts` Merkle root over enforcement events; exportable WORM anchor file for audit/compliance |
 | **Evidence Bundles** | Privacy-safe evidence export with hashes and metadata |
 | **Context Curation** | Manager curates/compresses context before dispatch; worker receives minimal necessary instruction, not full raw prompt |
 | **Hash Verification** | Reviewer-side SHA256 verification of output consistency |
@@ -32,7 +35,7 @@ The following capabilities are **not available** in Private Beta:
 
 | Limitation | Detail |
 |---|---|
-| **Request Blocking** | Control is dry-run only. No requests are blocked, modified, or remediated. |
+| **Request Blocking (default dry-run)** | Default control is dry-run (recommend only). Real blocking/holding is available via `POLICY_ENFORCEMENT_MODE=live` + `TRUSTOS_DLP_ENABLED=1`, but ships off by default and requires explicit operator opt-in (go-live decision package, see 4F charter §9). |
 | **Authenticated Identity** | `agent_id` is a label, not an authenticated identity. No identity verification is performed. |
 | **RBAC / Access Control** | No user roles, permissions, or enterprise access control. |
 | **Tenant Isolation** | Single-environment. No multi-tenant data or policy separation. |
@@ -53,7 +56,7 @@ Private Beta validates the **full product loop** (Observe → Visualize → Corr
 | **❌ No real worker runtime execution** | The `Attempt` step is executed by a **local deterministic harness**, not a real worker running production workloads. The loop is verified end-to-end, but "execution" itself is constructed/simulated. |
 | **❌ No autonomous policy execution** | `Review` is an **internal audit** (evidence completeness, hash coverage, missing-signal detection) — not governance. The system can observe and record, but cannot yet manage (policy enforcement is TRST-4F+). |
 | **❌ No external beta reviewer evidence** | External reviewer recruitment (3–5 real reviewers) was **cancelled by operator decision** (no external participants). This evidence gap is covered by this limitations statement — we do not claim it occurred. |
-| **❌ No full streaming / production ops / real enforcement** | Streaming SSE is supported for *completed* streams (TRST-4B), but *interrupted/cancelled* streams have no `output_hash` and there is no delivery guarantee or chunk-level evidence. No production-grade monitoring/alerting/SLA. No real enforcement (no DLP blocking, no mandatory approval flow) — control is dry-run observe + record + allow only. |
+| **❌ No full streaming / production ops / mandatory enforcement** | Streaming SSE is supported for *completed* streams (TRST-4B), but *interrupted/cancelled* streams have no `output_hash` and there is no delivery guarantee or chunk-level evidence. No production-grade monitoring/alerting/SLA. Enforcement is **off by default** (dry-run observe + record + allow); real DLP blocking / mandatory approval flow is an **opt-in enterprise capability** (4F charter §9), not enabled in Private Beta out-of-the-box. |
 
 ### Full Governance Product (TRST-4)
 

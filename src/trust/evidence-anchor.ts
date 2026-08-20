@@ -1,10 +1,10 @@
 /**
- * Evidence Anchor — R4 红线重设（2026-08-19）
+ * Evidence Anchor — R4 合规锚定（竞争力优先，2026-08-20 重新规划）
  *
  * 原 TRST-0.3 R4: "Tamper-evident, 非 tamper-proof"。
- * 重设：在保持零外部依赖的前提下，允许用户将本地证据链根哈希导出到
- * 自托管的不可变存储（WORM / 对象存储 / 区块链 / 纸质 QR），从而把
- * "tamper-evident" 升级为 "tamper-evident + user-anchored"。
+ * 竞争力优先口径：在保持零外部依赖的前提下，把 enforcement（4F 真实拦截）
+ * 决策也纳入合规锚定——enforcement 事件自动并入 Merkle root，导出时形成
+ * "谁在何时被拦截/放行" 的不可篡改审计链（user-anchored tamper-evident）。
  *
  * 设计原则（不违反 R6 不生产化护栏）：
  *   - 不引入任何第三方服务 / SDK / 网络调用。
@@ -115,4 +115,35 @@ export function exportAnchorFile(
   const anchor = buildAnchor(signer, events);
   writeFileSync(outPath, JSON.stringify(anchor, null, 2), "utf-8");
   return anchor;
+}
+
+// ── 4F → 4R Enforcement Anchor Merge (2026-08-20) ──────────────────────────
+//
+// Live enforcement (4F) emits `policy_enforcement` events. To give enterprise
+// buyers an audit chain over *blocking decisions* (not just observations), we
+// accumulate every enforcement event_hash into a dedicated Merkle accumulator
+// that can be merged into the main evidence root at export time.
+//
+// This is additive and zero-dependency; it never stores raw payloads.
+
+const enforcementHashes: string[] = [];
+
+/** Record an enforcement event hash into the compliance accumulator. */
+export function addEnforcementEventHash(eventHash: string): void {
+  if (eventHash) enforcementHashes.push(eventHash);
+}
+
+/** Current count of anchored enforcement decisions. */
+export function getEnforcementAnchorCount(): number {
+  return enforcementHashes.length;
+}
+
+/**
+ * Compute the Merkle root over accumulated enforcement event hashes.
+ * Returns null when no enforcement has occurred (no false "anchor" signal).
+ */
+export function getEnforcementAnchorRoot(): string | null {
+  if (enforcementHashes.length === 0) return null;
+  const events = enforcementHashes.map((h) => ({ event_hash: h }) as unknown as TrstEventEnvelope);
+  return computeEvidenceRootHash(events);
 }

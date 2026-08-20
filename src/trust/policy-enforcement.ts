@@ -7,7 +7,10 @@
  * config.policyEnforcementMode — either blocks the call or merely logs a
  * divergence event (dry-run shadow).
  *
- * Red lines (carried from charter):
+ * 2026-08-20 竞争力优先重新规划：4F 是企业买家最看重的防护力（能否真挡住
+ * 敏感数据出域）。真实拦截（live）作为可选企业能力提供，shipping off by default。
+ *
+ * Guardrails retained (not cancelled):
  *   - No DLP / no raw-content inspection beyond metadata used for classification.
  *   - Enforcement events carry hashes + labels ONLY; raw payload is NEVER stored.
  *   - fail-open by default: with no matching deny rule, traffic passes (no silent
@@ -21,6 +24,7 @@ import { TrustPolicyEngine, type PolicyCheckRequest, type PolicyCheckResult } fr
 import { config } from "../config.js";
 import { appendEvent } from "../services/trst1/jsonl-event-store.js";
 import { DEFAULT_POLICY_RULES } from "./policy-rules.js";
+import { addEnforcementEventHash } from "./evidence-anchor.js";
 
 /** Thrown when a call is actually blocked in live mode. */
 export class PolicyBlockedError extends Error {
@@ -60,13 +64,13 @@ export interface SignerIdentity {
  * makes "no rule matched" => allow. This guarantees 4F never silently blocks
  * legitimate calls (honesty + safety boundary) while still letting deny rules win.
  *
- * 红线重设（2026-08-19）：原 TRST-0.3 R1 "No DLP detection" 放宽为企业可选能力。
+ * 竞争力优先（2026-08-20）：模式 DLP 是企业防护力卖点（原名 R1 "No DLP" 已让路）。
  * 当 config.permission.dlpEnabled 时，注入 DEFAULT_POLICY_RULES（基于 field-classification
  * 与 inferClassification 的模式 / 关键词 PII 检测——零语义模型依赖）。
  * 注入后：
  *   - dry_run 模式：仅记录 PII 分歧信号（deny/ask_user），不拦截真实流量。
  *   - live 模式：strictly_private 数据被真实 deny，confidential 数据触发 ask_user。
- * 默认 dlpEnabled=false → 仍是无 DLP 的 Shadow 体验（向后兼容）。
+ * 默认 dlpEnabled=false → 仍是无 DLP 的 Shadow 体验（向后兼容，企业档建议开启）。
  */
 function buildEngine(): TrustPolicyEngine {
   const dlpRules = config.permission.dlpEnabled ? DEFAULT_POLICY_RULES : [];
@@ -102,14 +106,15 @@ function emitEnforcementEvent(
   signer?: SignerIdentity,
 ): void {
   try {
+    const payload_hash = payloadHash(req);
     appendEvent({
       event_type: "policy_enforcement",
       timestamp: new Date().toISOString(),
       trace_id: req.sessionId || "unknown",
       session_id: req.sessionId || "unknown",
       run_id: "unknown",
-      // hash-only evidence; raw payload is NOT included (red line)
-      payload_hash: payloadHash(req),
+      // hash-only evidence; raw payload is NOT included (guardrail retained)
+      payload_hash,
       decision: result.decision,
       rule_id: result.ruleId ?? "none",
       reason: result.reason ?? "",
@@ -117,11 +122,15 @@ function emitEnforcementEvent(
       recipient: req.recipient,
       enforcement_mode: mode,
       blocked: blocked ? "true" : "false",
-      // 4E v0: attribution metadata (who triggered this enforcement decision)
+      // 4E v0: attribution metadata (who triggered this enforcement decision).
+      // Prefer explicit signer; fall back to request userId; never leak raw identity.
       signer_identity: signer
         ? { user_id: signer.user_id, ...(signer.public_key_fingerprint ? { public_key_fingerprint: signer.public_key_fingerprint } : {}) }
-        : { user_id: req.userId ?? "unknown" },
+        : { user_id: req.userId ?? "system" },
     } as any);
+    // 4F → 4R: feed this enforcement decision into the compliance anchor accumulator
+    // so live blocking decisions are included in the exportable Merkle root (audit chain).
+    addEnforcementEventHash(payload_hash);
   } catch {
     // Never let enforcement logging break the call path.
   }

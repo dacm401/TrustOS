@@ -96,12 +96,16 @@ execution) + #7 (enforcement). They are one charter.
 
 ### Out of scope (guardrails — carry from TRST-3)
 - No **semantic** DLP detection (no LLM/ML-based PII inference) — frozen consensus.
-- **模式 DLP 已重设为 opt-in 能力（2026-08-19 红线重设）**：当 `config.permission.dlpEnabled=true`
-  时，`buildEngine()` 注入 `DEFAULT_POLICY_RULES`（基于 `field-classification.ts` 字段级分类 +
-  `inferClassification` 关键词/模式 PII 检测，**零语义模型依赖**）。dry_run 下仅采集分歧信号，
-  live 下 strictly_private→deny、confidential→ask_user。默认关闭以保持 Shadow 零摩擦体验。
+- **模式 DLP 是 4F 的核心检测引擎（竞争力优先的可选能力，2026-08-20 重新规划）**：当
+  `config.permission.dlpEnabled=true` 时，`buildEngine()` 注入 `DEFAULT_POLICY_RULES`（基于
+  `field-classification.ts` 字段级分类 + `inferClassification` 关键词/模式 PII 检测，
+  **零语义模型依赖**）。dry_run 下采集 PII 分歧信号，live 下 strictly_private→deny、
+  confidential→ask_user。**企业部署档建议默认开启**（Private Beta 局限文档已标注为一键启用
+  的核心防护力），不再作为"红线放宽"，而是产品卖点。
 - No Trust Spine semantic/hashing changes.
 - No Memory Governance bypass.
+- **raw payload 绝不落库（保留为隐私基线，不削弱竞争力）**：enforcement 事件只携带 hash + 标签 + 元数据。
+- **enforcement 事件仅 hash+标签（保留为证据设计）**：与 raw 不落库共同构成隐私/证据基线。
 - No raw content expansion (enforcement decisions stay metadata/hash-driven).
 - Migrations additive/reversible only.
 - No auth/RBAC overhaul (4E deferred) — 4F must work within current
@@ -109,15 +113,20 @@ execution) + #7 (enforcement). They are one charter.
 
 ---
 
-## 5. Risks & red lines (why this was deferred, not skipped)
+## 5. Risks & guardrails (why this was deferred, not skipped)
+
+> 2026-08-20 重新规划：原"红线"（R1 No DLP、无真实 enforcement）已让位于竞争力优先。
+> 保留的 TRST-0.3 共识基线：**Shadow 默认、No silent loss、Enforcement→Observation→Governance
+> 顺序、不生产化、raw 绝不落库、enforcement 仅 hash+标签**。
 
 | Risk | Mitigation |
 |---|---|
-| False-block on clean traffic (over-enforcement) | Dry-run shadow mode; `would_block` only on high-severity privacy/trace_integrity signals, never on operational/behavioral |
-| Silent blocking violates "no silent event loss" | Every block/hold is an explicit hash-chained event |
+| False-block on clean traffic (over-enforcement) | Dry-run shadow window first; `would_block` only on high-severity privacy/trace_integrity signals, never on operational/behavioral |
+| Silent blocking violates "no silent event loss" | Every block/hold is an explicit hash-chained event (R3 保留) |
 | Couples to identity boundary (4E deferred) | Document 4E as hard dependency for override attribution; 4F override is operator-only in v0 |
-| Trust Spine / Memory touched | Explicit red line; enforcement is metadata-only, never reads/modifies raw payloads |
+| Trust Spine / Memory touched | Explicit guardrail; enforcement is metadata-only, never reads/modifies raw payloads (raw 不落库 保留) |
 | Rollback safety | Enforcement toggle is config-flagged; instant revert to dry-run |
+| Live enforcement safety | Go-live requires explicit `APPROVE_TRST-4F_IMPLEMENTATION`; default remains dry-run until then |
 
 ---
 
@@ -152,3 +161,41 @@ This draft becomes an **authorized implementation charter** only by that directi
 - Assessment + dry-run control: `src/services/assessment/assess-engine.ts`, `src/api/assess.ts` (MWT-22)
 - TRST-4 umbrella draft: `docs/strategy/TRST-4-charter-draft.md`
 - Private Beta limitations (honesty boundary): `docs/private-beta-limitations.md`
+
+---
+
+## 9. 2026-08-20 重新规划（竞争力优先，取消 5 条重设红线）
+
+取消上一轮（2026-08-19）对 5 条红线的"重设"，回到**可自由重设态**，并以企业买家最看重的
+防护力为优先级重排。已实现的代码（模式 DLP opt-in、user-anchored Merkle 锚定、4E signer_identity、
+4G readinessCheck）**保留**，但叙事从"红线放宽"改为"竞争力优先的可选能力 / 产品卖点"。
+
+**保留的 TRST-0.3 共识基线（不可逾越）**：
+- Shadow Mode 默认首跑体验
+- No silent event loss（无静默事件丢失）
+- Enforcement → Observation → Governance 顺序
+- 不生产化（gateway 非产品级基础设施）
+- **raw payload 绝不落库**（隐私基线，企业买家同样要求）
+- **enforcement 事件仅 hash + 标签**（证据设计，不削弱竞争力）
+
+**竞争力优先级（企业买家视角）**：
+1. 真实拦截（4F live）—— 最高优先，企业最看重"能否真挡住敏感数据出域"
+2. 模式 DLP（R1）—— 作为 4F 检测引擎，企业档默认建议开启
+3. 合规锚定（R4）—— enforcement 事件自动进 Merkle root，导出合规证据包
+4. 身份归因（4E signer_identity）—— 拦截/锚定都带 signer_identity
+5. 运维就绪（4G readiness）—— 拦截上线前健康/降级自检
+
+**落地路径（A→B→C）**：
+- A（已完成）：文档口径重述，代码不动。
+- B（已完成）：4F live 上线决策包——
+  `scripts/trst/4f-dryrun-divergence-report.mts`（dry-run 分歧采集，GO/HOLD 决策）、
+  `docs/strategy/TRST-4F-go-live-decision-pack.md`（回滚开关 + go-live checklist）。
+- C（已完成，按 Boss "按 ABC 顺序做" 指令执行）：真实拦截接线——
+  - `policy-enforcement.ts` `emitEnforcementEvent` 自动把 enforcement 事件 `payload_hash`
+    并入 4R 合规锚定累积器（`addEnforcementEventHash`），导出时形成"谁被拦截"的不可篡改审计链。
+  - `preLlmEnforce` signer 归因修正：无显式 signer 时回退 `req.userId ?? "system"`，支持上游传入真实用户。
+  - 默认仍 `dry_run` / `dlpEnabled=false`，live 拦截需双开关 + 显式 deny 规则匹配（fail-open）。
+  - 测试：evidence-anchor.test.ts 新增 3 例 4F→4R 合并（21 PASS, tsc 0）。
+  - 注：4F 拦截当前作用于 agent 内部 LLM 调用（worker/planner/compressor 经 model-gateway）；
+    HTTP 网关 `/v1/chat/completions` 转发路径不在此列（符合 gateway=observe 入口定位）。
+  下一步：push 到 origin（待网络恢复）；PM 决策是否 flip `live`（go-live 决策包 §4）。

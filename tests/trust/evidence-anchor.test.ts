@@ -1,8 +1,9 @@
 /**
- * TRST-4F R4 红线重设 — Evidence Anchor test.
+ * TRST-4F / 4R — Compliance Anchor test (competitiveness-first re-plan, 2026-08-20).
  *
  * Validates: Merkle root computation over sealed events, idempotent root
- * (same events → same root), and self-hosted anchor file export (zero deps).
+ * (same events → same root), self-hosted anchor file export (zero deps), and
+ * the 4F → 4R enforcement anchor merge (live blocking decisions feed the root).
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -13,6 +14,9 @@ import {
   computeEvidenceRootHash,
   buildAnchor,
   exportAnchorFile,
+  addEnforcementEventHash,
+  getEnforcementAnchorRoot,
+  getEnforcementAnchorCount,
 } from "../../src/trust/evidence-anchor.js";
 import { sealEvent } from "../../src/services/trst1/event-envelope.js";
 import type { TrstEventEnvelope } from "../../src/services/trst1/event-envelope.js";
@@ -84,5 +88,29 @@ describe("R4 evidence anchor", () => {
     expect(onDisk.event_count).toBe(3);
     expect(onDisk.algorithm).toBe("sha256-merkle");
     expect(typeof onDisk.generated_at).toBe("string");
+  });
+
+  describe("4F → 4R enforcement anchor merge", () => {
+    it("returns null before any enforcement decision is recorded", () => {
+      expect(getEnforcementAnchorRoot()).toBeNull();
+    });
+
+    it("accumulates enforcement hashes and exposes a stable root", () => {
+      const before = getEnforcementAnchorCount();
+      addEnforcementEventHash("abc123");
+      addEnforcementEventHash("def456");
+      expect(getEnforcementAnchorCount()).toBe(before + 2);
+      const root = getEnforcementAnchorRoot();
+      expect(root).toMatch(/^[a-f0-9]{64}$/);
+      // deterministic: re-reading yields same root (no event loss, no double-count)
+      expect(getEnforcementAnchorRoot()).toBe(root);
+    });
+
+    it("merges distinct enforcement hashes into distinct roots", () => {
+      const r1 = getEnforcementAnchorRoot();
+      addEnforcementEventHash("ghi789");
+      const r2 = getEnforcementAnchorRoot();
+      expect(r1).not.toBe(r2);
+    });
   });
 });
