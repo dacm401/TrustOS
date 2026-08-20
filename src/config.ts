@@ -191,6 +191,17 @@ export const config = {
     redaction: process.env.USE_REDACTION === "true",
     // Enable SmallModelGuard (requires permission.enabled)
     smallModelGuard: process.env.USE_SMALL_MODEL_GUARD === "true",
+    /**
+     * 模式 DLP 检测开关（opt-in）。
+     *
+     * 红线重设（2026-08-19）：原 TRST-0.3 R1 "No DLP detection" 放宽为企业可选能力。
+     * 启用后，4F PolicyEngine 注入 DEFAULT_POLICY_RULES（基于 field-classification.ts
+     * 与 inferClassification 的模式/关键词 PII 检测），但不依赖任何语义模型。
+     *
+     * 默认 false（保持 Shadow 体验零摩擦）。需用户在 .env 显式 TRUSTOS_DLP_ENABLED=1
+     * 开启。开启后会在 dry_run 影子窗口采集 PII 分歧信号，不自动拦截真实流量。
+     */
+    dlpEnabled: process.env.TRUSTOS_DLP_ENABLED === "true",
     // User data exposure preferences (defaults)
     userDataPreferences: {
       allowCloudConversationHistory: process.env.ALLOW_CLOUD_CONVERSATION_HISTORY !== "false",

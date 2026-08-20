@@ -95,7 +95,11 @@ execution) + #7 (enforcement). They are one charter.
   log divergences, no real blocking — until Boss flips the switch.
 
 ### Out of scope (guardrails — carry from TRST-3)
-- No DLP detection (semantic or pattern-based) — frozen consensus.
+- No **semantic** DLP detection (no LLM/ML-based PII inference) — frozen consensus.
+- **模式 DLP 已重设为 opt-in 能力（2026-08-19 红线重设）**：当 `config.permission.dlpEnabled=true`
+  时，`buildEngine()` 注入 `DEFAULT_POLICY_RULES`（基于 `field-classification.ts` 字段级分类 +
+  `inferClassification` 关键词/模式 PII 检测，**零语义模型依赖**）。dry_run 下仅采集分歧信号，
+  live 下 strictly_private→deny、confidential→ask_user。默认关闭以保持 Shadow 零摩擦体验。
 - No Trust Spine semantic/hashing changes.
 - No Memory Governance bypass.
 - No raw content expansion (enforcement decisions stay metadata/hash-driven).

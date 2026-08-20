@@ -6,6 +6,8 @@
  */
 
 import type { PolicyRule, PolicyCheckRequest, DataClassification } from "./policy-engine.js";
+import { SourceBasedClassifier, TrustPolicyEngine } from "./policy-engine.js";
+import { buildClassificationMap } from "./field-classification.js";
 
 // ── 辅助函数 ──────────────────────────────────────────────────────────────────
 
@@ -141,11 +143,15 @@ export const DEFAULT_POLICY_RULES: PolicyRule[] = [
   RULE_INTERNAL_ALLOW,
 ];
 
-import { TrustPolicyEngine } from "./policy-engine.js";
-
 /**
- * 创建默认策略引擎实例
+ * 创建默认策略引擎实例。
+ *
+ * 红线重设（2026-08-19）：注入预载 FIELD_CLASSIFICATION 的 classifier，
+ * 使 source 字段路径能正确映射到 strictly_private / confidential 分类，
+ * 从而让 DEFAULT_POLICY_RULES 的 deny 规则真正可命中（修复此前 classifier
+ * 为空导致 strictly_private 永远回退 confidential 的断链）。
  */
 export function createDefaultPolicyEngine(): TrustPolicyEngine {
-  return new TrustPolicyEngine(DEFAULT_POLICY_RULES);
+  const classifier = new SourceBasedClassifier(buildClassificationMap());
+  return new TrustPolicyEngine(DEFAULT_POLICY_RULES, classifier);
 }

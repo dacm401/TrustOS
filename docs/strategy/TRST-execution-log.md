@@ -64,6 +64,19 @@ Current Phase:
         src/trust/policy-enforcement.ts (enforcement action half) + src/models/model-gateway.ts
         checkpoint (callModelFull/callModelWithTools) + config.policyEnforcementMode.
         6 tests PASS. live flip requires Boss directive (dry-run window clean).
+      → 红线重设（Boss 授权"直接修改",2026-08-19）— 提升 Private Beta 竞争力：
+        R1 "No DLP detection" → 放宽为 **opt-in 模式 DLP**：
+          config.permission.dlpEnabled (env TRUSTOS_DLP_ENABLED) 开启时，
+          buildEngine() 注入 DEFAULT_POLICY_RULES（field-classification + inferClassification
+          模式/关键词 PII 检测，零语义模型依赖）。dry_run 采集 PII 分歧，live 真实 deny/ask_user。
+          默认关闭保持 Shadow 零摩擦。新增 tests/trust/dlp-optin.test.ts（5 PASS）。
+        R4 "tamper-evident only" → 升级为 **user-anchored tamper-evident**：
+          新增 src/trust/evidence-anchor.ts：computeEvidenceRootHash（Merkle root 聚合）
+          + exportAnchorFile（零依赖写用户自托管 WORM 锚定文件）。
+          用户导出 root_hash 后自行处置（WORM/对象存储/区块链），外部锚定完全用户掌控。
+          不引入任何第三方服务（守 R6 不生产化护栏）。新增 tests/trust/evidence-anchor.test.ts（6 PASS）。
+        4F charter §4 Out-of-scope 已更新：No DLP → "No semantic DLP；模式 DLP 已重设为 opt-in"。
+        raw payload 绝不落库、enforcement 事件仅 hash+标签 两条红线 **保持不变**。
     → 4E Authenticated Identity: UNDEFERRED (Boss, 2026-08-19) — available for planning; not in v0 scope
     → 4G Production Ops: UNDEFERRED (Boss, 2026-08-19) — available for planning; not in v0 scope
     → 4F IMPLEMENTATION NOT AUTHORIZED — requires explicit Boss

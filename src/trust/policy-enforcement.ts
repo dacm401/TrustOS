@@ -20,6 +20,7 @@ import { createHash } from "node:crypto";
 import { TrustPolicyEngine, type PolicyCheckRequest, type PolicyCheckResult } from "./policy-engine.js";
 import { config } from "../config.js";
 import { appendEvent } from "../services/trst1/jsonl-event-store.js";
+import { DEFAULT_POLICY_RULES } from "./policy-rules.js";
 
 /** Thrown when a call is actually blocked in live mode. */
 export class PolicyBlockedError extends Error {
@@ -47,9 +48,18 @@ export interface EnforcementOutcome {
  * would shadow any deny rule added later. Instead we rely on failOpen:true, which
  * makes "no rule matched" => allow. This guarantees 4F never silently blocks
  * legitimate calls (honesty + safety boundary) while still letting deny rules win.
+ *
+ * 红线重设（2026-08-19）：原 TRST-0.3 R1 "No DLP detection" 放宽为企业可选能力。
+ * 当 config.permission.dlpEnabled 时，注入 DEFAULT_POLICY_RULES（基于 field-classification
+ * 与 inferClassification 的模式 / 关键词 PII 检测——零语义模型依赖）。
+ * 注入后：
+ *   - dry_run 模式：仅记录 PII 分歧信号（deny/ask_user），不拦截真实流量。
+ *   - live 模式：strictly_private 数据被真实 deny，confidential 数据触发 ask_user。
+ * 默认 dlpEnabled=false → 仍是无 DLP 的 Shadow 体验（向后兼容）。
  */
 function buildEngine(): TrustPolicyEngine {
-  return new TrustPolicyEngine([], undefined, { failOpen: true, verbose: false });
+  const dlpRules = config.permission.dlpEnabled ? DEFAULT_POLICY_RULES : [];
+  return new TrustPolicyEngine(dlpRules, undefined, { failOpen: true, verbose: false });
 }
 
 // Single shared engine instance (rules are additive; v0 ships no deny rules,
