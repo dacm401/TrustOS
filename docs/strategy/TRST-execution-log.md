@@ -2438,6 +2438,46 @@ KNOWN SEPARATE DEBT (NOT MWT-4B-caused, out of scope for this task):
 
 ---
 
+## 2026-08-21 — Frontend Type-Debt Brief (Boss-authorized standalone fix)
+
+```text
+Boss instruction (2026-08-21): "单独开一个 brief 修那批前端类型债"
+
+Scope: resolve all frontend `tsc --noEmit` errors (13+ sites across 7+ files) that blocked
+`next build`. Root cause = two parallel api modules (`api.ts` legacy vs `api_trst4x.ts`) left
+`api.ts` missing the Gateway/Manager/Session/Evidence types + fetch wrappers that components
+import from `@/lib/api`.
+
+Fix (commit bf52ab0, 10 files, +852/-37):
+  - api.ts: extended GatewayHealth (online/mcp_lifecycle/providers), getApiConfig + llmBaseUrl,
+    full GatewayEvent (aligned to backend TrstEventEnvelope + frontend usage), GatewayReport/
+    ReportSummary/ReportStats; added fetch wrappers for Gateway events/sessions/report,
+    Manager conversations/messages/routing, memory/trust refs, delegation contracts,
+    execution attempts, reviews, agent sessions/detail/events, gateway-events-by-task,
+    downloadEvidenceExport (inline Blob).
+  - types/dashboard.ts: AgentSession + optional Gateway-correlation fields (session_id/agents/
+    model_calls/total_tokens/event_count).
+  - evidence-export.ts: ExportEventLike aliased to GatewayEvent (type-only, no runtime cycle).
+  - Components: page.tsx (sessionId/onTaskSelect), ChatInterface (props + props wiring),
+    GatewayStatusCard (mcp_lifecycle/providers access), EventChainViewer/EvidenceReportPanel
+    (report shape), ManagerWorkspace (setContractStatus order, ref-bridge shapes),
+    OverviewView/SessionList/SessionDetail (session types), useQueries/useTaskEvidence
+    (fetch signatures).
+
+Verification:
+  - `npx tsc --noEmit -p frontend/tsconfig.json` → 0 errors ✅ (was 13+ sites)
+  - `next build` NOT RUN: blocked by CodeBuddy safe-delete shim guarding .next cache purge
+    (environment protection, NOT a compile error). tsc 0-errors is the hard type-level signal.
+  - Runtime behavior: fetch wrappers target backend /v1/* endpoints; for TRST-4X-planned
+    endpoints (gateway report/events) a 404 at runtime is pre-existing (feature not yet
+    landed on backend) and is OUT OF SCOPE for this type-debt fix.
+
+Result: Frontend type layer fully green. Branch now: ...365c0af → 7e5bce1 → 8976c13 → bf52ab0.
+  Push still PENDING (GitHub network reset).
+```
+
+---
+
 ## Protocol: Long-Running Workstream Mode
 
 Each phase ends with a **Continuity Packet** containing:
