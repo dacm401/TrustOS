@@ -2478,6 +2478,64 @@ Result: Frontend type layer fully green. Branch now: ...365c0af → 7e5bce1 → 
 
 ---
 
+## 2026-08-21 — MWT-21 Real Execution Seam: LIVE GO-LIVE (Boss-confirmed) ✅
+
+```text
+Boss instruction (2026-08-21): "确认执行" — approve the two pending real-resource actions
+from the MWT-21 closure todo:
+  1. apply migration 031 to live Postgres
+  2. (optional) run scripts/trst/mwt21-real-live-run.mts in real mode
+
+Action 1 — Migration 031 applied to LIVE Postgres (smartrouter @ localhost:5432):
+  - Method: psql not on PATH → executed via temporary tsx+pg apply script (deleted after).
+  - Result: ✅ applied. ADD COLUMN IF NOT EXISTS output_hash text;
+    partial index idx_worker_attempts_output_hash (WHERE output_hash IS NOT NULL);
+    relaxed execution_mode CHECK to include 'real'. Additive, non-breaking, idempotent.
+  - Backend Port note: .env BACKEND_PORT=3002 (real live run probed localhost:3002).
+
+Action 2 — Real live run (scripts/trst/mwt21-real-live-run.mts) executed:
+  - Live services: Postgres reachable=true; Backend(localhost:3002) reachable=true.
+  - Trace (all genuine [LIV] events, no fabrication):
+      step1 createConversation -> HTTP 201
+      step2 createContract    -> HTTP 201
+      step3 approveContract   -> HTTP 200  (contract gate enforced)
+      step4 createAttempt(mode=real) try 1/8 -> HTTP 201
+      step5 verifyRedLines -> execution_mode=real status=completed output_hash_present=true
+      step5b output_hash is genuine SHA-256=true (non-zero 64-hex)
+  - RED LINES VERIFIED:
+      ✅ real worker executed (execution_mode='real' in DB)
+      ✅ output persisted as SHA-256 output_hash ONLY
+      ✅ raw content NOT stored (schema has no raw-content column by design)
+      ✅ contract gate (approved-only) still enforced
+      ✅ default mode (deterministic_local) unchanged
+  - Token consumed: YES (real model call via TaskPlanner + ExecutionLoop).
+  - Evidence: .trustos/live/mwt21-real-evidence.jsonl (real [LIV] events written).
+
+Closure: MWT-21 real execution seam is now LIVE-VALIDATED end-to-end. The long-standing
+"MWT-21 closure todo (real resources)" is RESOLVED ✅.
+```
+
+---
+
+## 2026-08-21 — Push Unblocked (GitHub network recovered) ✅
+
+```text
+Network recovery confirmed (git ls-remote origin OK). The long-blocked push of the local
+feature/trst-3-private-beta-readiness branch (11 commits ahead of origin) completed:
+
+  6da33ec..4ac3f7f  feature/trst-3-private-beta-readiness -> origin/feature/trst-3-private-beta-readiness
+
+This resolves the "Push still PENDING (GitHub network reset)" note in the Frontend
+Type-Debt Brief above. Post-push state: `git branch -vv` shows NO ahead branches;
+working tree clean; three-end sync (WorkBuddy = origin = local) RESTORED ✅.
+
+Note: backend_real/ has isolated local diagnostic-script edits (check-db.js/mjs) +
+untracked scratch scripts (build*.cmd, check-*.mjs, git-push*.cmd). These are dev-time
+temp files, NOT part of the trustos mainline; left untouched (no commit).
+```
+
+---
+
 ## Protocol: Long-Running Workstream Mode
 
 Each phase ends with a **Continuity Packet** containing:
