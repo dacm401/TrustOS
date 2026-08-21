@@ -2400,6 +2400,44 @@ Result: TRST-4 family v0 COMPLETE (4A/4B/4C/4D/4E/4F/4G all SEALED/IMPLEMENTED).
 
 ---
 
+## 2026-08-21 — MWT-4B FULL IMPLEMENTATION (reviewer-feedback gate waived by Boss)
+
+```text
+Boss instruction (2026-08-21): "无真实反馈也推进完整实现"
+→ MWT-4B reviewer-feedback gate (CHECKPOINT_2) EXPLICITLY WAIVED. Agent authorized to
+  mark MWT-4B fully implemented and self-seal without human reviewer input.
+
+Verification (run 2026-08-21, npm run validate):
+  MWT-4B Smoke:   5 passed, 0 failed   ✅
+  MWT-4B Regression: 25 passed, 0 failed ✅  (doc said 9/9; actual 30/0)
+  MWT-4A/3B1/4H/4E/5 all green; backend typecheck PASS.
+  MWT-4B code: frontend/src/lib/evidence-export.ts + scripts/mwt4b/run-smoke|regression.mts
+  Schema frozen: mwt4b-1.0 (hash-only, unsigned, frontend-only, no raw content) — matches
+  MWT-4B-export-scope-spec v0 boundary (no backend, no run_id/trace_id, no policy).
+
+Gate docs updated to IMPLEMENTED ✅:
+  - MWT-4B-implementation-readiness-packet.md (was IMPLEMENTED_MINIMAL_SLICE)
+  - MWT-4B-acceptance-criteria.md (was READINESS_ONLY)
+  - MWT-4B-non-goals-and-boundaries.md (was READINESS_ONLY)
+
+Code fix (delivery-enabling, not scope expansion):
+  - frontend/src/components/chat/MessageBubble.tsx: now receives ExecutionMetadata props
+    (usage/terminalSummary/executionProgress/sessionId/traceId/eventsCaptured) that ChatInterface
+    already passes, and renders <ExecutionMetadata/>. Connects MWT-4B-adjacent call chain;
+    removed the ChatInterface(710) type error.
+
+KNOWN SEPARATE DEBT (NOT MWT-4B-caused, out of scope for this task):
+  Frontend build/typecheck has pre-existing type rot unrelated to MWT-4B:
+  - page.tsx passes sessionId to ChatInterfaceProps (prop absent)
+  - ChatInterface uses llmBaseUrl from getApiConfig (type in api.ts lacks it)
+  - EventChainViewer/EvidenceReportPanel import GatewayEvent/fetchGatewayReport from @/lib/api
+    (symbols live in lib/api_trst4x.ts — dual api module split)
+  These predate this commit and are tracked as a separate frontend type-debt follow-up.
+  MWT-4B functional surface + 30 tests PASS independently of this debt.
+```
+
+---
+
 ## Protocol: Long-Running Workstream Mode
 
 Each phase ends with a **Continuity Packet** containing:

@@ -1,7 +1,9 @@
 "use client";
 import { useState } from "react";
 import { DecisionCard } from "./DecisionCard";
+import { ExecutionMetadata } from "./ExecutionMetadata";
 import { sendFeedback } from "@/lib/api";
+import type { UsageInfo, ExecutionProgress } from "@/types/dashboard";
 
 interface MessageBubbleProps {
   role: "user" | "assistant";
@@ -18,6 +20,18 @@ interface MessageBubbleProps {
   routingLayer?: "L0" | "L1" | "L2" | "L3";
   /** MWT-1: Gateway 观察状态 — null = 不适用/未知, true = observed, false = unobserved */
   observed?: boolean;
+  /** S101I/S101P: Worker execution token/cost usage */
+  usage?: UsageInfo;
+  /** S101I/S101P: Raw terminal summary from worker execution */
+  terminalSummary?: unknown;
+  /** S101P: Execution progress persisted on the message */
+  executionProgress?: ExecutionProgress;
+  /** MWT-1: Current session ID for Trust correlation display */
+  sessionId?: string;
+  /** MWT-2: Trust trace ID from Gateway observation (forward-compat, currently undefined) */
+  traceId?: string;
+  /** MWT-1: Number of Gateway events captured for this session */
+  eventsCaptured?: number;
 }
 
 const LAYER_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -31,7 +45,21 @@ function initials(name: string): string {
   return name.substring(0, 2).toUpperCase();
 }
 
-export function MessageBubble({ role, content, decision, userId = "dev-user", delegation, routingLayer, observed }: MessageBubbleProps) {
+export function MessageBubble({
+  role,
+  content,
+  decision,
+  userId = "dev-user",
+  delegation,
+  routingLayer,
+  observed,
+  usage,
+  terminalSummary,
+  executionProgress,
+  sessionId,
+  traceId,
+  eventsCaptured,
+}: MessageBubbleProps) {
   const isUser = role === "user";
   const [feedbackGiven, setFeedbackGiven] = useState<string | null>(null);
 
@@ -204,6 +232,18 @@ export function MessageBubble({ role, content, decision, userId = "dev-user", de
               </div>
             )}
           </div>
+        )}
+
+        {/* S101P: Shared execution visibility layer (usage/terminalSummary/progress) */}
+        {!isUser && (usage || terminalSummary || executionProgress || sessionId || (eventsCaptured !== undefined && eventsCaptured > 0)) && (
+          <ExecutionMetadata
+            usage={usage}
+            terminalSummary={terminalSummary}
+            executionProgress={executionProgress}
+            sessionId={sessionId}
+            traceId={traceId}
+            eventsCaptured={eventsCaptured}
+          />
         )}
 
         {/* AI: Feedback buttons */}
