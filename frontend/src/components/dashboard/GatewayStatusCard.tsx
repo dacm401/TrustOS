@@ -273,15 +273,11 @@ export default function GatewayStatusCard() {
       ? "SSE"
       : typeof data.streaming === "string"
         ? data.streaming
-        : data.streaming?.supported
-          ? "已启用"
-          : "—";
-  const mcpEnabled =
-    data.mcp_lifecycle === "enabled" ||
-    (typeof data.mcp_lifecycle === "object" && data.mcp_lifecycle?.supported === true);
-  const providerKeys = Array.isArray(data.providers)
-    ? data.providers
-    : Object.keys((data.providers as Record<string, unknown>) ?? {});
+        : "—";
+  const mcpEnabled = Array.isArray(data.mcp_lifecycle)
+    ? data.mcp_lifecycle.some((m) => m.status === "connected")
+    : false;
+  const providerKeys = Object.keys((data.providers as Record<string, unknown>) ?? {});
 
   return (
     <div className="rounded-xl p-5" style={cardStyle}>

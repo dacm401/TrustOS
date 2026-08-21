@@ -157,7 +157,7 @@ export function useGatewayEvents(params: GatewayEventsParams = {}) {
 export function useGatewaySessions(limit = 20) {
   return useQuery<GatewaySessionsResponse>({
     queryKey: ['gateway-sessions', limit],
-    queryFn: () => fetchGatewaySessions(limit),
+    queryFn: () => fetchGatewaySessions("dev-user", limit),
     staleTime: 30 * 1000,
     refetchInterval: 60000,
     retry: 2,

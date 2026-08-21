@@ -216,6 +216,14 @@ export interface AgentSession {
   created_at: string;
   updated_at: string;
   completed_at?: string;
+  /** Gateway session correlation (session_id === id) */
+  session_id?: string;
+  agents?: string[];
+  model_calls?: number;
+  total_tokens?: number;
+  event_count?: number;
+  observed_count?: number;
+  distinct_agents?: string[];
 }
 
 export type MessageRole = "user" | "manager" | "system";

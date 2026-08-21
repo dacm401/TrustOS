@@ -44,6 +44,12 @@ interface ChatInterfaceProps {
   /** MWT-1: Navigate to Evidence view with session context */
   onEvidenceClick?: (sessionId: string) => void;
   userId?: string;
+  /** Shared session id owned by the page (keeps Archive/Evidence in sync) */
+  sessionId?: string;
+  /** Page-level session id change callback */
+  onSessionIdChange?: (id: string) => void;
+  /** Page-level gateway online status (falls back to internal observation) */
+  gatewayOnline?: boolean;
 }
 
 const QUICK_PROMPTS = [
@@ -52,21 +58,34 @@ const QUICK_PROMPTS = [
   { label: "💻 写一个排序算法", text: "用Python写一个快速排序算法" },
 ];
 
-export function ChatInterface({ onTaskIdChange, onEvidenceClick, userId: propUserId }: ChatInterfaceProps) {
+export function ChatInterface({
+  onTaskIdChange,
+  onEvidenceClick,
+  userId: propUserId,
+  sessionId: propSessionId,
+  onSessionIdChange,
+  gatewayOnline: propGatewayOnline,
+}: ChatInterfaceProps) {
   const userId = propUserId ?? "dev-user";
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sessionId, setSessionId] = useState("");
+  const [sessionId, setSessionId] = useState(propSessionId ?? "");
   // MWT-1: Gateway observation status from TRST-4C APIs (zero backend work)
   const { data: gwHealth } = useGatewayHealth();
-  const { data: gwEvents } = useGatewayEvents(sessionId ? { session_id: sessionId } : {});
+  const { data: gwEvents } = useGatewayEvents({});
 
   // Generate session ID only on client to avoid SSR hydration mismatch
   useEffect(() => {
     if (!sessionId) setSessionId(uuid());
   }, [sessionId]);
-  const gatewayOnline = gwHealth?.status === "online";
+
+  // Sync externally-owned session id back to the page when it is generated locally
+  useEffect(() => {
+    if (onSessionIdChange && sessionId) onSessionIdChange(sessionId);
+  }, [sessionId, onSessionIdChange]);
+
+  const gatewayOnline = propGatewayOnline ?? gwHealth?.status === "online";
   const eventsCaptured = gwEvents?.total ?? 0;
   const observationStatus: string = gatewayOnline
     ? (eventsCaptured > 0 ? "Active" : "No events yet")

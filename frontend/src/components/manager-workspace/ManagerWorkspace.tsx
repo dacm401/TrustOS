@@ -470,7 +470,7 @@ function WorkerDelegationPanel({
     async (c: WorkerDelegationContract, status: ContractStatus) => {
       if (!conversationId) return;
       try {
-        await setContractStatus(userId, conversationId, c.contract_id, status);
+        await setContractStatus(conversationId, c.contract_id, status, userId);
         loadContracts();
       } catch {
         /* silent */

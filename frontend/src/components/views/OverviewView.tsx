@@ -3,7 +3,7 @@
 import GatewayStatusCard from "@/components/dashboard/GatewayStatusCard";
 import EvidenceReportPanel from "@/components/dashboard/EvidenceReportPanel";
 import { useGatewayEvents, useGatewayHealth, useGatewaySessions } from "@/hooks/useQueries";
-import type { GatewaySession } from "@/lib/api";
+import type { GatewaySessionItem } from "@/lib/api";
 
 export default function OverviewView() {
   const { data: eventsData } = useGatewayEvents({ limit: 1, page: 1 });
@@ -79,7 +79,7 @@ export default function OverviewView() {
               💬 Recent Sessions (TRST-4C)
             </h3>
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {sessions.map((s: GatewaySession) => (
+              {sessions.map((s: GatewaySessionItem) => (
                 <div
                   key={s.session_id}
                   className="flex items-center justify-between py-2 px-3 rounded"

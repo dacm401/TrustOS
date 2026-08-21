@@ -202,13 +202,13 @@ export default function EvidenceReportPanel() {
               />
               <ControlCard
                 label="No Decision"
-                count={summary.stats.control_decisions.unknown ?? 0}
+                count={summary.stats.control_decisions?.unknown ?? 0}
                 color="gray"
               />
             </div>
             )}
 
-            {summary.stats.top_models?.length > 0 && (
+            {(summary.stats.top_models?.length ?? 0) > 0 && (
               <div className="mt-3">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                   Top Models
@@ -238,7 +238,7 @@ export default function EvidenceReportPanel() {
               No AI requests were actually blocked or modified by TrustOS.
               {(summary.stats.control_decisions?.block ?? 0) > 0 && (
                 <span className="text-red-700">
-                  {" "}{summary.stats.control_decisions.block} event(s) flagged for review.
+                  {" "}{summary.stats.control_decisions?.block ?? 0} event(s) flagged for review.
                 </span>
               )}
             </div>

@@ -14,19 +14,13 @@
 // Minimal structural type for the events the export consumes. Compatible with the
 // frontend GatewayEvent shape, but declared locally so this module is importable in
 // Node test scripts without pulling in the full frontend api module.
-export interface ExportEventLike {
-  event_id: string;
-  event_type: string;
-  timestamp: string;
-  model?: string;
-  agent_id?: string;
-  task_id?: string;
-  decision?: string;
-  event_hash?: string;
-  input_hash?: string;
-  output_hash?: string;
-  [key: string]: unknown;
-}
+import type { GatewayEvent } from "@/lib/api";
+
+/**
+ * Structural type for the events the export consumes. Aliased to the frontend
+ * GatewayEvent shape so TaskEvidenceView can pass GatewayEvent[] directly.
+ */
+export type ExportEventLike = GatewayEvent;
 
 export const EVIDENCE_EXPORT_SCHEMA_VERSION = "mwt4b.export.v0";
 

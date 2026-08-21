@@ -176,9 +176,8 @@ export default function HomePage() {
             >
               <TaskPanel
                 userId={userId}
-                onTaskSelect={(taskId, status) => {
+                onTaskSelect={(taskId: string) => {
                   setSelectedTaskId(taskId);
-                  setSelectedTaskStatus(status);
                 }}
                 selectedTaskId={selectedTaskId}
               />

@@ -14,6 +14,7 @@ export function getApiConfig() {
       apiKey: localStorage.getItem("api_key") || "",
       fastModel: localStorage.getItem("fast_model") || "Qwen/Qwen2.5-7B-Instruct",
       slowModel: localStorage.getItem("slow_model") || "deepseek-ai/DeepSeek-V3",
+      llmBaseUrl: localStorage.getItem("llm_base_url") || "",
     };
   }
   return {
@@ -21,6 +22,7 @@ export function getApiConfig() {
     apiKey: "",
     fastModel: "Qwen/Qwen2.5-7B-Instruct",
     slowModel: "deepseek-ai/DeepSeek-V3",
+    llmBaseUrl: "",
   };
 }
 
@@ -172,13 +174,23 @@ export async function fetchHealth(): Promise<HealthStatus> {
 // ── Gateway Health (TrustOS Gateway on port 8787) ──────────────────────────
 
 export interface GatewayHealth {
-  status: "ok" | "degraded" | "error";
+  status: "ok" | "degraded" | "error" | "online";
   service: string;
   mode: string;
   streaming: string;
   events_count: number;
   uptime_seconds: number;
   index: string;
+  /** MWT-3B3: per-mcp runtime lifecycle snapshot */
+  mcp_lifecycle?: Array<{
+    name: string;
+    status: "connecting" | "connected" | "disconnected" | "error";
+    last_error?: string | null;
+  }>;
+  /** MWT-3B3: provider/model connection summary */
+  providers?: Record<string, { status: string; models: string[] }>;
+  gateway_overhead_ms?: number;
+  timestamp?: string;
 }
 
 const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8787";
@@ -199,6 +211,7 @@ export async function fetchGatewayHealth(): Promise<GatewayHealth> {
       streaming: "n/a",
       uptime_seconds: 0,
       index: "n/a",
+      events_count: 0,
     };
   }
   const res = await fetch(`${GATEWAY_URL}/health`, {
@@ -478,6 +491,22 @@ export async function fetchManagerConversations(userId: string): Promise<{ conve
   return res.json();
 }
 
+export async function fetchConversations(
+  userId: string,
+  limit = 50
+): Promise<{ conversations: ManagerConversationRecord[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/manager-conversations?limit=${encodeURIComponent(String(limit))}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载 Manager 会话失败 (${res.status})`);
+  const data = await res.json();
+  const list = (data.conversations ?? []) as Array<Record<string, unknown>>;
+  return {
+    conversations: list.map((c) => ({ ...c, id: c.conversation_id })) as ManagerConversationRecord[],
+  };
+}
+
 export async function fetchManagerContracts(conversationId: string, userId: string): Promise<{ contracts: ManagerContract[] }> {
   const { apiBase } = getApiConfig();
   const res = await fetch(`${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/contracts`, {
@@ -490,7 +519,7 @@ export async function fetchManagerContracts(conversationId: string, userId: stri
 export async function setContractStatus(
   conversationId: string,
   contractId: string,
-  status: "ready_for_review" | "approved" | "rejected",
+  status: ContractStatus,
   userId: string
 ): Promise<void> {
   const { apiBase } = getApiConfig();
@@ -541,3 +570,773 @@ export async function triggerAttempt(conversationId: string, contractId: string,
   );
   if (!res.ok) throw new Error(`触发执行失败 (${res.status})`);
 }
+
+// ── Gateway Events / Sessions (TRST-4X) ───────────────────────────────────────
+
+export interface GatewayEvent {
+  // ── Identity ──
+  event_id: string;
+  event_type: string;
+  timestamp: string;
+  trace_id?: string;
+  parent_event_id?: string;
+  // ── Attribution ──
+  actor_id?: string;
+  agent_id?: string | null;
+  agent_label?: string | null;
+  session_id: string;
+  run_id?: string;
+  project_id?: string;
+  // ── Task correlation ──
+  task_id?: string | null;
+  // ── Source / Destination ──
+  source?: string;
+  destination?: string;
+  resource_type?: "model" | "tool";
+  resource_ref?: string;
+  // ── Model-specific ──
+  model?: string;
+  provider?: string;
+  tool_name?: string;
+  // ── Frontend usage metrics ──
+  input_tokens?: number;
+  output_tokens?: number;
+  token_count?: number;
+  cost_estimate?: number | null;
+  control_decision?: string;
+  // ── Content Hashes ──
+  input_hash?: string | null;
+  output_hash?: string | null;
+  args_hash?: string | null;
+  result_hash?: string | null;
+  // ── Metrics ──
+  latency_ms?: number;
+  gateway_overhead_ms?: number;
+  // ── Status / Observation ──
+  status?: string;
+  observed?: boolean;
+  user_id?: string | null;
+  // ── Privacy / Classification (reserved) ──
+  privacy_flags?: string[];
+  data_classification?: string;
+  trust_flags?: string[];
+  trust_note?: string | null;
+  event_hash?: string;
+  /** Index signature to allow safe meta-key access and assignment to ExportEventLike */
+  [key: string]: unknown;
+}
+
+export interface GatewayEventsResponse {
+  events: GatewayEvent[];
+  total: number;
+  returned: number;
+  has_more: boolean;
+  next_cursor?: string | null;
+  session_id?: string;
+  /** TRST-4X event-stream shaped envelope */
+  status?: string;
+  events_count?: number;
+  mode?: string;
+  page?: number;
+}
+
+export interface GatewayEventsParams {
+  cursor?: string;
+  page?: number;
+  limit?: number;
+  session_id?: string;
+  event_type?: string;
+  agent_id?: string;
+  observed?: boolean;
+}
+
+export async function fetchGatewayEvents(
+  params: GatewayEventsParams = {}
+): Promise<GatewayEventsResponse> {
+  const { apiBase } = getApiConfig();
+  const query = new URLSearchParams();
+  if (params.cursor) query.set("cursor", params.cursor);
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.event_type) query.set("event_type", params.event_type);
+  if (params.agent_id) query.set("agent_id", params.agent_id);
+  if (params.observed !== undefined) query.set("observed", String(params.observed));
+  const qs = query.toString();
+  const res = await fetch(
+    `${apiBase}/v1/gateway/events${qs ? `?${qs}` : ""}`,
+    { headers: buildHeaders() }
+  );
+  if (!res.ok) throw new Error(`加载 Gateway 事件失败 (${res.status})`);
+  return res.json();
+}
+
+export interface GatewaySessionItem {
+  session_id: string;
+  user_id: string;
+  created_at: string;
+  last_event_at: string;
+  event_count: number;
+  observed_count: number;
+  distinct_agents: string[];
+  /** Optional fields surfaced by OverviewView */
+  agents?: string[];
+  model_calls?: number;
+  total_tokens?: number;
+  title?: string;
+  status?: string;
+}
+
+export interface GatewaySessionsResponse {
+  sessions: GatewaySessionItem[];
+  total: number;
+}
+
+export async function fetchGatewaySessions(userId: string, limit = 20): Promise<GatewaySessionsResponse> {
+  const { apiBase } = getApiConfig();
+  const query = new URLSearchParams();
+  if (limit !== undefined) query.set("limit", String(limit));
+  const qs = query.toString();
+  const res = await fetch(`${apiBase}/v1/gateway/sessions${qs ? `?${qs}` : ""}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载 Gateway 会话失败 (${res.status})`);
+  return res.json();
+}
+
+// ── Gateway Report / Evidence (TRST-4X) ───────────────────────────────────────
+
+export interface ReportControlDecisions {
+  allow?: number;
+  warn?: number;
+  block?: number;
+  unknown?: number;
+}
+
+export interface ReportTopModel {
+  model: string;
+  calls: number;
+  tokens: number;
+  cost: number;
+}
+
+export interface ReportStats {
+  observed: number;
+  total: number;
+  failures: number;
+  model_calls: number;
+  tool_calls: number;
+  hash_coverage_pct: number;
+  failure_count?: number;
+  failure_events?: number;
+  total_tokens: number;
+  estimated_cost: number;
+  sessions?: number;
+  unique_sessions?: number;
+  control_decisions?: ReportControlDecisions;
+  top_models?: ReportTopModel[];
+  mcp_lifecycle?: Array<{ name: string; status: string }>;
+  trust_flags?: string[];
+}
+
+export interface ReportSummary {
+  session_id: string;
+  event_count: number;
+  observed_count: number;
+  distinct_agents: string[];
+  trust_flags: string[];
+  generated_at: string;
+  stats: ReportStats;
+}
+
+export type GatewayReportFormat = "html" | "md" | "download";
+
+/**
+ * Fetch the rendered Gateway Evidence Report. Returns the raw Response so the
+ * caller can decide between `.text()` (html/md) and `.blob()` (download).
+ */
+export async function fetchGatewayReport(format: GatewayReportFormat = "html"): Promise<Response> {
+  const { apiBase } = getApiConfig();
+  const query = new URLSearchParams();
+  query.set("format", format);
+  const res = await fetch(`${apiBase}/v1/gateway/report?${query.toString()}`, {
+    headers: buildHeaders(),
+  });
+  if (!res.ok) throw new Error(`加载 Gateway 报告失败 (${res.status})`);
+  return res;
+}
+
+export async function fetchGatewayReportSummary(): Promise<ReportSummary> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/gateway/report/summary`, {
+    headers: buildHeaders(),
+  });
+  if (!res.ok) throw new Error(`加载 Gateway 报告摘要失败 (${res.status})`);
+  return res.json();
+}
+
+// ── Manager Workspace (MWT-19 / Execution Attempts / Reviews) ──────────────────
+
+export type ContractStatus = "draft" | "ready_for_review" | "approved" | "rejected" | "superseded";
+
+export type ExecutionMode =
+  | "deterministic_local"
+  | "dry_run"
+  | "manual_placeholder"
+  | "real";
+
+export type AttemptStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+
+export type TrustRefKind = "evidence" | "trace" | "event" | "task" | "run";
+
+export type ReviewTargetType = "delegation_contract" | "execution_attempt";
+
+export type ReviewDecision =
+  | "approve"
+  | "reject"
+  | "request_changes"
+  | "accept_result"
+  | "reject_result"
+  | "request_rerun";
+
+export interface ManagerConversationRecord {
+  conversation_id: string;
+  /** Alias used by ManagerWorkspace UI (.id) */
+  id: string;
+  user_id: string;
+  title: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkerDelegationContract {
+  contract_id: string;
+  conversation_id: string;
+  user_id: string;
+  title: string;
+  objective: string;
+  intended_worker: string;
+  input_summary: string;
+  memory_ref_ids: string[];
+  trust_ref_ids: string[];
+  constraints: string[];
+  expected_output: string;
+  status: ContractStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkerExecutionAttempt {
+  attempt_id: string;
+  conversation_id: string;
+  contract_id: string;
+  user_id: string;
+  worker_label: string;
+  input_summary: string;
+  constraints: string[];
+  status: AttemptStatus;
+  result_summary?: string | null;
+  error_summary?: string | null;
+  execution_mode: ExecutionMode;
+  output_hash?: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+}
+
+export interface MemoryRefRecord {
+  conversation_id: string;
+  memory_id: string;
+  user_id: string;
+  created_at: string;
+  preview: string;
+  category: string | null;
+  importance: number | null;
+  source: string | null;
+  tags: string[];
+}
+
+export interface TrustRefRecord {
+  conversation_id: string;
+  ref_kind: TrustRefKind;
+  ref_id: string;
+  user_id: string;
+  created_at: string;
+  source?: string | null;
+  relevance_score?: number | null;
+  related_task_id?: string | null;
+}
+
+export interface ManagerReviewRecord {
+  review_id: string;
+  conversation_id: string;
+  user_id: string;
+  target_type: ReviewTargetType;
+  target_id: string;
+  decision: ReviewDecision;
+  reason?: string | null;
+  reviewer_label?: string | null;
+  created_at: string;
+}
+
+export async function fetchAttempts(
+  userId: string,
+  conversationId: string
+): Promise<{ attempts: WorkerExecutionAttempt[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/attempts`,
+    { headers: { "X-User-Id": userId, ...buildHeaders() } }
+  );
+  if (!res.ok) throw new Error(`加载执行尝试失败 (${res.status})`);
+  return res.json();
+}
+
+export async function createAttempt(
+  userId: string,
+  conversationId: string,
+  contractId: string,
+  mode: ExecutionMode
+): Promise<{ attempt_id: string }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/contracts/${encodeURIComponent(contractId)}/attempts`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+      body: JSON.stringify({ execution_mode: mode }),
+    }
+  );
+  if (!res.ok) throw new Error(`创建执行尝试失败 (${res.status})`);
+  return res.json();
+}
+
+export async function cancelAttempt(
+  userId: string,
+  conversationId: string,
+  attemptId: string
+): Promise<void> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/attempts/${encodeURIComponent(attemptId)}/cancel`,
+    {
+      method: "POST",
+      headers: { "X-User-Id": userId, ...buildHeaders() },
+    }
+  );
+  if (!res.ok) throw new Error(`取消执行尝试失败 (${res.status})`);
+}
+
+export async function fetchReviews(
+  userId: string,
+  conversationId: string
+): Promise<{ reviews: ManagerReviewRecord[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/reviews`,
+    { headers: { "X-User-Id": userId, ...buildHeaders() } }
+  );
+  if (!res.ok) throw new Error(`加载评审记录失败 (${res.status})`);
+  const data = await res.json();
+  return { reviews: (data.reviews ?? []) as ManagerReviewRecord[] };
+}
+
+export async function createReview(
+  userId: string,
+  conversationId: string,
+  targetType: ReviewTargetType,
+  targetId: string,
+  decision: ReviewDecision,
+  reason?: string
+): Promise<void> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/reviews`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+      body: JSON.stringify({ target_type: targetType, target_id: targetId, decision, reason }),
+    }
+  );
+  if (!res.ok) throw new Error(`创建评审记录失败 (${res.status})`);
+}
+
+// ── Manager Conversations / Messages / Routing ──────────────────────────────
+
+export type ManagerMessageRole = "user" | "manager" | "system";
+
+export interface ManagerMessageInput {
+  conversationId: string;
+  role: ManagerMessageRole;
+  content: string;
+}
+
+export async function createConversation(
+  userId: string,
+  title?: string
+): Promise<{ conversation: ManagerConversationRecord }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/manager-conversations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+    body: JSON.stringify({ title: title ?? "New Conversation" }),
+  });
+  if (!res.ok) throw new Error(`创建 Manager 会话失败 (${res.status})`);
+  return res.json();
+}
+
+export async function fetchManagerMessages(
+  userId: string,
+  conversationId: string,
+  limit = 100
+): Promise<{ messages: import("@/types/dashboard").ManagerMessage[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/messages?limit=${encodeURIComponent(String(limit))}`,
+    { headers: { "X-User-Id": userId, ...buildHeaders() } }
+  );
+  if (!res.ok) throw new Error(`加载 Manager 消息失败 (${res.status})`);
+  return res.json();
+}
+
+export async function createManagerMessage(
+  userId: string,
+  input: ManagerMessageInput
+): Promise<import("@/types/dashboard").ManagerMessage> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(input.conversationId)}/messages`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+      body: JSON.stringify({ role: input.role, content: input.content }),
+    }
+  );
+  if (!res.ok) throw new Error(`创建 Manager 消息失败 (${res.status})`);
+  return res.json();
+}
+
+export async function routeManagerMessage(
+  userId: string,
+  input: import("@/types/dashboard").RouteMessageRequest
+): Promise<import("@/types/dashboard").RouteMessageResponse> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(input.conversationId)}/route`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+      body: JSON.stringify({ message: input.message, target_session_id: input.targetSessionId }),
+    }
+  );
+  if (!res.ok) throw new Error(`路由 Manager 消息失败 (${res.status})`);
+  return res.json();
+}
+
+// ── Memory / Trust Reference Bridges (MWT-15 / MWT-16) ────────────────────────
+
+export async function fetchMemoryRefs(
+  userId: string,
+  conversationId: string
+): Promise<{ memory_refs: MemoryRefRecord[]; total?: number }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/memory-refs`,
+    { headers: { "X-User-Id": userId, ...buildHeaders() } }
+  );
+  if (!res.ok) throw new Error(`加载记忆引用失败 (${res.status})`);
+  const data = await res.json();
+  return { memory_refs: (data.memory_refs ?? []) as MemoryRefRecord[], total: data.total };
+}
+
+export async function attachMemoryRef(
+  userId: string,
+  conversationId: string,
+  memoryId: string
+): Promise<MemoryRefRecord> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/memory-refs`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+      body: JSON.stringify({ memory_id: memoryId }),
+    }
+  );
+  if (!res.ok) throw new Error(`附加记忆引用失败 (${res.status})`);
+  const data = await res.json();
+  return data.memory_ref as MemoryRefRecord;
+}
+
+export async function detachMemoryRef(
+  userId: string,
+  conversationId: string,
+  memoryId: string
+): Promise<void> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/memory-refs/${encodeURIComponent(memoryId)}`,
+    { method: "DELETE", headers: { "X-User-Id": userId, ...buildHeaders() } }
+  );
+  if (!res.ok) throw new Error(`移除记忆引用失败 (${res.status})`);
+}
+
+export async function fetchTrustRefs(
+  userId: string,
+  conversationId: string
+): Promise<{ trust_refs: TrustRefRecord[]; total?: number }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/trust-refs`,
+    { headers: { "X-User-Id": userId, ...buildHeaders() } }
+  );
+  if (!res.ok) throw new Error(`加载信任引用失败 (${res.status})`);
+  const data = await res.json();
+  return { trust_refs: (data.trust_refs ?? []) as TrustRefRecord[], total: data.total };
+}
+
+export async function attachTrustRef(
+  userId: string,
+  conversationId: string,
+  refKind: TrustRefKind,
+  refId: string
+): Promise<TrustRefRecord> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/trust-refs`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+      body: JSON.stringify({ ref_kind: refKind, ref_id: refId }),
+    }
+  );
+  if (!res.ok) throw new Error(`附加信任引用失败 (${res.status})`);
+  const data = await res.json();
+  return data.trust_ref as TrustRefRecord;
+}
+
+export async function detachTrustRef(
+  userId: string,
+  conversationId: string,
+  refKind: TrustRefKind,
+  refId: string
+): Promise<void> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/trust-refs/${encodeURIComponent(refKind)}/${encodeURIComponent(refId)}`,
+    { method: "DELETE", headers: { "X-User-Id": userId, ...buildHeaders() } }
+  );
+  if (!res.ok) throw new Error(`移除信任引用失败 (${res.status})`);
+}
+
+// ── Worker Delegation Contracts (MWT-17) ──────────────────────────────────────
+
+export interface ContractPatchInput {
+  title?: string | null;
+  objective?: string | null;
+  intended_worker?: string | null;
+  input_summary?: string | null;
+  memory_ref_ids?: string[] | null;
+  trust_ref_ids?: string[] | null;
+  constraints?: string | string[] | null;
+  expected_output?: string | null;
+}
+
+export async function fetchContracts(
+  userId: string,
+  conversationId: string
+): Promise<{ contracts: WorkerDelegationContract[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/contracts`,
+    { headers: { "X-User-Id": userId, ...buildHeaders() } }
+  );
+  if (!res.ok) throw new Error(`加载契约失败 (${res.status})`);
+  const data = await res.json();
+  return { contracts: (data.contracts ?? []) as WorkerDelegationContract[] };
+}
+
+export async function createContract(
+  userId: string,
+  conversationId: string,
+  input: ContractPatchInput
+): Promise<{ contract: WorkerDelegationContract }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/contracts`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+      body: JSON.stringify(input),
+    }
+  );
+  if (!res.ok) throw new Error(`创建契约失败 (${res.status})`);
+  const data = await res.json();
+  return { contract: data.contract as WorkerDelegationContract };
+}
+
+export async function updateContract(
+  userId: string,
+  conversationId: string,
+  contractId: string,
+  patch: ContractPatchInput
+): Promise<{ contract: WorkerDelegationContract }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/contracts/${encodeURIComponent(contractId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+      body: JSON.stringify(patch),
+    }
+  );
+  if (!res.ok) throw new Error(`更新契约失败 (${res.status})`);
+  const data = await res.json();
+  return { contract: data.contract as WorkerDelegationContract };
+}
+
+export async function deleteContract(
+  userId: string,
+  conversationId: string,
+  contractId: string
+): Promise<void> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(
+    `${apiBase}/v1/manager-conversations/${encodeURIComponent(conversationId)}/contracts/${encodeURIComponent(contractId)}`,
+    { method: "DELETE", headers: { "X-User-Id": userId, ...buildHeaders() } }
+  );
+  if (!res.ok) throw new Error(`删除契约失败 (${res.status})`);
+}
+
+// ── Agent Sessions (TRST-4C runtime sessions) ─────────────────────────────────
+
+/** Alias used by OverviewView */
+export type GatewaySession = GatewaySessionItem;
+
+export async function fetchAgentSessions(
+  userId: string,
+  options?: { status?: string; limit?: number }
+): Promise<{ sessions: import("@/types/dashboard").AgentSession[]; total?: number }> {
+  const { apiBase } = getApiConfig();
+  const query = new URLSearchParams();
+  if (options?.status) query.set("status", options.status);
+  if (options?.limit !== undefined) query.set("limit", String(options.limit));
+  const qs = query.toString();
+  const res = await fetch(`${apiBase}/v1/agent-sessions${qs ? `?${qs}` : ""}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载 Session 列表失败 (${res.status})`);
+  const data = await res.json();
+  const list = (data.sessions ?? []) as Array<Record<string, unknown>>;
+  const sessions: import("@/types/dashboard").AgentSession[] = list.map((s) => ({
+    id: (s.session_id as string) ?? (s.id as string) ?? "",
+    session_id: (s.session_id as string) ?? (s.id as string) ?? "",
+    user_id: (s.user_id as string) ?? "",
+    title: (s.title as string) ?? "",
+    status: ((s.status as string) ?? "unknown") as import("@/types/dashboard").SessionStatus,
+    created_at: (s.created_at as string) ?? "",
+    updated_at: (s.updated_at as string) ?? "",
+    agents: (s.agents as string[] | undefined) ?? (s.distinct_agents as string[] | undefined),
+    model_calls: s.model_calls as number | undefined,
+    total_tokens: s.total_tokens as number | undefined,
+    event_count: (s.event_count as number | undefined) ?? (s.events_count as number | undefined),
+    observed_count: s.observed_count as number | undefined,
+    distinct_agents: s.distinct_agents as string[] | undefined,
+  }));
+  return { sessions, total: data.total };
+}
+
+export async function fetchAgentSessionDetail(
+  sessionId: string,
+  userId: string
+): Promise<{ session: import("@/types/dashboard").AgentSession; events: GatewayEvent[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/agent-sessions/${encodeURIComponent(sessionId)}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载 Session 详情失败 (${res.status})`);
+  const data = await res.json();
+  const s = (data.session ?? {}) as Record<string, unknown>;
+  const session: import("@/types/dashboard").AgentSession = {
+    id: (s.session_id as string) ?? (s.id as string) ?? sessionId,
+    session_id: (s.session_id as string) ?? (s.id as string) ?? sessionId,
+    user_id: (s.user_id as string) ?? "",
+    title: (s.title as string) ?? "",
+    status: ((s.status as string) ?? "unknown") as import("@/types/dashboard").SessionStatus,
+    created_at: (s.created_at as string) ?? "",
+    updated_at: (s.updated_at as string) ?? "",
+    agents: (s.agents as string[] | undefined) ?? (s.distinct_agents as string[] | undefined),
+    model_calls: s.model_calls as number | undefined,
+    total_tokens: s.total_tokens as number | undefined,
+    event_count: (s.event_count as number | undefined) ?? (s.events_count as number | undefined),
+    observed_count: s.observed_count as number | undefined,
+    distinct_agents: s.distinct_agents as string[] | undefined,
+  };
+  return { session, events: (data.events ?? []) as GatewayEvent[] };
+}
+
+export async function fetchSessionEvents(
+  userId: string,
+  sessionId: string,
+  limit?: number
+): Promise<{ events: import("@/types/dashboard").SessionEvent[] }> {
+  const { apiBase } = getApiConfig();
+  const query = new URLSearchParams();
+  if (limit !== undefined) query.set("limit", String(limit));
+  const qs = query.toString();
+  const res = await fetch(
+    `${apiBase}/v1/agent-sessions/${encodeURIComponent(sessionId)}/events${qs ? `?${qs}` : ""}`,
+    { headers: { "X-User-Id": userId, ...buildHeaders() } }
+  );
+  if (!res.ok) throw new Error(`加载 Session 事件失败 (${res.status})`);
+  const data = await res.json();
+  const events: import("@/types/dashboard").SessionEvent[] = (data.events ?? []).map(
+    (e: GatewayEvent) => ({
+      id: e.event_id,
+      session_id: e.session_id,
+      type: (e.event_type as import("@/types/dashboard").SessionEventType) ?? "info_logged",
+      summary: e.event_type,
+      severity: "info" as import("@/types/dashboard").SessionEventSeverity,
+      visibility: "session_timeline" as import("@/types/dashboard").SessionEventVisibility,
+      raw_ref: e.event_hash ?? undefined,
+      created_at: e.timestamp,
+    })
+  );
+  return { events };
+}
+
+export async function fetchGatewayEventsByTask(
+  taskId: string,
+  userId = "dev-user",
+  options?: { limit?: number }
+): Promise<{ events: GatewayEvent[] }> {
+  const { apiBase } = getApiConfig();
+  const query = new URLSearchParams();
+  query.set("task_id", taskId);
+  if (options?.limit !== undefined) query.set("limit", String(options.limit));
+  const res = await fetch(`${apiBase}/v1/gateway/events?${query.toString()}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`按任务加载事件失败 (${res.status})`);
+  const data = await res.json();
+  return { events: (data.events ?? []) as GatewayEvent[] };
+}
+
+export async function downloadEvidenceExport(
+  taskId: string,
+  artifact: import("@/lib/evidence-export").TaskEvidenceExportArtifact
+): Promise<void> {
+  const filename = `task-evidence-${taskId}.json`;
+  const blob = new Blob([JSON.stringify(artifact, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Re-export types used by manager workspace / task evidence views
+export type { ManagerMessage, RouteMessageResponse, RouteMessageRequest } from "@/types/dashboard";
