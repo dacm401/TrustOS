@@ -1,9 +1,19 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { useGatewayEvents } from "@/hooks/useQueries";
-import type { GatewayEvent } from "@/lib/api";
 import {
+  type GatewayEvent,
+  fetchAssess,
+  type AssessEntry,
+  type AssessControlRecommendation,
+  type AssessRiskDist,
+  type AssessControlDist,
+  type AssessRiskLevel,
+} from "@/lib/api";
+import {
+  // Local computation retained ONLY as an offline fallback when the backend
+  // /v1/assess API is unavailable (MWT-22: assessment now computed server-side).
   assessEvents,
   computeControlRecommendation,
   computeRiskDistribution,
@@ -11,7 +21,6 @@ import {
   getTraceLabel,
   type ControlAction,
   type ControlRecommendation,
-  type RiskLevel,
 } from "@/lib/assess-utils";
 import { buildEvidenceBundle } from "@/lib/evidence-bundle";
 
@@ -78,7 +87,7 @@ function ReviewerExplanation() {
 }
 
 // Risk explanation colors (same as RISK_COLORS but declared early for ReviewerExplanation)
-const RISK_EXPLANATION: Record<RiskLevel, { fg: string }> = {
+const RISK_EXPLANATION: Record<AssessRiskLevel, { fg: string }> = {
   none:   { fg: "#94a3b8" },
   low:    { fg: "#16a34a" },
   medium: { fg: "#ca8a04" },
@@ -184,21 +193,21 @@ function StatusBadge({ status }: { status?: string | null }) {
 
 // ── Risk Badge ────────────────────────────────────────────────────────────────
 
-const RISK_COLORS: Record<RiskLevel, { bg: string; fg: string; label: string }> = {
+const RISK_COLORS: Record<AssessRiskLevel, { bg: string; fg: string; label: string }> = {
   none:  { bg: "rgba(100,116,139,0.08)", fg: "#94a3b8", label: "—" },
   low:   { bg: "rgba(34,197,94,0.08)",  fg: "#16a34a", label: "低" },
   medium:{ bg: "rgba(234,179,8,0.10)",  fg: "#ca8a04", label: "中" },
   high:  { bg: "rgba(239,68,68,0.10)",  fg: "#dc2626", label: "高" },
 };
 
-const RISK_TOOLTIPS: Record<RiskLevel, string> = {
+const RISK_TOOLTIPS: Record<AssessRiskLevel, string> = {
   none:   "无风险 — 未检测到治理信号",
   low:    "低风险 — 检测到低严重性操作/完整性信号",
   medium: "中风险 — 存在需 reviewer 关注的治理信号",
   high:   "高风险 — 检测到隐私泄漏/安全敏感信号",
 };
 
-function RiskBadge({ level, signalCount }: { level: RiskLevel; signalCount: number }) {
+function RiskBadge({ level, signalCount }: { level: AssessRiskLevel; signalCount: number }) {
   const c = RISK_COLORS[level];
   return (
     <span
@@ -223,7 +232,7 @@ const CONTROL_LABELS: Record<ControlAction, { bg: string; fg: string; label: str
   would_block: { bg: "rgba(239,68,68,0.08)",  fg: "#dc2626", label: "拦截" },
 };
 
-function ControlBadge({ recommendation }: { recommendation: ControlRecommendation }) {
+function ControlBadge({ recommendation }: { recommendation: AssessControlRecommendation }) {
   const c = CONTROL_LABELS[recommendation.action];
   const base = recommendation.reasons.length > 0
     ? `理由: ${recommendation.reasons.join(", ")}。`
@@ -330,9 +339,9 @@ function GroupHeader({
 }: {
   label: string;
   count: number;
-  riskLevel?: RiskLevel;
+  riskLevel?: AssessRiskLevel;
   signalCount?: number;
-  controlAction?: ControlRecommendation;
+  controlAction?: AssessControlRecommendation;
   onExport?: () => void;
   exportStatus?: string | null;
 }) {
@@ -481,40 +490,88 @@ export default function EventChainViewer() {
     return Array.from(groups.entries());
   }, [data.events]);
 
-  // ── Compute assessments ───────────────────────────────────────────────────
+  // ── Compute assessments (MWT-22: server-side via /v1/assess) ──────────────
   // Ephemeral: derived from sanitized /events, no writes, no enforcement.
-  const { assessments, dist } = useMemo(() => {
-    const a = assessEvents(data.events);
-    const d = computeRiskDistribution(a);
-    return { assessments: a, dist: d };
+  // Primary path calls the backend assessment engine; if the API is
+  // unavailable we fall back to the local assess-utils computation so the
+  // reviewer view degrades gracefully.
+  const [assessments, setAssessments] = useState<AssessEntry[]>([]);
+  const [riskDist, setRiskDist] = useState<AssessRiskDist>({
+    none: 0, low: 0, medium: 0, high: 0,
+  });
+  const [controlByKey, setControlByKey] = useState<Map<string, AssessControlRecommendation>>(new Map());
+  const [controlDist, setControlDist] = useState<AssessControlDist>({
+    allow: 0, review: 0, wouldBlock: 0,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    const events = data.events;
+    fetchAssess(events)
+      .then((res) => {
+        if (cancelled) return;
+        setAssessments(res.assessments);
+        setRiskDist(res.distribution);
+        const cbk = new Map<string, AssessControlRecommendation>();
+        const cd = { allow: 0, review: 0, wouldBlock: 0 };
+        for (const c of res.control ?? []) {
+          cbk.set(c.traceKey, c.recommendation);
+          const act = c.recommendation.action;
+          if (act === "allow") cd.allow++;
+          else if (act === "review") cd.review++;
+          else if (act === "would_block") cd.wouldBlock++;
+        }
+        setControlByKey(cbk);
+        setControlDist(cd);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Offline fallback: recompute locally (map to backend Assess types).
+        const a = assessEvents(events);
+        const d = computeRiskDistribution(a);
+        const mapped: AssessEntry[] = a.map((entry) => ({
+          traceKey: entry.traceKey,
+          traceLabel: getTraceLabel(entry.traceKey),
+          eventCount: entry.eventCount,
+          riskLevel: entry.riskLevel,
+          signals: entry.signals.map((s) => ({
+            code: s.code,
+            severity: s.severity,
+            category: s.category,
+            label: s.label,
+          })),
+          privacyOk: entry.privacyOk,
+          traceIntegrityOk: entry.traceIntegrityOk,
+        }));
+        setAssessments(mapped);
+        setRiskDist({
+          none: d.none, low: d.low, medium: d.medium, high: d.high,
+        });
+        const cbk = new Map<string, AssessControlRecommendation>();
+        const cd = { allow: 0, review: 0, wouldBlock: 0 };
+        for (const entry of a) {
+          const rec = computeControlRecommendation(entry);
+          cbk.set(entry.traceKey, rec);
+          if (rec.action === "allow") cd.allow++;
+          else if (rec.action === "review") cd.review++;
+          else if (rec.action === "would_block") cd.wouldBlock++;
+        }
+        setControlByKey(cbk);
+        setControlDist(cd);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [data.events]);
 
+  // Backwards-compatible alias used by the render layer below.
+  const dist = riskDist;
+
   const assessmentByKey = useMemo(() => {
-    const m = new Map<string, (typeof assessments)[number]>();
+    const m = new Map<string, AssessEntry>();
     for (const a of assessments) m.set(a.traceKey, a);
     return m;
   }, [assessments]);
-
-  // ── Compute dry-run control recommendations ────────────────────────────
-  // Control Discovery — label only, does NOT block, does NOT change runtime.
-  const controlByKey = useMemo(() => {
-    const m = new Map<string, ControlRecommendation>();
-    for (const a of assessments) {
-      m.set(a.traceKey, computeControlRecommendation(a));
-    }
-    return m;
-  }, [assessments]);
-
-  // Control distribution for footer
-  const controlDist = useMemo(() => {
-    let allow = 0, review = 0, wouldBlock = 0;
-    for (const c of controlByKey.values()) {
-      if (c.action === "allow") allow++;
-      else if (c.action === "review") review++;
-      else if (c.action === "would_block") wouldBlock++;
-    }
-    return { allow, review, wouldBlock };
-  }, [controlByKey]);
 
   // ── Evidence Export ────────────────────────────────────────────────────────
   // Copy-only, frontend-only, privacy-safe evidence bundle per trace group.

@@ -2536,6 +2536,45 @@ temp files, NOT part of the trustos mainline; left untouched (no commit).
 
 ---
 
+## 2026-08-22 — MWT-22 / TRST-4D: Frontend Assessment migrated to backend /v1/assess ✅
+
+```text
+Boss instruction (2026-08-21): "开始" — implement MWT-22 (frontend assess-utils → backend).
+
+Findings (pre-implementation):
+- Backend /v1/assess ALREADY EXISTS and is REGISTERED in app.ts (api/assess.ts +
+  services/assessment/assess-engine.ts). It mirrors frontend assess-utils 1:1.
+- Real gap: frontend EventChainViewer.tsx still COMPUTED assessment locally via
+  assess-utils (real-time, in-browser). MWT-22 = make the frontend CALL the backend.
+
+Changes:
+1. frontend/src/lib/api.ts
+   - Added fetchAssess(events) → POST /v1/assess?includeControl (returns assessments,
+     distribution{4-level}, control?[], meta). Types (AssessEntry/AssessSignal/
+     AssessControlRecommendation/AssessRiskDist/AssessResponse) mirror backend EXACTLY.
+2. frontend/src/components/dashboard/EventChainViewer.tsx
+   - Replaced 3 local useMemo computes (assessEvents / computeRiskDistribution /
+     computeControlRecommendation) with a useEffect calling fetchAssess.
+   - Assessment now server-side. Local assess-utils retained as OFFLINE FALLBACK only
+     (catch → recompute locally), so reviewer view degrades gracefully if API down.
+   - Risk model unified to backend 4-level (none/low/medium/high) — removed a spurious
+     frontend-only "critical" level that did not exist in the backend contract.
+   - evidence-bundle.ts LEFT LOCAL (export-only, pure function, not real-time assess).
+
+Verification:
+- Frontend tsc --noEmit: CLEAN ✅
+- Backend  tsc --noEmit: CLEAN ✅
+- E2E smoke (live backend :3002): POST /v1/assess with a deliberate missing-hash event
+  → HTTP 200, riskLevel=high, privacyOk=false, distribution.high=1,
+  control[0].action=would_block (MISSING_EVENT_HASH high-severity privacy signal).
+  meta.mode="assess_only" (no writes, no enforcement) ✅ SMOKE PASS.
+
+Scope guard: PASS. No DB / auth / schema / crypto changes. assess-engine unchanged.
+Frontend-only consumer migration + 1 api helper. MWT-22 CLOSED ✅.
+```
+
+---
+
 ## Protocol: Long-Running Workstream Mode
 
 Each phase ends with a **Continuity Packet** containing:

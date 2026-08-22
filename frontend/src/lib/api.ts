@@ -774,6 +774,84 @@ export async function fetchGatewayReportSummary(): Promise<ReportSummary> {
   return res.json();
 }
 
+// ── MWT-22 / TRST-4D: Backend Assessment API (/v1/assess) ──────────────────────
+// The risk/control assessment is computed server-side (api/assess.ts +
+// services/assessment/assess-engine.ts). The frontend sends sanitized Gateway
+// events and receives the full assessment back. Local assess-utils remains as a
+// type source + offline fallback only.
+//
+// Response shape mirrors the backend exactly:
+//   { assessments[], distribution{4-level}, control?[...], meta }
+
+export type AssessRiskLevel = "none" | "low" | "medium" | "high";
+
+export interface AssessSignal {
+  code: string;
+  severity: "low" | "medium" | "high";
+  category: "privacy" | "operational" | "trace_integrity" | "behavior";
+  label: string;
+}
+
+export interface AssessEntry {
+  traceKey: string;
+  traceLabel: string;
+  eventCount: number;
+  riskLevel: AssessRiskLevel;
+  privacyOk: boolean;
+  traceIntegrityOk: boolean;
+  signals: AssessSignal[];
+}
+
+export interface AssessControlRecommendation {
+  action: "allow" | "review" | "would_block";
+  reasons: string[];
+  mode: "dry_run";
+  runtimeEffect: "none";
+}
+
+export interface AssessControlEntry {
+  traceKey: string;
+  traceLabel: string;
+  recommendation: AssessControlRecommendation;
+}
+
+export interface AssessControlDist {
+  allow: number;
+  review: number;
+  wouldBlock: number;
+}
+
+export interface AssessRiskDist {
+  none: number;
+  low: number;
+  medium: number;
+  high: number;
+}
+
+export interface AssessResponse {
+  assessments: AssessEntry[];
+  distribution: AssessRiskDist;
+  control?: AssessControlEntry[];
+  meta: { eventCount: number; traceCount: number; mode: string };
+}
+
+/**
+ * Post Gateway events to the backend assessment engine. No writes, no
+ * enforcement — the backend returns risk/control discovery derived purely from
+ * the supplied (sanitized, hash-only) events. includeControl:true asks the
+ * backend to also attach the dry-run control recommendations.
+ */
+export async function fetchAssess(events: GatewayEvent[]): Promise<AssessResponse> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/assess`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...buildHeaders() },
+    body: JSON.stringify({ events, includeControl: true }),
+  });
+  if (!res.ok) throw new Error(`后端评估失败 (${res.status})`);
+  return res.json();
+}
+
 // ── Manager Workspace (MWT-19 / Execution Attempts / Reviews) ──────────────────
 
 export type ContractStatus = "draft" | "ready_for_review" | "approved" | "rejected" | "superseded";
