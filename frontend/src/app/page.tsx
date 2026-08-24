@@ -161,7 +161,7 @@ export default function HomePage() {
           )}
 
           {activeNav === "audit" && (
-            <AuditReviewSurface />
+            <AuditReviewSurface sessionId={sessionId} userId={userId} />
           )}
         </main>
 

@@ -241,6 +241,46 @@ export async function fetchMemory(userId: string, category?: string): Promise<{ 
   return res.json() as Promise<{ entries: MemoryEntry[] }>;
 }
 
+export interface MemoryGovernanceApiRecord {
+  memory_id: string;
+  scope: string;
+  source: string;
+  created_at: string;
+  retention: string;
+  sensitivity: string;
+  status: string;
+  warnings: string[];
+  governance_fingerprint: string;
+  evaluated_at: string;
+}
+
+export interface MemoryGovernanceApiResponse {
+  summary: { total: number; by_status: Record<string, number> };
+  records: MemoryGovernanceApiRecord[];
+}
+
+// P1-A: real MWT-6 governance over the user's actual memory corpus.
+// Falls back to empty on error (caller may show fixtures) but should normally
+// render live records produced by /v1/memory/governance.
+export async function fetchMemoryGovernance(userId: string): Promise<MemoryGovernanceApiResponse> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/memory/governance`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载记忆治理失败 (${res.status})`);
+  return res.json() as Promise<MemoryGovernanceApiResponse>;
+}
+
+export interface SessionEventRecord {
+  id: string;
+  sessionId: string;
+  type: string;
+  visibility: string;
+  severity: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
 export async function deleteMemory(id: string, userId: string): Promise<void> {
   const { apiBase } = getApiConfig();
   const res = await fetch(`${apiBase}/v1/memory/${encodeURIComponent(id)}`, {
@@ -653,7 +693,13 @@ export interface GatewayEventsParams {
 export async function fetchGatewayEvents(
   params: GatewayEventsParams = {}
 ): Promise<GatewayEventsResponse> {
-  const { apiBase } = getApiConfig();
+  // Gateway is an OPTIONAL standalone process (services/trst1/llm-gateway-server.ts)
+  // on GATEWAY_URL (default :8787), exposing /events, /sessions, /report — NOT
+  // /v1/gateway/* on the main backend. When not configured, the backend self-observes,
+  // so we must not 404 on first screen.
+  if (!GATEWAY_CONFIGURED) {
+    return { events: [], total: 0, returned: 0, has_more: false };
+  }
   const query = new URLSearchParams();
   if (params.cursor) query.set("cursor", params.cursor);
   if (params.page !== undefined) query.set("page", String(params.page));
@@ -663,7 +709,7 @@ export async function fetchGatewayEvents(
   if (params.observed !== undefined) query.set("observed", String(params.observed));
   const qs = query.toString();
   const res = await fetch(
-    `${apiBase}/v1/gateway/events${qs ? `?${qs}` : ""}`,
+    `${GATEWAY_URL}/events${qs ? `?${qs}` : ""}`,
     { headers: buildHeaders() }
   );
   if (!res.ok) throw new Error(`加载 Gateway 事件失败 (${res.status})`);
@@ -692,11 +738,13 @@ export interface GatewaySessionsResponse {
 }
 
 export async function fetchGatewaySessions(userId: string, limit = 20): Promise<GatewaySessionsResponse> {
-  const { apiBase } = getApiConfig();
+  if (!GATEWAY_CONFIGURED) {
+    return { sessions: [], total: 0 };
+  }
   const query = new URLSearchParams();
   if (limit !== undefined) query.set("limit", String(limit));
   const qs = query.toString();
-  const res = await fetch(`${apiBase}/v1/gateway/sessions${qs ? `?${qs}` : ""}`, {
+  const res = await fetch(`${GATEWAY_URL}/sessions${qs ? `?${qs}` : ""}`, {
     headers: { "X-User-Id": userId, ...buildHeaders() },
   });
   if (!res.ok) throw new Error(`加载 Gateway 会话失败 (${res.status})`);
@@ -755,10 +803,12 @@ export type GatewayReportFormat = "html" | "md" | "download";
  * caller can decide between `.text()` (html/md) and `.blob()` (download).
  */
 export async function fetchGatewayReport(format: GatewayReportFormat = "html"): Promise<Response> {
-  const { apiBase } = getApiConfig();
+  if (!GATEWAY_CONFIGURED) {
+    throw new Error("Gateway 未配置，无法生成报告");
+  }
   const query = new URLSearchParams();
   query.set("format", format);
-  const res = await fetch(`${apiBase}/v1/gateway/report?${query.toString()}`, {
+  const res = await fetch(`${GATEWAY_URL}/report?${query.toString()}`, {
     headers: buildHeaders(),
   });
   if (!res.ok) throw new Error(`加载 Gateway 报告失败 (${res.status})`);
@@ -766,8 +816,27 @@ export async function fetchGatewayReport(format: GatewayReportFormat = "html"): 
 }
 
 export async function fetchGatewayReportSummary(): Promise<ReportSummary> {
-  const { apiBase } = getApiConfig();
-  const res = await fetch(`${apiBase}/v1/gateway/report/summary`, {
+  if (!GATEWAY_CONFIGURED) {
+    return {
+      session_id: "",
+      event_count: 0,
+      observed_count: 0,
+      distinct_agents: [],
+      trust_flags: [],
+      generated_at: "",
+      stats: {
+        observed: 0,
+        total: 0,
+        failures: 0,
+        model_calls: 0,
+        tool_calls: 0,
+        hash_coverage_pct: 0,
+        total_tokens: 0,
+        estimated_cost: 0,
+      },
+    };
+  }
+  const res = await fetch(`${GATEWAY_URL}/report/summary`, {
     headers: buildHeaders(),
   });
   if (!res.ok) throw new Error(`加载 Gateway 报告摘要失败 (${res.status})`);
@@ -1388,11 +1457,13 @@ export async function fetchGatewayEventsByTask(
   userId = "dev-user",
   options?: { limit?: number }
 ): Promise<{ events: GatewayEvent[] }> {
-  const { apiBase } = getApiConfig();
+  if (!GATEWAY_CONFIGURED) {
+    return { events: [] };
+  }
   const query = new URLSearchParams();
   query.set("task_id", taskId);
   if (options?.limit !== undefined) query.set("limit", String(options.limit));
-  const res = await fetch(`${apiBase}/v1/gateway/events?${query.toString()}`, {
+  const res = await fetch(`${GATEWAY_URL}/events?${query.toString()}`, {
     headers: { "X-User-Id": userId, ...buildHeaders() },
   });
   if (!res.ok) throw new Error(`按任务加载事件失败 (${res.status})`);

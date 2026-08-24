@@ -2628,6 +2628,103 @@ environment safe-delete guard on next build, not a code defect.
 
 ---
 
+## 2026-08-24 — DISCUSSION CLOSED + PRODUCT BASELINE v1 PUBLISHED
+
+```text
+Boss confirmed agent-PM's direction: "你的判断很对了". Two deliverables produced:
+
+1) Discussion record: docs/strategy/TRST-5-discussion-2026-08-24.md
+   - Captures all decisions: PC-OS positioning, manager+worker reuse, feature audit re-plan,
+     geek-first target, real technical depth, fix-broken-first, Memory = retention hook.
+
+2) Product baseline v1: docs/strategy/TRST-5-product-spec.md (REWRITTEN as single source of truth)
+   - §2 Product goals (geek-first / real depth / local-first / fix-broken-first / Memory hook)
+   - §3 Full existing-feature panorama (real/half/placeholder/orphan, with file:line)
+   - §4 To-be-implemented roadmap (P0: 404 fix + tsc unlock + geek deploy;
+        P1: Memory real-ification + depth UI exposure + /metrics; P2: auth closure)
+   - §5 Competitiveness/retention conclusion
+   - §6 Anti-drift guardrails (5 rules)
+
+Charter TRST-5-charter-draft.md header now references the v1 baseline + discussion doc.
+
+ANTI-DRIFT BASELINE (frozen for all future dev):
+- Target user: geeks who run containers;小白 later.
+- Principle: real technical depth + local-first + data stays local.
+- Retention hook: Memory (real, grows with use).
+- Fix broken first (TSC_FAIL / 404 / silent-orphan) before adding features.
+- Reuse existing: manager+worker isolation, MWT-6 engine, /v1/assess — do NOT rebuild.
+- Explicitly NOT doing: multi-tenant, enterprise RBAC/ABAC/SSO/MFA, k8s, streaming(4B),
+  backend evidence store(4C), policy engine rewrite(4F), hash-chain.
+```
+
+---
+
+## 2026-08-24 — TRST-5 Charter v0 DRAFTED (agent-PM, Boss scope sign-off pending)
+
+```text
+Following Boss authorization (2026-08-24) "PM已经不参与了，我授权你自己做PM" + "现在起草",
+the agent-PM drafted TRST-5 — Private Beta → 生产化闭环最小集 Charter (v0).
+
+File: docs/strategy/TRST-5-charter-draft.md
+Status: DRAFT_FOR_BOSS_SCOPE_SIGN-OFF
+
+Why TRST-5 (not MWT-23):
+- MWT-0..MWT-7 all SEALED (v0); no MWT-23 exists. Roadmap sequence ends at MWT-7.
+- The real unshipped gap is MWT-7 FULL productionization, DEFERRED in roadmap. TRST-5 is
+  the new charter to close that gap — NOT a continuation of the MWT sequence.
+
+PRODUCT POSITIONING (Boss 2026-08-24, FROZEN):
+- TrustOS = 个人 PC 的操作系统 (本地 OS)，不是云操作系统。
+- 大模型与系统 = 安装在本机上的应用软件。
+- TRST-5 目标 = 像 PC OS 一样只做三件事：支持(兼容/驱动应用软件) + 性能优化 + 安全(本机数据保护)。
+
+Scope: MUST-HAVE = 5A 轻量本机登录(安全), 5B 本机数据保护(安全), 5D 一键安装部署(支持),
+5E 本机健康可见(支持/性能), 5F 应用软件跑得顺+个人工作流(性能/体验).
+SHOULD = 5G reviewer evidence ingest, 5H secrets bootstrap.
+Out-of-scope (anti-creep, FROZEN): **Multi-tenant 剔除**(本机单用户);
+streaming(4B)/backend evidence store(4C)/policy engine rewrite(4F)/k8s/SSO/ABAC/集群治理.
+
+KEY FINDING (Boss 2026-08-24 提示 + code survey): manager+worker 数据隔离**已真实存在且
+代码级强制** (local-manager-runtime.ts / manager-view.ts / context-package.ts:
+artifact 原文不发 Manager、raw history/memory 不发两端、Worker 仅收 brief; DB 层与
+agent-sessions/session-events/tasks PATCH 已有 userId 归属校验)。5B **不重复**这些,
+而是补服务端身份缺口: X-User-Id 是盲信 header(identity.ts:54-59 直接信任任意 userId),
+无 JWT 强制; permissions/workspaces 路由用 body 自报 user_id 非认证身份; tasks GET 无归属
+校验; event store 无 user_id scoping。5B = 强制 JWT + 关闭 X-User-Id 盲信 + permissions/
+workspaces 用认证身份 + 补 tasks GET 归属 + event user_id scoping。仅前端登出清 token 不算完成。
+
+2026-08-24 FEATURE AUDIT + RE-PLAN (Boss: "回顾所有功能做评估表, 与PC-OS原则冲突/不足, 重规划"):
+Code survey 全量功能清单 vs 原则(TrustOS=个人PC OS; 大模型/系统=本机应用; TRST-5=支持+性能+安全).
+强项(保留不重做): Manager/Worker隔离, 事件主干, Assessment, Evidence/签名, Memory, 前端面板,
+后端Redis缓存/压缩, /health.
+三大冲突/不足:
+- [P0] 部署缺失: 仅全栈docker-compose(Postgres+Redis+MinIO+pgvector 5容器); 无standalone/安装器/
+  本地SQLite模式/用户安装文档; NEXT_PRIVATE_STANDALONE 0命中.
+- [P0] 安全未闭环: X-User-Id盲信(identity.ts:54-59); permissions/workspaces用自报user_id.
+- [P0] 前端破碎: tsc-status=TSC_FAIL; 5个孤儿/v1/gateway/*端点(api.ts:666等)后端未挂载→404.
+- [P1] 前端性能薄: 仅4 useMemo; 0 Suspense/lazy/debounce/虚拟化.
+- [P1] 监控半: /metrics未挂载(metricsRouter import未app.route); readiness未暴露HTTP; 仅/health通.
+企业卖点(Evidence Merkle锚定/opt-in DLP/哈希链)不进TRST-5.
+RE-PLAN 优先级: P0=5D安装>5B安全闭环>5F1构建修复; P1=5F2前端流畅度>5E本机健康; P2=5A轻量登录.
+Charter §1.1/§6/§7 已按此重写. 待Boss签核scope + 批准首WP(建议5D).
+
+Global DoD: 12 items (no new raw content, additive-only migrations, no new deps unless
+Boss-approved, no regression on 41 deterministic PASS, npm run validate exit 0, etc.).
+
+Risk register: R-5A-1 crypto import-boundary (reuse MWT-7B guard), R-5D-1 standalone/dev
+parity, R-5F-1 体验优化变功能堆砌(must measurable), R-PREMATURE 云平台化蔓延(HOLD).
+
+Next decision needed (Boss):
+- [ ] Confirm §1.1 MUST-HAVE five items = "个人 PC 操作系统级最小闭环"
+- [ ] Authorize branch + first WP: APPROVE_TRST-5_IMPLEMENTATION (suggest 5A/5D 起, 5F 并行)
+- [ ] Confirm no new deps (default: none)
+- [ ] Confirm 5F priority weight: 启动速度 / 工作流步数 / 本地读写性能
+
+Charter ownership: Boss = scope sign-off owner; agent-PM = gate/acceptance authority.
+```
+
+---
+
 ## Protocol: Long-Running Workstream Mode
 
 Each phase ends with a **Continuity Packet** containing:

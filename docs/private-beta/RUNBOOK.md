@@ -96,3 +96,35 @@ The 2 live `ENV_BLOCKED` are the TRST-4H-III sections, which require `DATABASE_U
 
 > Network/github push failures are **environment issues, not code readiness
 > failures**. See KNOWN_BLOCKERS.md.
+
+---
+
+## 9. Geek install (single host, no cluster)
+
+TrustOS is a **local-first, single-user OS for your AI work** — run it on your own
+machine. Two supported modes:
+
+### 9.1 Full stack (recommended for first run)
+```bash
+cp .env.example .env          # fill OPENAI_API_KEY / model vars
+docker-compose up -d          # Postgres + Redis + (optional) MinIO/Prometheus
+npm install && cd frontend && npm install && cd ..
+npm run dev                  # backend :3001, frontend :3000
+```
+Open `http://localhost:3000`. No external account beyond your LLM provider key.
+
+### 9.2 Standalone frontend build (single static server)
+The Next.js frontend supports `output: "standalone"` for a self-contained server
+binary. Control it explicitly so CI/sandbox safe-delete guards don't break the build:
+```bash
+NEXT_PRIVATE_STANDALONE=1 npm run build   # produces .next/standalone
+# serve:
+cd frontend/.next/standalone && node server.js
+```
+Set `NEXT_PRIVATE_STANDALONE=0` to build a normal dev/non-standalone bundle.
+
+### 9.3 What "local-first" means here
+- Your AI work data (events, memory, evidence) stays on your machine.
+- Manager/Worker architecture keeps raw data out of the model context by design.
+- No multi-tenant, no cloud account required. This is a PC-style OS for AI, not a
+  cloud service.

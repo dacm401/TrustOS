@@ -5,6 +5,7 @@ import { useGatewayEvents } from "@/hooks/useQueries";
 import {
   type GatewayEvent,
   fetchAssess,
+  fetchSessionEvents,
   type AssessEntry,
   type AssessControlRecommendation,
   type AssessRiskDist,
@@ -411,9 +412,56 @@ function GroupHeader({
 
 // ── EventChainViewer ─────────────────────────────────────────────────────────
 
-export default function EventChainViewer() {
+interface EventChainViewerProps {
+  /** When provided, real event chains are pulled from the main backend's
+   *  self-observation store (session-events) so geeks see their AI activity
+   *  even without the optional standalone gateway. */
+  sessionId?: string;
+  userId?: string;
+}
+
+export default function EventChainViewer({ sessionId, userId }: EventChainViewerProps = {}) {
   const [page, setPage] = useState(1);
   const { data, isLoading, isError } = useGatewayEvents({ page, limit: 20 });
+  const [sessionEvents, setSessionEvents] = useState<GatewayEvent[]>([]);
+
+  // P1-B: augment with real backend self-observed events (no gateway required).
+  useEffect(() => {
+    if (!sessionId || !userId) return;
+    let cancelled = false;
+    fetchSessionEvents(userId, sessionId, 200)
+      .then((res) => {
+        if (cancelled) return;
+        const mapped: GatewayEvent[] = (res.events ?? []).map((e) => ({
+          event_id: e.id,
+          event_type: e.type,
+          timestamp: e.created_at,
+          session_id: e.session_id,
+          type: e.type,
+          resource_ref: e.summary,
+        }));
+        setSessionEvents(mapped);
+      })
+      .catch(() => {
+        if (!cancelled) setSessionEvents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, userId]);
+
+  const allEvents = useMemo<GatewayEvent[]>(() => {
+    const base = data?.events ?? [];
+    const merged = [...base, ...sessionEvents];
+    const seen = new Set<string>();
+    return merged.filter((e) => {
+      const id = e.event_id ?? `${e.session_id}:${e.timestamp}`;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }, [data, sessionEvents]);
+
   const cardStyle = {
     backgroundColor: "var(--bg-surface)",
     border: "1px solid var(--border-subtle)",
@@ -461,7 +509,7 @@ export default function EventChainViewer() {
   }
 
   // ── Empty ─────────────────────────────────────────────────────────────────
-  if (!data.events || data.events.length === 0) {
+  if (!allEvents || allEvents.length === 0) {
     return (
       <div className="rounded-xl p-5" style={cardStyle}>
         <h3
@@ -481,14 +529,14 @@ export default function EventChainViewer() {
 
   const groupEntries = useMemo(() => {
     const groups = new Map<string, GatewayEvent[]>();
-    for (const e of data.events) {
+    for (const e of allEvents) {
       const k = getTraceKey(e);
       const arr = groups.get(k);
       if (arr) arr.push(e);
       else groups.set(k, [e]);
     }
     return Array.from(groups.entries());
-  }, [data.events]);
+  }, [allEvents]);
 
   // ── Compute assessments (MWT-22: server-side via /v1/assess) ──────────────
   // Ephemeral: derived from sanitized /events, no writes, no enforcement.
@@ -506,7 +554,7 @@ export default function EventChainViewer() {
 
   useEffect(() => {
     let cancelled = false;
-    const events = data.events;
+    const events = allEvents;
     fetchAssess(events)
       .then((res) => {
         if (cancelled) return;
@@ -562,7 +610,7 @@ export default function EventChainViewer() {
     return () => {
       cancelled = true;
     };
-  }, [data.events]);
+  }, [allEvents]);
 
   // Backwards-compatible alias used by the render layer below.
   const dist = riskDist;
@@ -620,7 +668,7 @@ export default function EventChainViewer() {
           事件链
         </h3>
         <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-          第{page}页 · {data.total ?? data.events_count} 事件
+          第{page}页 · {allEvents.length} 事件
         </span>
       </div>
 
@@ -661,7 +709,7 @@ export default function EventChainViewer() {
         }}
       >
         <span>{groupEntries.length} 个分组</span>
-        <span>{data.total ?? data.events_count} 个总事件</span>
+        <span>{allEvents.length} 个总事件</span>
         {data.has_more && (
           <button
             onClick={() => setPage(p => p + 1)}

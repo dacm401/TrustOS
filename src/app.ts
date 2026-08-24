@@ -13,6 +13,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { config } from "./config.js";
+import { readinessCheck } from "./ops/readiness.js";
 import { identityMiddleware } from "./middleware/identity.js";
 import { rateLimitMiddleware } from "./middleware/rate-limit.js";
 import { chatRouter } from "./api/chat.js";
@@ -73,6 +74,19 @@ app.use("/api/chat", costCapMiddleware);
 app.use("/api/chat", quotaMiddleware);
 // H1: Runtime Health Dashboard — public, no identity middleware
 app.route("/health", healthRouter);
+
+// P1-C: expose Prometheus metrics + a readiness endpoint (previously imported
+// but never mounted). These are the "task manager" readouts for self-hosted geeks.
+app.route("/metrics", metricsRouter);
+app.get("/readiness", async (c) => {
+  try {
+    const report = await readinessCheck();
+    const status = report.ready ? 200 : 503;
+    return c.json(report, status);
+  } catch (err: any) {
+    return c.json({ ready: false, error: err?.message ?? "readiness failed" }, 503);
+  }
+});
 // Sprint 48: Auth — public, no identity middleware (it's the login endpoint)
 app.route("/auth", authRouter);
 app.route("/api", chatRouter);

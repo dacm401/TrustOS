@@ -95,6 +95,60 @@ memoryRouter.get("/", async (c) => {
   }
 });
 
+// GET /v1/memory/governance — run MWT-6 governance engine over the user's memory.
+// Reuses the REAL governance core (src/services/mwt6/memory-governance-core.ts);
+// the frontend MemoryGovernanceSurface renders these records instead of fixtures.
+// Mapping: MemoryEntry -> MemoryGovernanceInput (honest, source-typed defaults).
+import { buildMemoryGovernanceRecord } from "../services/mwt6/memory-governance-core.js";
+
+function mapEntryToGovernanceInput(entry: any): any {
+  // MemoryEntry.category (preference/fact/context/instruction) maps to scope.
+  const scope = entry.category ?? "user";
+  // MemorySource (manual/extracted/feedback/auto_learn) maps to governance source.
+  let source: string = entry.source ?? "user_input";
+  if (source === "manual") source = "user_input";
+  else if (source === "extracted" || source === "auto_learn") source = "assistant_output";
+  else if (source === "feedback") source = "approval_review";
+  // Importance 4–5 (or auto_learn) => long_term; else session.
+  const retention = source === "assistant_output" && entry.source === "auto_learn"
+    ? "long_term"
+    : (entry.importance >= 4 ? "long_term" : "session");
+  return {
+    memory_id: entry.id,
+    content_digest: entry.id, // placeholder digest; real hash requires content (kept server-side)
+    scope,
+    source,
+    created_at: entry.created_at,
+    created_by: entry.user_id,
+    retention,
+    // Memory has no sensitivity field -> unknown (governance treats unknown as restricted)
+    sensitivity: "unknown",
+    provenance_refs: entry.tags ?? [],
+  };
+}
+
+memoryRouter.get("/governance", async (c) => {
+  const userId = getContextUserId(c)!;
+  try {
+    // Pull a generous slice so governance reflects the real corpus.
+    const entries = await MemoryEntryRepo.list(userId, { limit: 200 });
+    const records = entries.map((e: any) =>
+      buildMemoryGovernanceRecord(mapEntryToGovernanceInput(e))
+    );
+    const summary = {
+      total: records.length,
+      by_status: records.reduce((acc: Record<string, number>, r: any) => {
+        acc[r.status] = (acc[r.status] ?? 0) + 1;
+        return acc;
+      }, {}),
+    };
+    return c.json({ summary, records });
+  } catch (err: any) {
+    console.error("Memory governance error:", err);
+    return errorResp(c, err.message, 500);
+  }
+});
+
 // GET /v1/memory/:id
 // PUT  /v1/memory/:id
 // DELETE /v1/memory/:id

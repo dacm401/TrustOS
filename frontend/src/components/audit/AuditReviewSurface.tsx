@@ -11,6 +11,7 @@
 // wired into the main sidebar as the "Audit" nav item (see app/page.tsx).
 
 import ApprovalReviewPanel from "@/components/audit/ApprovalReviewPanel";
+import EventChainViewer from "@/components/dashboard/EventChainViewer";
 import {
   approvedVerified,
   mismatch,
@@ -25,7 +26,14 @@ const SAMPLES = [
   unavailable,
 ] as const;
 
-export function AuditReviewSurface() {
+interface AuditReviewSurfaceProps {
+  /** Real event chain + assessment is pulled from the backend self-observation
+   *  store (no gateway required) so the audit surface shows live activity. */
+  sessionId?: string;
+  userId?: string;
+}
+
+export function AuditReviewSurface({ sessionId, userId }: AuditReviewSurfaceProps = {}) {
   return (
     <div className="h-full overflow-y-auto p-6" data-testid="audit-review-surface">
       <div className="max-w-5xl mx-auto space-y-6">
@@ -84,6 +92,17 @@ export function AuditReviewSurface() {
           {SAMPLES.map((review) => (
             <ApprovalReviewPanel key={review.review_id} review={review} />
           ))}
+        </div>
+
+        {/* P1-B: real event chain + server-side assessment (live data, no gateway) */}
+        <div className="pt-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+          <h2
+            className="text-base font-semibold mb-3"
+            style={{ color: "var(--text-primary)" }}
+          >
+            🔗 Live Event Chain & Assessment
+          </h2>
+          <EventChainViewer sessionId={sessionId} userId={userId} />
         </div>
       </div>
     </div>

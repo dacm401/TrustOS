@@ -24,6 +24,7 @@ import {
   issueScopedToken,
 } from "../services/permission-manager.js";
 import { TaskWorkspaceService } from "../services/task-workspace.js";
+import { getContextUserId } from "../middleware/identity.js";
 
 export function createPermissionsRouter(): Hono {
   const app = new Hono();
@@ -33,13 +34,19 @@ export function createPermissionsRouter(): Hono {
   /**
    * POST /v1/permissions/request
    * Worker 或 Fast 代为发起授权请求
+   *
+   * P2-A: user_id is taken from the authenticated identity (JWT-enforced
+   * middleware), NOT from the client body. Body user_id is accepted only as a
+   * dev fallback when no verified identity is present.
    */
   app.post("/request", async (c) => {
     const body = await c.req.json();
     const {
-      task_id, worker_id, user_id, session_id,
+      task_id, worker_id, session_id,
       field_name, field_key, purpose, value_preview, expires_in,
     } = body;
+    // Authoritative identity: verified token wins; fall back to body only in dev.
+    const user_id = getContextUserId(c) ?? body.user_id;
 
     if (!task_id || !worker_id || !user_id || !session_id || !field_name || !field_key || !purpose) {
       return c.json({ error: "Missing required fields" }, 400);
@@ -98,7 +105,7 @@ export function createPermissionsRouter(): Hono {
    * 主人查看所有待确认的权限请求，附带给主人看的提示文本
    */
   app.get("/pending", async (c) => {
-    const userId = c.req.query("user_id");
+    const userId = getContextUserId(c) ?? c.req.query("user_id");
     // "anonymous" comes from unauthenticated sessions — return empty, don't throw
     if (!userId || userId === "anonymous") {
       return c.json({ requests: [], prompt_hint: "" });
@@ -154,7 +161,8 @@ export function createWorkspacesRouter(): Hono {
    */
   app.post("/", async (c) => {
     const body = await c.req.json();
-    const { task_id, user_id, session_id, objective, constraints } = body;
+    const { task_id, session_id, objective, constraints } = body;
+    const user_id = getContextUserId(c) ?? body.user_id;
     if (!task_id || !user_id || !session_id || !objective) {
       return c.json({ error: "task_id, user_id, session_id, objective required" }, 400);
     }
@@ -203,7 +211,7 @@ export function createWorkspacesRouter(): Hono {
    * 查看用户当前活跃工作空间列表
    */
   app.get("/user/mine", async (c) => {
-    const userId = c.req.query("user_id");
+    const userId = getContextUserId(c) ?? c.req.query("user_id");
     if (!userId || userId === "anonymous") {
       return c.json({ workspaces: [] });
     }
