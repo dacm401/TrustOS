@@ -12,15 +12,16 @@ import { HealthPanel } from "@/components/workbench/HealthPanel";
 import { DebugPanel } from "@/components/workbench/DebugPanel";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
-import MemoryView from "@/components/views/MemoryView";
+import MemoryGovernanceSurface from "@/components/memory/MemoryGovernanceSurface";
 import DashboardView from "@/components/views/DashboardView";
 import TasksView from "@/components/views/TasksView";
 import ArchiveView from "@/components/views/ArchiveView";
 import PermissionsView from "@/components/views/PermissionsView";
 import ManagerView from "@/components/views/ManagerView";
+import { AuditReviewSurface } from "@/components/audit/AuditReviewSurface";
 import { fetchPendingPermissions, fetchGatewayHealth, GATEWAY_CONFIGURED } from "@/lib/api";
 
-type NavView = "chat" | "tasks" | "memory" | "dashboard" | "archive" | "permissions" | "manager";
+type NavView = "chat" | "tasks" | "memory" | "dashboard" | "archive" | "permissions" | "manager" | "audit";
 
 type WorkbenchTab = "evidence" | "trace" | "health" | "debug";
 
@@ -140,7 +141,7 @@ export default function HomePage() {
           )}
 
           {activeNav === "memory" && (
-            <MemoryView userId={userId} />
+            <MemoryGovernanceSurface />
           )}
 
           {activeNav === "dashboard" && (
@@ -157,6 +158,10 @@ export default function HomePage() {
 
           {activeNav === "manager" && (
             <ManagerView userId={userId} />
+          )}
+
+          {activeNav === "audit" && (
+            <AuditReviewSurface />
           )}
         </main>
 

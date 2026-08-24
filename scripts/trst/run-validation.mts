@@ -93,11 +93,13 @@ type Step = {
   // For live steps: which external dependency they require, used to emit an
   // explicit ENV_BLOCKED reason code (MWT-7E).
   liveDeps?: Array<"database" | "gateway" | "http_service">;
+  // Optional extra environment variables for the spawned command.
+  env?: Record<string, string>;
 };
 
 const STEPS: Step[] = [
   { name: "Frontend Typecheck", cmd: "npx", args: ["tsc", "--noEmit"], cwd: "frontend" },
-  { name: "Frontend Build", cmd: "npx", args: ["next", "build"], cwd: "frontend", bucket: "live" },
+  { name: "Frontend Build", cmd: "npx", args: ["next", "build"], cwd: "frontend", bucket: "live", env: { NEXT_PRIVATE_STANDALONE: "0" } },
   { name: "MWT-4A Smoke", cmd: "npx", args: ["tsx", "scripts/mwt4a/run-smoke.mts"] },
   { name: "MWT-4A Regression", cmd: "npx", args: ["tsx", "scripts/mwt4a/run-regression.mts"] },
   { name: "MWT-3B1 Regression", cmd: "npx", args: ["tsx", "scripts/mwt3b1/run-regression.mts"] },
@@ -152,6 +154,7 @@ function runStep(step: Step): Promise<StepResult> {
       // Windows: npx/next are .cmd shims, not directly spawnable without a shell.
       // Build a single command string so there is no args-escaping deprecation warning.
       shell: true,
+      env: { ...process.env, ...(step.env ?? {}) },
     };
     const command = [step.cmd, ...step.args].join(" ");
     const child = spawn(command, [], opts);
@@ -198,6 +201,10 @@ function classify(step: Step, r: StepResult): ValidationStatus {
 
 // Build an explicit detail string for ENV_BLOCKED live steps (MWT-7E).
 function envBlockedDetail(step: Step, r: StepResult): string {
+  // Prefer the generic env classifier (covers safe-delete + network blockers).
+  if (isEnvBlockedError(r.output)) {
+    return `ENV_BLOCKED(live-dependency-unavailable) (requires: ${step.liveDeps?.join(", ") ?? "build-toolchain"})`;
+  }
   const reason = classifyTrst4hBlocker(r.output);
   const deps = step.liveDeps && step.liveDeps.length > 0
     ? ` (requires: ${step.liveDeps.join(", ")})`

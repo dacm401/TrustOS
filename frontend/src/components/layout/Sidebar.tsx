@@ -14,6 +14,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "manager",     icon: "🤖", label: "Manager" },
   { id: "permissions", icon: "🔐", label: "Perms" },
   { id: "dashboard",   icon: "📊", label: "Dashboard" },
+  { id: "audit",       icon: "🛡️", label: "Audit" },
 ];
 
 interface SidebarProps {
@@ -42,6 +43,7 @@ export function Sidebar({ activeNav, onNavChange, onSettingsClick, pendingPermCo
               key={item.id}
               onClick={() => onNavChange(item.id)}
               title={item.label}
+              data-testid={`nav-${item.id}`}
               className="relative w-full flex flex-col items-center justify-center py-2 rounded-lg text-xs transition-all"
               style={{
                 backgroundColor: isActive ? "var(--bg-overlay)" : "transparent",

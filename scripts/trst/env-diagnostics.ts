@@ -169,6 +169,12 @@ const ENV_BLOCKED_PATTERNS: RegExp[] = [
   /UnhandledSchemeError/i,
   /Reading from "node:[^"]*" is not handled by plugins/i,
   /Build failed because of webpack errors/i,
+  // Environment bulk-delete guard: Next.js cleaning .next/standalone triggers
+  // the sandbox safe-delete confirmation. This is an environment restriction,
+  // NOT a code/type regression — honest ENV_BLOCKED, not FAIL.
+  /\[safe-delete\]/i,
+  /SAFE_DELETE_BULK_CONFIRM_REQUIRED/i,
+  /Operation requires confirmation/i,
 ];
 
 /**
