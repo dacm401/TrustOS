@@ -90,6 +90,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/smartrouter
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
+      BACKEND_PORT: "3001"
       ALLOW_DEV_FALLBACK: "true"
       SLOW_MODEL: "Qwen/Qwen2.5-72B-Instruct"
       FAST_MODEL: "Qwen/Qwen2.5-7B-Instruct"
