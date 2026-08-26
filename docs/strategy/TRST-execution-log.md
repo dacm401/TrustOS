@@ -2628,6 +2628,37 @@ environment safe-delete guard on next build, not a code defect.
 
 ---
 
+## 2026-08-24 — TRST-5 P0/P1/P2 DELIVERED (agent-PM autonomous execution)
+
+```text
+Boss授权: "你有PM的权限，自己动手完成开发和测试，直到整个系统规划完成前不用请示"
+自主执行完成 P0/P1/P2 全部 work packages，commit 2106d2f on
+feature/trst-3-private-beta-readiness. GitHub push 仍 BLOCKED(github.com:443 连接重置, 环境网络).
+
+交付清单:
+- P0-A 修首屏404: api.ts 5个 orphan /v1/gateway/* 改用 GATEWAY_URL + 正确路径 + 无网关时优雅no-op
+  (fetchGatewayEvents/Sessions/Report/ReportSummary/EventsByTask).
+- P0-B 解锁前端tsc: memory-governance.ts 跨rootDir引用后端源 -> 内联类型 + 前端安全crypto-free
+  builder副本(frontend/src/lib/memory-governance-core.ts) + 相对路径re-export修复运行时解析.
+- P1-A Memory真实化(粘性钩子): 新增 /v1/memory/governance 路由(复用MWT-6真实引擎) + UI改为fetch真实数据
+  (fallback fixture); MemoryGovernanceSurface 现渲染活动治理记录.
+- P1-B 深度界面暴露: EventChainViewer 接入后端 /v1/session-events 真实事件链 + 服务端assess;
+  AuditReviewSurface 保留 audit-review-surface testid 并嵌入真实 EventChainViewer.
+- P1-C 本机健康: app.ts 挂载 /metrics (metricsRouter) + 新增 /readiness 端点.
+- P2-A 安全闭环: identity.ts 强化——JWT enabled时不再fall-through盲信 X-User-Id; permissions/workspaces
+  改用 getContextUserId(认证身份) 取代 body/query 自报 user_id.
+- P0-C 极客部署: RUNBOOK.md 补 standalone构建(NEXT_PRIVATE_STANDALONE) + 单主机安装章节.
+
+验证: 前端tsc 绿; 后端tsc 绿; run-validation EXIT:0 (所有deterministic+regression套件PASS;
+唯一ENV_BLOCKED=沙箱safe-delete拦截standalone构建 + 缺PG/Gateway配置 + 缺浏览器, 均诚实分类非FAIL).
+回归修复: MWT-6-UI smoke 因@/别名运行时解析失败 -> 改相对路径后PASS; MWT-5R-UI-II 因audit testid
+被移除 -> 恢复AuditReviewSurface并嵌入EventChainViewer后PASS.
+
+待办: GitHub push 网络恢复后推送 2106d2f; 后续charter scope Boss签核(P0-D 单机SQLite模式等).
+```
+
+---
+
 ## 2026-08-24 — DISCUSSION CLOSED + PRODUCT BASELINE v1 PUBLISHED
 
 ```text
