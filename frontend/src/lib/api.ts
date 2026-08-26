@@ -1,5 +1,5 @@
-const RAW_API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002").trim();
-const DEFAULT_API_BASE = RAW_API_BASE || "http://localhost:3002";
+const RAW_API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").trim();
+const DEFAULT_API_BASE = RAW_API_BASE || "http://localhost:3001";
 
 // 获取API配置
 export function getApiConfig() {

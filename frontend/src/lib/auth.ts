@@ -55,7 +55,7 @@ export interface LoginResponse {
   expires_in: number;
 }
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002").trim() || "http://localhost:3002";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").trim() || "http://localhost:3001";
 
 export async function login(req: LoginRequest): Promise<LoginResponse> {
   const res = await fetch(`${API_BASE}/auth/token`, {

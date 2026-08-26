@@ -132,9 +132,14 @@ export function ChatInterface({
 
     let response: Response;
     try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("srp_jwt_token") : null;
       response = await fetch(`${apiBase}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-User-Id": userId },
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": userId,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify(body),
       });
     } catch {
@@ -414,9 +419,14 @@ export function ChatInterface({
     if (fastModel) body.fast_model = fastModel;
     if (slowModel) body.slow_model = slowModel;
 
+    const token = typeof window !== "undefined" ? localStorage.getItem("srp_jwt_token") : null;
     const res = await fetch(`${apiBase}/api/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-User-Id": userId },
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-Id": userId,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(body),
     });
     const data = await res.json();
