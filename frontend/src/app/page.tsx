@@ -2,24 +2,51 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { v4 as uuid } from "uuid";
+import { lazy, Suspense, type ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ChatInterface } from "@/components/chat/ChatInterface";
 import { SettingsModal } from "@/components/chat/SettingsModal";
 import { TaskPanel } from "@/components/workbench/TaskPanel";
-import { EvidencePanel } from "@/components/workbench/EvidencePanel";
-import { TracePanel } from "@/components/workbench/TracePanel";
-import { HealthPanel } from "@/components/workbench/HealthPanel";
-import { DebugPanel } from "@/components/workbench/DebugPanel";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
-import MemoryGovernanceSurface from "@/components/memory/MemoryGovernanceSurface";
-import DashboardView from "@/components/views/DashboardView";
-import TasksView from "@/components/views/TasksView";
-import ArchiveView from "@/components/views/ArchiveView";
-import PermissionsView from "@/components/views/PermissionsView";
-import ManagerView from "@/components/views/ManagerView";
-import { AuditReviewSurface } from "@/components/audit/AuditReviewSurface";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { Skeleton } from "@/components/ui/ErrorBoundary";
 import { fetchPendingPermissions, fetchGatewayHealth, GATEWAY_CONFIGURED } from "@/lib/api";
+
+// 5F2 前端流畅度: 视图级代码分割 — 首屏只加载 Chat，其余视图按需懒加载 chunk
+const LazyTaskPanel = TaskPanel; // TaskPanel 常驻首屏（workbench 顶栏）
+const MemoryGovernanceSurface = lazy(() => import("@/components/memory/MemoryGovernanceSurface"));
+const DashboardView = lazy(() => import("@/components/views/DashboardView"));
+const TasksView = lazy(() => import("@/components/views/TasksView"));
+const ArchiveView = lazy(() => import("@/components/views/ArchiveView"));
+const PermissionsView = lazy(() => import("@/components/views/PermissionsView"));
+const ManagerView = lazy(() => import("@/components/views/ManagerView"));
+const AuditReviewSurface = lazy(() =>
+  import("@/components/audit/AuditReviewSurface").then((m) => ({ default: m.AuditReviewSurface }))
+);
+const EvidencePanel = lazy(() =>
+  import("@/components/workbench/EvidencePanel").then((m) => ({ default: m.EvidencePanel }))
+);
+const TracePanel = lazy(() =>
+  import("@/components/workbench/TracePanel").then((m) => ({ default: m.TracePanel }))
+);
+const HealthPanel = lazy(() =>
+  import("@/components/workbench/HealthPanel").then((m) => ({ default: m.HealthPanel }))
+);
+const DebugPanel = lazy(() =>
+  import("@/components/workbench/DebugPanel").then((m) => ({ default: m.DebugPanel }))
+);
+
+// Suspense + ErrorBoundary 包装，避免懒加载 chunk 失败炸掉整页
+function LazyView({ name, children }: { name: string; children: ReactNode }) {
+  return (
+    <ErrorBoundary name={name} fallback={<div className="p-4 text-xs" style={{ color: "var(--text-muted)" }}>视图加载失败，请刷新</div>}>
+      <Suspense fallback={<div className="p-4"><Skeleton className="h-24 w-full" /></div>}>
+        {children}
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
 
 type NavView = "chat" | "tasks" | "memory" | "dashboard" | "archive" | "permissions" | "manager" | "audit";
 
@@ -137,31 +164,31 @@ export default function HomePage() {
           )}
 
           {activeNav === "tasks" && (
-            <TasksView userId={userId} />
+            <LazyView name="TasksView"><TasksView userId={userId} /></LazyView>
           )}
 
           {activeNav === "memory" && (
-            <MemoryGovernanceSurface />
+            <LazyView name="MemoryGovernanceSurface"><MemoryGovernanceSurface /></LazyView>
           )}
 
           {activeNav === "dashboard" && (
-            <DashboardView userId={userId} onNavChange={(v) => setActiveNav(v as NavView)} />
+            <LazyView name="DashboardView"><DashboardView userId={userId} onNavChange={(v) => setActiveNav(v as NavView)} /></LazyView>
           )}
 
           {activeNav === "archive" && (
-            <ArchiveView sessionId={sessionId} userId={userId} />
+            <LazyView name="ArchiveView"><ArchiveView sessionId={sessionId} userId={userId} /></LazyView>
           )}
 
           {activeNav === "permissions" && (
-            <PermissionsView userId={userId} />
+            <LazyView name="PermissionsView"><PermissionsView userId={userId} /></LazyView>
           )}
 
           {activeNav === "manager" && (
-            <ManagerView userId={userId} />
+            <LazyView name="ManagerView"><ManagerView userId={userId} /></LazyView>
           )}
 
           {activeNav === "audit" && (
-            <AuditReviewSurface sessionId={sessionId} userId={userId} />
+            <LazyView name="AuditReviewSurface"><AuditReviewSurface sessionId={sessionId} userId={userId} /></LazyView>
           )}
         </main>
 
@@ -221,14 +248,16 @@ export default function HomePage() {
               {/* Tab content */}
               <div className="flex-1 overflow-hidden">
                 {workbenchTab === "evidence" && (
-                  <EvidencePanel taskId={selectedTaskId} userId={userId} sessionId={sessionId} />
+                  <LazyView name="EvidencePanel"><EvidencePanel taskId={selectedTaskId} userId={userId} sessionId={sessionId} /></LazyView>
                 )}
                 {workbenchTab === "trace" && (
-                  <TracePanel taskId={selectedTaskId} userId={userId} taskStatus={selectedTaskStatus} />
+                  <LazyView name="TracePanel"><TracePanel taskId={selectedTaskId} userId={userId} taskStatus={selectedTaskStatus} /></LazyView>
                 )}
-                {workbenchTab === "health" && <HealthPanel />}
+                {workbenchTab === "health" && (
+                  <LazyView name="HealthPanel"><HealthPanel /></LazyView>
+                )}
                 {workbenchTab === "debug" && (
-                  <DebugPanel taskId={selectedTaskId} userId={userId} />
+                  <LazyView name="DebugPanel"><DebugPanel taskId={selectedTaskId} userId={userId} /></LazyView>
                 )}
               </div>
             </div>

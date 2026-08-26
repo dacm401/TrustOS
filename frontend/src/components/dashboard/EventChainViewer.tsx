@@ -264,6 +264,9 @@ function EventRow({ event }: { event: GatewayEvent }) {
       style={{
         backgroundColor: "var(--bg-elevated)",
         border: "1px solid var(--border-subtle)",
+        // 5F2 前端流畅度: 长事件链原生懒渲染 — 跳过屏外行的布局/绘制，零依赖
+        contentVisibility: "auto",
+        containIntrinsicSize: "auto 88px",
       }}
     >
       {/* Top row: type + status + timestamp */}
