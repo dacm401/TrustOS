@@ -57,7 +57,7 @@ TRST-5 不做云平台治理，只把本机这三件事做扎实。优先级由 
 
 | 优先级 | ID | PC-OS 支柱 | 能力 | 最小交付（基于已有功能，不重做） | 不在范围内 |
 |--------|----|-----------|------|----------|-----------|
-| P0 | 5D | 支持 | 个人 PC 一键安装 | standalone 构建 + **本地 SQLite 模式**（去 Postgres+Redis+MinIO+pgvector 5 容器依赖）+ 大白话安装向导；固化 `NEXT_PRIVATE_STANDALONE` | 容器编排、多实例、蓝绿、全栈 docker |
+| P0 | 5D | 支持 | 个人 PC 一键安装 | standalone 构建（固化 `NEXT_PRIVATE_STANDALONE`）+ **docker compose 一键起**（Postgres+Redis+MinIO，极客推荐路径）+ 大白话安装向导(RUNBOOK §9)；见 §8 P0-D scope 决策 | 容器编排、多实例、蓝绿、全栈 docker、**本地 SQLite 全量模式(去 PG 5 容器，2026-08-26 Boss 签核 OUT OF SCOPE)** |
 | P0 | 5B | 安全 | 本机数据保护闭环（基于已有 manager+worker 隔离做身份强制） | **非重复已有隔离**，补服务端身份缺口：强制 JWT、关闭 `X-User-Id` 盲信、permissions/workspaces 用认证身份(非自报 user_id)、tasks GET 补归属校验 | 企业 RBAC、ABAC、细粒度策略引擎 |
 | P0 | 5F1 | 性能 | 前端构建修复 | 修 `TSC_FAIL`；移除/接好 5 个孤儿 `/v1/gateway/*` 端点(api.ts:666 等后端未挂载→404) | — |
 | P1 | 5F2 | 性能/体验 | 应用软件跑得顺 | 路由级代码分割(Suspense/lazy)、列表虚拟化、防抖；个人高频路径闭环且步数少、本地 `events.jsonl` 读写高性能 | 企业协作、多人看板 |
@@ -218,11 +218,11 @@ P2（配合）：**5A 轻量登录**
 
 ## 8. 下一步（需 Boss 拍板）
 
-- [ ] **Boss scope sign-off**：确认 §1.1 + §6 评估 + §7 优先级（P0=5D/5B/5F1）即"个人 PC OS 最小闭环"。
-- [ ] 批准首 WP：`APPROVE_TRST-5_IMPLEMENTATION`（建议从 **5D 个人 PC 一键安装** 起，它解锁"装得上"）。
-- [ ] 确认 5D 是否采用**本地 SQLite 模式**（去 Postgres+Redis 依赖，真正单文件/单进程安装）。
-- [ ] 确认是否引入新依赖（如 standalone 打包、SQLite 驱动）；默认不引入。
-- [ ] 确认 5F 个人体验的优先子项（启动速度 / 工作流步数 / 本地读写性能 的权重）。
+- [x] **Boss scope sign-off**：确认 §1.1 + §6 评估 + §7 优先级（P0=5D/5B/5F1）即"个人 PC OS 最小闭环"。**已签核 (2026-08-24)**。
+- [x] 批准首 WP：`APPROVE_TRST-5_IMPLEMENTATION`（建议从 **5D 个人 PC 一键安装** 起，它解锁"装得上"）。**已执行 (2026-08-24, commit 2106d2f)**。
+- [x] **5D 本地 SQLite 模式 scope 决策**：Boss 2026-08-26 签核 —— **不实装全量 SQLite 模式**；P0-D = standalone 构建 + docker compose 一键起（Postgres+Redis+MinIO，极客推荐路径）+ RUNBOOK §9 大白话向导。理由：后端 80+ 处 PG raw SQL 全量移植风险高、违背"最小改动"护栏，且目标用户为愿跑容器极客，docker compose 已满足"装得上、跑得起来"。
+- [x] 新依赖确认：standalone 打包经 `NEXT_PRIVATE_STANDALONE` 控制（无新依赖）；SQLite 驱动 `better-sqlite3` 已在 deps（为 TRST-4C 事件索引预留，仅事件索引用，不扩展为全量后端）。
+- [ ] 确认 5F 个人体验的优先子项（启动速度 / 工作流步数 / 本地读写性能 的权重）。**已覆盖**：5F1 构建修复 DONE、5F2 前端流畅度 DONE (React.lazy + content-visibility, commit 3f1aa70)。
 
 > 注：此 charter 为 agent-PM 起草稿。Charter scope 仍由 Boss 作为 owner 签核。
 > 常规 gate/acceptance 与基线修复 agent 已获授权自主执行。

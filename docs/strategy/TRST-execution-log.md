@@ -3237,10 +3237,11 @@ npm run validate → 19/19 PASS ✅
 - ✅ P0: 5D 部署 / 5B 安全闭环 / 5F1 构建修复 — DONE (2106d2f)
 - ✅ P1: Memory 真实化 / 真实事件链 / /metrics 挂载 / 5F2 前端流畅度 — DONE
 - ✅ P2: 5A 轻量登录 — DONE
-- ⏸ P0-D 单机 SQLite 模式：HELD — 需 Boss 签核 scope，不在自主授权范围。
+- ✅ P0-D scope 签核 (2026-08-26): 仅固化 standalone 构建 + docker compose 一键起 + RUNBOOK §9；
+  本地 SQLite 全量模式 **OUT OF SCOPE**（Boss 签核，技术现实与最小改动护栏冲突，docker 路径已满足极客）。
 
-*Last updated: 2026-08-26 — TRST-5 P0/P1/P2 全部 DELIVERED（代码主线）。P0-D 待 Boss 签核。
-本地 commit 0950ccf + 3f1aa70 待网络恢复 push。*
+*Last updated: 2026-08-26 — TRST-5 P0/P1/P2 全部 DELIVERED（代码主线）；P0-D scope 由 Boss 签核收口。
+本地 commit 0950ccf + 3f1aa70 + charter/log 更新待网络恢复 push。*
 
 *Last updated: 2026-08-11 — TRST-4H-III COMPLETED. src/api/manager-route.ts adopts
 shapeManagerRouteResponse for ask_clarification over the real HTTP path. Legacy M-diff isolated
