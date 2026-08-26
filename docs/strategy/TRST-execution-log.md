@@ -3197,6 +3197,51 @@ npm run validate → 19/19 PASS ✅
 - ✅ unrelated legacy NOT bundled (dev-user fallback + LLM-failure re-route isolated).
 - ✅ sealed baseline protected (MWT-4B/MWT-5 untouched; 19/19 PASS).
 
+---
+
+## TRST-5 5F2 前端流畅度 — DELIVERED (2026-08-26)
+
+**Context:** P0/P1/P2 已于 2026-08-24 交付 (commit 2106d2f + 0950ccf pushed)。
+5F2 前端流畅度属已授权 P1 项，此前未实现（P1 当时只做了 Memory 真实化、真实事件链、/metrics）。
+本次在自主授权范围内补齐 5F2，符合全局护栏（no new deps, additive-only, no regression）。
+
+### Changes
+- `frontend/src/app/page.tsx`：
+  - 7 个重量级视图 (TasksView/MemoryGovernanceSurface/DashboardView/ArchiveView/
+    PermissionsView/ManagerView/AuditReviewSurface) + 4 个工作台面板
+    (EvidencePanel/TracePanel/HealthPanel/DebugPanel) 改为 `React.lazy` 动态导入。
+  - 首屏只静态加载 ChatView + Header + Sidebar + TaskPanel（workbench 顶栏）。
+  - 新增 `LazyView` 包装组件（Suspense fallback Skeleton + ErrorBoundary 错误边界），
+    避免懒加载 chunk 失败炸整页；保留 `audit-review-surface` testid 不变。
+- `frontend/src/components/dashboard/EventChainViewer.tsx`：
+  - `EventRow` 外层容器加 `content-visibility: auto` + `contain-intrinsic-size: auto 88px`
+    （零依赖原生懒渲染，长事件链只渲染屏内行）。
+
+### Scope guard
+- 无新依赖（package.json 未改）。
+- 防抖（debounce）经排查前端无本地搜索框/高频输入调用点，强行加 hook 无明确落点，
+  按"最小变更 + 真技术深度"原则跳过，不引入无谓改动。
+
+### Validation
+- 前端 `npx tsc --noEmit` → EXIT 0 ✅
+- `scripts/trst/run-validation.mts` → Deterministic PASS 41 / FAIL 0；Live PASS 4 / ENV_BLOCKED 1 ✅
+  （ENV_BLOCKED 仅缺 PG/Gateway 配置，非代码回归）
+- 无 FAIL，无回归。
+
+### Commit
+- `3f1aa70` 5F2 前端流畅度 (2 files, +54/-22)
+- ⚠️ PUSH BLOCKED: github.com:443 连接超时（同源网络阻断，与历史一致）。
+  本地 commit 已安全保留，待网络恢复后 `git push origin feature/trst-3-private-beta-readiness`。
+
+### TRST-5 自主交付边界（agent-PM 授权内）
+- ✅ P0: 5D 部署 / 5B 安全闭环 / 5F1 构建修复 — DONE (2106d2f)
+- ✅ P1: Memory 真实化 / 真实事件链 / /metrics 挂载 / 5F2 前端流畅度 — DONE
+- ✅ P2: 5A 轻量登录 — DONE
+- ⏸ P0-D 单机 SQLite 模式：HELD — 需 Boss 签核 scope，不在自主授权范围。
+
+*Last updated: 2026-08-26 — TRST-5 P0/P1/P2 全部 DELIVERED（代码主线）。P0-D 待 Boss 签核。
+本地 commit 0950ccf + 3f1aa70 待网络恢复 push。*
+
 *Last updated: 2026-08-11 — TRST-4H-III COMPLETED. src/api/manager-route.ts adopts
 shapeManagerRouteResponse for ask_clarification over the real HTTP path. Legacy M-diff isolated
 and uncommitted. npm run validate 19/19 PASS. Next: PM discretion (MR-1/MR-2, or MWT-6/MWT-7).*
