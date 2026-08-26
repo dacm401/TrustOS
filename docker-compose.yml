@@ -92,8 +92,8 @@ services:
       NODE_ENV: production
       BACKEND_PORT: "3001"
       ALLOW_DEV_FALLBACK: "true"
-      SLOW_MODEL: "Qwen/Qwen2.5-72B-Instruct"
-      FAST_MODEL: "Qwen/Qwen2.5-7B-Instruct"
+      # FAST_MODEL / SLOW_MODEL / COMPRESSOR_MODEL 由 env_file(.env) 注入，
+      # 不在此硬写，避免与 .env 的 deepseek-ai/DeepSeek-V4-Flash 不一致导致 LLM 调用失败。
       # S3 / MinIO 配置（Phase 5）
       STORAGE_BACKEND: "s3"
       S3_BUCKET: "smartrouter-archives"
@@ -117,10 +117,12 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3001
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://backend:3001
+      NEXT_PUBLIC_API_URL: http://localhost:3001
     depends_on:
       - backend
 
