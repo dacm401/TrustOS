@@ -29,14 +29,19 @@ export function EvidencePanel({ taskId, userId, sessionId }: EvidencePanelProps)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!taskId) { setEvidences([]); return; }
+  const load = () => {
+    if (!taskId || !userId) { setEvidences([]); setError(null); return; }
     setLoading(true);
     setError(null);
     fetchEvidence(taskId, userId)
       .then((data) => setEvidences(data.evidences ?? []))
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId, userId]);
 
   const renderContent = () => (
@@ -73,8 +78,16 @@ export function EvidencePanel({ taskId, userId, sessionId }: EvidencePanelProps)
       <div className="flex-1 overflow-y-auto">
         {loading && <div className="p-4 text-xs text-center animate-pulse" style={{ color: "var(--text-muted)" }}>加载中…</div>}
         {error && (
-          <div className="mx-3 my-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "var(--accent-red)" }}>
-            ⚠️ {error}
+          <div className="mx-3 my-2 px-3 py-2 rounded-lg text-xs flex items-center gap-2" style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "var(--accent-red)" }}>
+            <span className="flex-1">⚠️ {error}</span>
+            <button
+              type="button"
+              onClick={load}
+              className="px-2 py-0.5 rounded text-[10px] font-medium"
+              style={{ border: "1px solid rgba(239,68,68,0.4)", color: "var(--accent-red)" }}
+            >
+              重试
+            </button>
           </div>
         )}
         {!loading && !error && evidences.length === 0 && (

@@ -407,8 +407,19 @@ export interface GatewayHealth {
 
 /** Gateway port. Can be overridden via NEXT_PUBLIC_GATEWAY_URL env var. */
 const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8795";
+const GATEWAY_CONFIGURED = Boolean(process.env.NEXT_PUBLIC_GATEWAY_URL);
 
 export async function fetchGatewayHealth(): Promise<GatewayHealth> {
+  if (!GATEWAY_CONFIGURED) {
+    return {
+      status: "offline",
+      configured: false,
+      service: "gateway",
+      streaming: false,
+      mcp_lifecycle: false,
+      providers: {},
+    } as unknown as GatewayHealth;
+  }
   const res = await fetch(`${GATEWAY_URL}/health`);
   if (!res.ok) throw new Error(`网关健康检查失败 (${res.status})`);
   return res.json();
