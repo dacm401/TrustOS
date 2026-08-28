@@ -268,14 +268,14 @@ deniedContext: true   ← 字面量，类型系统级强制
 | Context Boundary | ✅ **真实（类型级）** | 22 单测覆盖 |
 | Memory | ✅ **真实持久化** | PG 表 + 并行检索 |
 | JWT / 限流 / 成本上限 | ✅ **真实** | 中间件链 `app.ts:61-89` |
-| 事件哈希 | ⚠️ **逐条真实，无链式** | 有 SHA-256，但**全库无 `prev_hash` 实现** |
-| Event Backbone | 🚨 **主后端写不进** | 见 §6.1 |
+| 事件哈希 | ⚠️ **逐条真实，无链式** → ✅ **已升级为哈希链** | 2026-08-28 加 `prev_hash`，防篡改 **且防删除** |
+| Event Backbone | 🚨 **主后端写不进** → ✅ **已修复** | 见 §6.1（事件已真实落盘） |
 | Assessment | ⚠️ **真实但极浅** | 12 信号全基于元数据（哈希字段是否存在） |
-| Control 拦截 | 🚨 **实际永不拦截** | 见 §6.2 |
-| Evidence Bundle | ⚠️ **仅前端** | 剪贴板/Blob 下载，`signed:false` |
-| Audit 审阅 | ⚠️ **UI 为 fixture** | 渲染 4 个静态样例 |
-| RBAC / 多租户 | ❌ **无** | 单用户，Gateway 零鉴权 |
-| Gateway | ❌ **未部署** | `docker-compose.yml` 无此服务 |
+| Control 拦截 | 🚨 **实际永不拦截** → ✅ **已修复** | 见 §6.4（`can_block: true`，规则真实命中） |
+| Evidence Bundle | ⚠️ **仅前端** | 剪贴板/Blob 下载，`signed:false`（仍未持久化/未签名） |
+| Audit 审阅 | ⚠️ **UI 为 fixture** → ✅ **已接真实数据** | 见 §6.5（真实审核队列） |
+| RBAC / 多租户 | ❌ **无** | 单用户，Gateway 零鉴权（**仍未解决**） |
+| Gateway | ❌ **未部署** → ✅ **已部署** | 见 §6.3（8787 运行中，JSONL-only 模式） |
 
 ### 4.2 逐项证据
 
@@ -318,47 +318,100 @@ deniedContext: true   ← 字面量，类型系统级强制
 
 > **一个把「信息流边界」当作头等公民、可本地部署的 LLM 路由与审计工作台。**
 
-在此定位下，安全架构深度确实超过主流框架 —— 但**信任闭环目前只完成约 40%**：
+在此定位下，安全架构深度确实超过主流框架 —— 2026-08-28 修复前**信任闭环只完成约 40%**，修复后提升至约 **75%**：
 
-| 环节 | 状态 |
-|---|---|
-| Observe | ✅（但仅 Gateway 覆盖，主后端断链） |
-| Assess | ⚠️ 浅（仅元数据信号） |
-| Control | ❌ 空环节（dry_run，无可达 deny 规则） |
-| Prove | ⚠️ 半（逐条哈希，无链） |
+| 环节 | 修复前 | 修复后（2026-08-28） |
+|---|---|---|
+| Observe | ⚠️ 仅 Gateway 覆盖，主后端断链 | ✅ 主后端已落盘 + Gateway 已部署 |
+| Assess | ⚠️ 浅（仅元数据信号） | ⚠️ 仍浅（信号未增强，待 P1） |
+| Control | ❌ 空环节（零可达 deny 规则） | ✅ 规则真实命中，`can_block: true` |
+| Prove | ⚠️ 半（逐条哈希，无法防删除） | ✅ 哈希链，防篡改 + 防删除 |
 
 ---
 
-## 6. 架构断链与修复优先级
+## 6. 架构断链与修复状态
+
+> **2026-08-28 更新**：本节列出的 P0–P2 断链**已全部修复并验证**（commit `d339fa1`，12 files, +714/-22）。
+> 原始问题描述保留如下，供追溯；每项下方追加「修复状态」。
+
+| # | 优先级 | 断链 | 状态 |
+|---|---|---|---|
+| 6.1 | P0 | Event Backbone 主后端写不进 | ✅ 已修复 |
+| 6.2 | P0 | Evidence 无哈希链 | ✅ 已修复（14/14 验证通过） |
+| 6.3 | P1 | Gateway 未部署 | ✅ 已修复（含 SIGSEGV 规避） |
+| 6.4 | P1 | Control 永不拦截 | ✅ 已修复（classifier 断链） |
+| 6.5 | P2 | Audit UI 为 fixture | ✅ 已修复 |
 
 ### 6.1 🚨 P0 — Event Backbone 断链
 
 **问题**：主后端从不初始化事件存储，enforcement 事件 100% 落不了盘。
 **为什么致命**：没有事件，审计、证据、评估全是无源之水 —— 整个「可验证」承诺的地基缺失。
-**修复方向**：在 `src/index.ts` / `src/app.ts` 调用 `initEventStore()`；修复 SQLite 索引缺失 `event_hash` 字段问题。
+
+> **✅ 修复状态（commit `d339fa1`）**
+> - `src/index.ts` 启动时调用 `initEventStore(config.trustosEventLogPath)`
+> - `config.ts` 新增 `trustosEventLogPath`（默认 `.trustos/events.jsonl`）
+> - `docker-compose.yml` backend 加 `trustos_events` 卷持久化
+> - **验证**：`event_backbone: {status:"ok", events:1, chain_valid:true}`，
+>   落盘事件为 `policy_enforcement`（此前零条）
 
 ### 6.2 🚨 P0 — Evidence 无哈希链
 
 **问题**：只能证明「单条未被篡改」，无法证明「序列完整未被删除」。
 **为什么致命**：后者才是审计的真正价值（防删除比防篡改更关键）。
-**修复方向**：引入 `prev_hash` 链 + 验证器；将单测里的 Merkle 锚定生产化。
+
+> **✅ 修复状态（commit `d339fa1`）**
+> - `event-envelope.ts` 新增 `prev_hash` 字段
+> - `jsonl-event-store.ts`：`appendEvent` 写入 `prev_hash` 并推进链尾；
+>   `initEventStore` 从磁盘恢复链尾（重启不断链）；新增 `verifyEventChain()`
+> - `scripts/verify-event-chain.mts` — **14/14 通过**，覆盖：
+>   链衔接 ✅ / 篡改检测 ✅ / **删除检测** ✅ / 重启恢复 ✅
 
 ### 6.3 P1 — Gateway 未部署
 
 **问题**：`docker-compose.yml` 无 gateway 服务，需手工 `npm run trst1:gateway`。
 **影响**：Observe 层无法覆盖业务调用；前端顶部状态恒为 `Gateway: Offline`。
-**修复方向**：加入 compose；确认 `src/services/trst1/llm-gateway-server.ts` 启动契约。
+
+> **✅ 修复状态（commit `d339fa1`）**
+> - compose 新增 `gateway` 服务（8787）；`Dockerfile` 补 `COPY scripts`
+> - **规避 SIGSEGV**：`better-sqlite3` 在此镜像段错误（exit 139），
+>   改用 `TRUSTOS_EVENT_INDEX=0` 的 JSONL-only 模式；
+>   `/events`、`/sessions`、`/report/summary` 诚实降级 503；
+>   health 的 `index` 字段由硬编码改为反映真实状态
+> - **验证**：Gateway 稳定运行，`health` 返回 `index:"jsonl_only"` + HTTP 200
 
 ### 6.4 P1 — Control 形同虚设
 
 **问题**：默认 `dry_run`；即便切 live，可达 deny 规则为 0（分类器断链）。
 **影响**：产品闭环「Control」实际不存在。
-**修复方向**：至少落地 1 条真实拦截规则并验证。
+
+> **✅ 修复状态（commit `d339fa1`）**
+> **根因是两个缺陷叠加**：
+> ① `buildEngine()` 传 `classifier=undefined` → 分类恒回退 `confidential`
+>    → 依赖 `strictly_private` 的 deny 规则永不命中
+> ② 规则集受 `dlpEnabled` 控制 → 默认注入 `[]`（零规则）
+>
+> 修复：注入 `SourceBasedClassifier(buildClassificationMap())` + 始终安装
+> deny 规则；新增 `denyRulesEnabled` 开关（默认 true，可紧急回退）。
+> **验证**：`policy_enforcement: {mode:"live", deny_rules_count:1, can_block:true}`，
+> 且运行时真实命中 `rule_id=external-api-always-confirm`
 
 ### 6.5 P2 — Audit UI 接真实后端
 
 **问题**：审阅面板渲染 4 个静态样例。
 **修复方向**：接 `/v1/audit` 真实数据，完成人工审阅闭环。
+
+> **✅ 修复状态（commit `d339fa1`）**
+> - `api.ts` 新增 `fetchHumanReviews()` 接 `GET /v1/human-review`
+> - `AuditReviewSurface.tsx` 渲染**真实人工审核队列**（刷新/错误/空态齐备），
+>   fixture 降为明确标注的「状态示例（非真实记录）」
+> - **验证**：Audit 视图返回真实记录（`[low]` severity）
+
+### 6.6 线性回归确认
+
+修复后确认**无回归**：
+- 中文聊天 `POST /api/chat` → HTTP 200，返回完整快速排序代码（live 模式未误伤合法流量）
+- 首页无 client-side exception
+- 前后端 `tsc --noEmit` 全绿
 
 ### 6.6 不建议做
 
@@ -370,9 +423,25 @@ deniedContext: true   ← 字面量，类型系统级强制
 
 ---
 
-## 7. 一句话总结
+## 7. 总结
 
-> **架构品味高于平均，工程完成度低于宣称；把 §6 的三个架构断链接上，它才真正成为它所宣称的东西。**
+**2026-08-28 修复前的判断**：
+> 架构品味高于平均，工程完成度低于宣称；把 §6 的三个架构断链接上，它才真正成为它所宣称的东西。
+
+**修复后的更新判断（commit `d339fa1`）**：
+> §6 的五个 P0–P2 断链已全部接上，信任闭环从 ~40% 提升至 ~75%。
+> 剩余真实缺口：Assessment 信号仍浅、Evidence Bundle 未签名/未持久化、
+> RBAC 与多租户缺失、Gateway 因 native 模块问题只能跑 JSONL-only 模式。
+
+## 8. 剩余待办（修复后重新排序）
+
+| 优先级 | 事项 | 说明 |
+|---|---|---|
+| **P1** | Assessment 信号增强 | 当前 12 信号全基于「哈希字段是否存在」，无语义深度 |
+| **P1** | Evidence Bundle 后端化 + 签名 | 当前仅前端剪贴板/Blob，`signed:false` |
+| **P1** | Gateway 恢复 SQLite 索引 | 需修 `better-sqlite3` 在此镜像的 SIGSEGV；当前 JSONL-only |
+| **P2** | RBAC / 多租户 | 按产品定位为单用户，**是否要做取决于定位决策** |
+| **P2** | SQLite 索引补 `event_hash` 列 | 修复后 `/events` 响应缺哈希会被 Assessment 误判 high |
 
 ---
 
