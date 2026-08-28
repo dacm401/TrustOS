@@ -270,12 +270,12 @@ deniedContext: true   ← 字面量，类型系统级强制
 | JWT / 限流 / 成本上限 | ✅ **真实** | 中间件链 `app.ts:61-89` |
 | 事件哈希 | ⚠️ **逐条真实，无链式** → ✅ **已升级为哈希链** | 2026-08-28 加 `prev_hash`，防篡改 **且防删除** |
 | Event Backbone | 🚨 **主后端写不进** → ✅ **已修复** | 见 §6.1（事件已真实落盘） |
-| Assessment | ⚠️ **真实但极浅** | 12 信号全基于元数据（哈希字段是否存在） |
+| Assessment | ⚠️ **浅** → ✅ **已增强** | 18 信号；新增链完整性维度，可检测**删除**（仍无语义/DLP，遵守 TRST-0.3） |
 | Control 拦截 | 🚨 **实际永不拦截** → ✅ **已修复** | 见 §6.4（`can_block: true`，规则真实命中） |
-| Evidence Bundle | ⚠️ **仅前端** | 剪贴板/Blob 下载，`signed:false`（仍未持久化/未签名） |
+| Evidence Bundle | ⚠️ **仅前端** → ✅ **已后端化并签名** | HMAC-SHA256 + 第三方验证端点（tamper-evident；按需生成，未持久化） |
 | Audit 审阅 | ⚠️ **UI 为 fixture** → ✅ **已接真实数据** | 见 §6.5（真实审核队列） |
 | RBAC / 多租户 | ❌ **无** | 单用户，Gateway 零鉴权（**仍未解决**） |
-| Gateway | ❌ **未部署** → ✅ **已部署** | 见 §6.3（8787 运行中，JSONL-only 模式） |
+| Gateway | ❌ **未部署** → ✅ **已部署 + 索引恢复** | 见 §6.3；改用纯 JS 索引，消除 `better-sqlite3` SIGSEGV 根因 |
 
 ### 4.2 逐项证据
 
@@ -320,12 +320,12 @@ deniedContext: true   ← 字面量，类型系统级强制
 
 在此定位下，安全架构深度确实超过主流框架 —— 2026-08-28 修复前**信任闭环只完成约 40%**，修复后提升至约 **75%**：
 
-| 环节 | 修复前 | 修复后（2026-08-28） |
+| 环节 | 修复前 | 第二轮修复后（2026-08-28 完成） |
 |---|---|---|
-| Observe | ⚠️ 仅 Gateway 覆盖，主后端断链 | ✅ 主后端已落盘 + Gateway 已部署 |
-| Assess | ⚠️ 浅（仅元数据信号） | ⚠️ 仍浅（信号未增强，待 P1） |
+| Observe | ⚠️ 仅 Gateway 覆盖，主后端断链 | ✅ 主后端已落盘 + Gateway 已部署 + 索引恢复 |
+| Assess | ⚠️ 浅（仅元数据信号） | ✅ 18 信号，含链完整性（可检测删除） |
 | Control | ❌ 空环节（零可达 deny 规则） | ✅ 规则真实命中，`can_block: true` |
-| Prove | ⚠️ 半（逐条哈希，无法防删除） | ✅ 哈希链，防篡改 + 防删除 |
+| Prove | ⚠️ 半（逐条哈希，无法防删除） | ✅ 哈希链 + **签名 bundle + 第三方验证** |
 
 ---
 
@@ -428,20 +428,65 @@ deniedContext: true   ← 字面量，类型系统级强制
 **2026-08-28 修复前的判断**：
 > 架构品味高于平均，工程完成度低于宣称；把 §6 的三个架构断链接上，它才真正成为它所宣称的东西。
 
-**修复后的更新判断（commit `d339fa1`）**：
-> §6 的五个 P0–P2 断链已全部接上，信任闭环从 ~40% 提升至 ~75%。
-> 剩余真实缺口：Assessment 信号仍浅、Evidence Bundle 未签名/未持久化、
-> RBAC 与多租户缺失、Gateway 因 native 模块问题只能跑 JSONL-only 模式。
+**修复后的更新判断（第二轮完成，2026-08-28）**：
+> 五个 P0–P2 断链全部接上，且第二轮补齐了 Assessment 深度、
+> Evidence 签名与索引稳定性。**信任闭环四环节现已全部打通（Observe /
+> Assess / Control / Prove 均为 ✅）**，剩余是有意为之的边界，而非缺陷：
+> - Assessment 不做语义/DLP（TRST-0.3 冻结护栏）
+> - RBAC / 多租户不做（Boss 2026-08-24 决策：本机单用户）
+> - Evidence Bundle 按需生成、未持久化（当前规模下合理）
+>
+> 回归验证入口：**`npm run verify:trust`**（4 组共 90 断言）。
 
-## 8. 剩余待办（修复后重新排序）
+## 8. 第二轮待办完成情况（2026-08-28 晚）
 
-| 优先级 | 事项 | 说明 |
-|---|---|---|
-| **P1** | Assessment 信号增强 | 当前 12 信号全基于「哈希字段是否存在」，无语义深度 |
-| **P1** | Evidence Bundle 后端化 + 签名 | 当前仅前端剪贴板/Blob，`signed:false` |
-| **P1** | Gateway 恢复 SQLite 索引 | 需修 `better-sqlite3` 在此镜像的 SIGSEGV；当前 JSONL-only |
-| **P2** | RBAC / 多租户 | 按产品定位为单用户，**是否要做取决于定位决策** |
-| **P2** | SQLite 索引补 `event_hash` 列 | 修复后 `/events` 响应缺哈希会被 Assessment 误判 high |
+> 全部完成，commit `d339fa1` + 后续一轮。验证入口已统一为 **`npm run verify:trust`**（90 断言）。
+
+| 优先级 | 事项 | 状态 | 验证 |
+|---|---|---|---|
+| P2 | SQLite 索引补 `event_hash` 列 | ✅ 完成 | 索引返回哈希，不再误判 `MISSING_EVENT_HASH` |
+| P1 | Assessment 信号增强 | ✅ 完成 | 新增 6 信号，**11/11** |
+| P1 | Evidence Bundle 后端化 + 签名 | ✅ 完成 | HMAC-SHA256，**26/26** |
+| P1 | Gateway 索引恢复 | ✅ 完成 | **改为纯 JS 索引**（去 native），**39/39** |
+| P2 | RBAC / 多租户 | ❌ **不做** | Boss 2026-08-24 决策：本机单用户，多租户已剔除 |
+
+### 8.1 Assessment 增强（关键：把链能力接进评估）
+
+新增信号：`CHAIN_BREAK` / `CHAIN_GENESIS_UNEXPECTED` / `REPEATED_FAILURE` /
+`RUNAWAY_TRACE` / `UNMEASURED_LATENCY` / `MISSING_TRACE_ID`
+
+`verifyChainLinkage()` 仅用哈希指针校验，不碰 raw content —— 严格遵守 TRST-0.3「无 DLP」护栏。
+
+**核心收益**：Assessment 现在能发现「事件被删除」，而逐条哈希无法发现。
+
+### 8.2 Evidence Bundle 签名
+
+- 服务端生成，13 个 hash-only 字段 + 递归 forbidden-key 扫描
+- HMAC-SHA256，规范 JSON（键序无关）
+- **诚实签名**：未配密钥时返回 `signed:false` + 明确原因，绝不伪造
+- bundle 内含 `chain` 状态；`POST /v1/evidence/bundle/verify` 供第三方验证
+- 定位为 **tamper-evident，非 tamper-proof**（符合 TRST-0.3）
+
+### 8.3 Gateway 索引：去 native 化（根因消除）
+
+**根因**：Dockerfile 用 `npm install --ignore-scripts`，跳过 better-sqlite3 的
+prebuild 下载 → `require()` 时 SIGSEGV（exit 139，try/catch 无法捕获）。容器内探针已证实。
+
+**方案选择**：放弃 alpine 编译（工具链安装 8+ 分钟仍卡住），改为**消除 native 依赖**：
+- 新增 `src/services/trst1/jsonl-event-index.ts` —— 纯 JS，接口与 SQLite 版完全兼容
+- JSONL 本就是 source of truth，索引不可能与之漂移
+- `TRUSTOS_EVENT_INDEX=sqlite` 才 opt-in native 后端
+
+**结果**：`/events`、`/sessions`、`/report/summary` 从 503 降级**恢复为 200**。
+
+### 8.4 剩余真实缺口（诚实列出）
+
+| 事项 | 说明 |
+|---|---|
+| Assessment 仍无语义深度 | 元数据信号已增强，但按 TRST-0.3 冻结护栏**不做语义/DLP** |
+| Evidence Bundle 未持久化 | 按需生成，未落库；适合当前规模 |
+| RBAC / 多租户 | 按定位**不做**（单用户是有意设计） |
+| Gateway SQLite 索引 | 需正确构建 native 模块；当前纯 JS 索引已满足需求 |
 
 ---
 
