@@ -11,6 +11,9 @@ RUN npm install --ignore-scripts
 
 # 复制源码
 COPY src ./src
+# Gateway 启动脚本（docker compose 的 gateway 服务以
+# `tsx scripts/trst1/start-gateway.ts` 为入口，需要此目录）
+COPY scripts ./scripts
 COPY tsconfig.json ./
 
 EXPOSE 3001

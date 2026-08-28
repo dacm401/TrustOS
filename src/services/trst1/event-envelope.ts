@@ -108,7 +108,23 @@ export interface TrstEventEnvelope {
   error_message?: string;
 
   // ── Evidence Integrity ──
+  /**
+   * SHA-256 of this event (canonical JSON, sorted keys).
+   * Proves: this single event was not modified.
+   */
   event_hash?: string;
+  /**
+   * Hash-chain link: event_hash of the immediately preceding event.
+   * Genesis event (first in a store) has prev_hash = null.
+   *
+   * Together with event_hash this forms a tamper-evident chain:
+   * - event_hash proves a single event is unmodified
+   * - prev_hash proves NO event was deleted or reordered
+   *
+   * Previously the store only had per-event hashes, which could not detect
+   * deletion of an entire event from the middle of the log.
+   */
+  prev_hash?: string | null;
 }
 
 // ── Factory ─────────────────────────────────────────────────────────────────

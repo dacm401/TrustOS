@@ -24,7 +24,7 @@ import { v4 as uuidv4 } from "uuid";
 import { createHash } from "node:crypto";
 
 import { createEventId, extractTaskId, type TrstEventEnvelope } from "./event-envelope.js";
-import { appendEvent, getStorePath } from "./jsonl-event-store.js";
+import { appendEvent, countEvents, getStorePath } from "./jsonl-event-store.js";
 import { getEventIndex, type EventIndex } from "./event-index.js";
 import { extractContextBlocks } from "./context-trace-lite.js";
 import { estimateCost } from "./cost-ledger-lite.js";
@@ -49,19 +49,53 @@ const GATEWAY_STARTED_AT_MS = Date.now();
 
 // ── Event indexing (TRST-4C) ────────────────────────────────────────────────
 let _eventIndexInstance: EventIndex | null = null;
+let _eventIndexDisabled = false;
 
-function initEventIndex(): EventIndex {
+/**
+ * The SQLite index is backed by better-sqlite3 (native module).
+ * In some container images the native binding crashes the process with
+ * SIGSEGV (exit 139) — try/catch CANNOT recover from a segfault, so the
+ * only safe mitigation is to never load it.
+ *
+ * Set TRUSTOS_EVENT_INDEX=0 to run JSONL-only (event chain stays intact;
+ * only the fast /events query endpoints degrade).
+ */
+function eventIndexEnabled(): boolean {
+  return process.env.TRUSTOS_EVENT_INDEX !== "0";
+}
+
+/** Returns the index, or null when disabled/unavailable. */
+function initEventIndex(): EventIndex | null {
+  if (_eventIndexDisabled) return null;
   if (!_eventIndexInstance) {
-    _eventIndexInstance = getEventIndex(getStorePath());
-    _eventIndexInstance.syncFromJsonl();
+    if (!eventIndexEnabled()) {
+      _eventIndexDisabled = true;
+      return null;
+    }
+    try {
+      _eventIndexInstance = getEventIndex(getStorePath());
+      _eventIndexInstance.syncFromJsonl();
+    } catch (err) {
+      _eventIndexDisabled = true;
+      process.stderr.write(
+        `[gateway] event index unavailable, running JSONL-only: ${
+          err instanceof Error ? err.message : String(err)
+        }\n`,
+      );
+      return null;
+    }
   }
   return _eventIndexInstance;
 }
 
-/** Append event to JSONL + SQLite index */
+/** Append event to JSONL + (optional) SQLite index */
 function persistEvent(e: TrstEventEnvelope): void {
   appendEvent(e);
-  try { initEventIndex().appendEvent(e); } catch { /* index failure is non-fatal */ }
+  try {
+    initEventIndex()?.appendEvent(e);
+  } catch {
+    /* index failure is non-fatal — JSONL is the source of truth */
+  }
 }
 
 // ── Gateway Config ──────────────────────────────────────────────────────────
@@ -121,7 +155,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
   // Health check
   app.get("/health", (c) => {
     const uptimeSeconds = Math.floor((Date.now() - GATEWAY_STARTED_AT_MS) / 1000);
-    const eventsCount = initEventIndex().getEventCount();
+    const eventsCount = initEventIndex()?.getEventCount() ?? countEvents();
     return c.json({
       status: "ok",
       service: "trst2-gateway",
@@ -132,7 +166,8 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       uptime_seconds: uptimeSeconds,
       events_count: eventsCount,
       gateway_overhead_ms: null,
-      index: "sqlite", // TRST-4C
+      // Honest: reflect whether the SQLite index is actually in use.
+      index: initEventIndex() ? "sqlite" : "jsonl_only", // TRST-4C
     });
   });
 
@@ -175,6 +210,19 @@ export function createGatewayApp(config: GatewayConfig): Hono {
   // GET /events — paginated event metadata viewer (TRST-4C: SQLite-backed)
   app.get("/events", (c) => {
     const idx = initEventIndex();
+    if (!idx) {
+      return c.json(
+        {
+          status: "degraded",
+          service: "trst2-gateway",
+          mode: "shadow",
+          reason:
+            "event_index_disabled (JSONL-only mode); use GET /report for the hash-chained event log",
+          events: [],
+        },
+        503,
+      );
+    }
     const q: Record<string, string> = {};
     for (const k of ["page", "limit", "session_id", "event_type", "agent_id", "from", "to", "request_mode"]) {
       const v = c.req.query(k);
@@ -220,6 +268,18 @@ export function createGatewayApp(config: GatewayConfig): Hono {
   app.get("/sessions", (c) => {
     const idx = initEventIndex();
     const limit = Math.min(100, Math.max(1, parseInt(c.req.query("limit") || "") || 50));
+    if (!idx) {
+      return c.json(
+        {
+          status: "degraded",
+          service: "trst2-gateway",
+          mode: "shadow",
+          reason: "event_index_disabled (JSONL-only mode); session listing unavailable",
+          sessions: [],
+        },
+        503,
+      );
+    }
     const sessions = idx.listSessions(limit);
     return c.json({
       status: "ok",
@@ -282,6 +342,18 @@ export function createGatewayApp(config: GatewayConfig): Hono {
   // GET /report/summary — aggregated stats from SQLite index (TRST-4C: fast, no full scan)
   app.get("/report/summary", (c) => {
     const idx = initEventIndex();
+    if (!idx) {
+      return c.json(
+        {
+          status: "degraded",
+          service: "trst2-gateway",
+          mode: "shadow",
+          reason: "event_index_disabled (JSONL-only mode); aggregate stats unavailable",
+          event_count: countEvents(),
+        },
+        503,
+      );
+    }
     const s = idx.getStats();
     return c.json({
       status: "ok",

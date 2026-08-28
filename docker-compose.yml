@@ -104,6 +104,12 @@ services:
       S3_PREFIX: "archives/"
       # TTL eviction（天）
       ARCHIVE_TTL_DAYS: "30"
+      # Event Backbone: append-only hash-chained log (must survive restarts)
+      TRUSTOS_EVENT_LOG_PATH: /app/.trustos/events.jsonl
+    volumes:
+      # Persist the Event Backbone across container restarts —
+      # without this the hash chain restarts from genesis on every reboot.
+      - trustos_events:/app/.trustos
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,6 +117,36 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    env_file:
+      - .env
+
+  # TrustOS Gateway (SmartRouter) — Observation layer for the Event Backbone.
+  # Writes hash-chained model_call / tool_call / mcp_* events.
+  # Frontend treats it as OPTIONAL (graceful "Gateway: Offline" when absent).
+  gateway:
+    build:
+      context: .
+      args:
+        - NODE_ENV=production
+    command: npx tsx scripts/trst1/start-gateway.ts
+    ports:
+      - "8787:8787"
+    environment:
+      TRUSTOS_GATEWAY_PORT: "8787"
+      # Reuse the same upstream LLM as the backend (.env provides the key).
+      TRUSTOS_UPSTREAM_BASE_URL: https://api.siliconflow.cn/v1
+      # Separate log file: two processes appending to one JSONL would
+      # interleave lines and corrupt the hash chain. Each writer owns its
+      # own chain (single-writer principle).
+      TRUSTOS_EVENT_LOG_PATH: /app/.trustos/events-gateway.jsonl
+      TRUSTOS_PROJECT_ID: trustos-docker
+      # better-sqlite3 (native) segfaults (exit 139) in this image.
+      # Run JSONL-only: the hash chain stays intact, only fast /events
+      # queries degrade (they return 503 with an honest reason).
+      TRUSTOS_EVENT_INDEX: "0"
+      NODE_ENV: production
+    volumes:
+      - trustos_events:/app/.trustos
     env_file:
       - .env
 
@@ -131,3 +167,5 @@ volumes:
   minio_data:
   redis_data:
   prometheus_data:
+  # Event Backbone (append-only, hash-chained) — must survive restarts
+  trustos_events:

@@ -9,6 +9,15 @@ import { startExecuteWorker, stopExecuteWorker } from "./services/phase3/execute
 import { startTaskWatchdog, stopTaskWatchdog } from "./services/phase3/task-watchdog.js";
 // S99P: Alert detector for beta operations
 import { startAlertDetector, stopAlertDetector } from "./services/alert-detector.js";
+// Event Backbone: append-only, hash-chained telemetry.
+// Previously only initialised by standalone Gateway scripts, so enforcement
+// events produced by this process were silently dropped (chain never advanced).
+import {
+  initEventStore,
+  countEvents,
+  getChainTail,
+  verifyStoredChain,
+} from "./services/trst1/jsonl-event-store.js";
 
 console.log(`
 ╔══════════════════════════════════════════╗
@@ -66,7 +75,31 @@ try {
   console.warn(`  ⚠️  Could not verify delegation tables: ${err instanceof Error ? err.message : err}\n`);
 }
 
-// ② LLM API 连通性检查（8s 超时，非阻塞 warn）
+// ② Event Backbone 初始化（append-only, hash-chained）
+//    必须在 HTTP 服务启动前完成，否则 policy_enforcement 等事件会被丢弃。
+try {
+  initEventStore(config.trustosEventLogPath);
+  const existing = countEvents();
+  const tail = getChainTail();
+  const chain = verifyStoredChain();
+  console.log(
+    `  ✅ Event Backbone: ${config.trustosEventLogPath} (${existing} events, chain ${
+      chain.valid ? "intact" : `BROKEN at #${chain.brokenAtIndex}`
+    })`,
+  );
+  if (!chain.valid) {
+    console.warn(`     ⚠️  ${chain.reason}`);
+  }
+  if (tail) {
+    console.log(`     → chain tail: ${tail.slice(0, 16)}…`);
+  }
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  console.warn(`  ⚠️  Event Backbone init failed: ${msg}`);
+  console.warn(`     Events will NOT be persisted.\n`);
+}
+
+// ③ LLM API 连通性检查（8s 超时，非阻塞 warn）
 const FAST_MODEL = config.fastModel || "Qwen/Qwen2.5-72B-Instruct";
 const BASE_URL = config.openaiBaseUrl || "https://api.siliconflow.cn/v1";
 const API_KEY = config.openaiApiKey || "";

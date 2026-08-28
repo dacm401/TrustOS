@@ -20,10 +20,16 @@
  */
 
 import { createHash } from "node:crypto";
-import { TrustPolicyEngine, type PolicyCheckRequest, type PolicyCheckResult } from "./policy-engine.js";
+import {
+  TrustPolicyEngine,
+  SourceBasedClassifier,
+  type PolicyCheckRequest,
+  type PolicyCheckResult,
+} from "./policy-engine.js";
 import { config } from "../config.js";
 import { appendEvent } from "../services/trst1/jsonl-event-store.js";
-import { DEFAULT_POLICY_RULES } from "./policy-rules.js";
+import { DEFAULT_POLICY_RULES, RULE_STRICTLY_PRIVATE_NO_CLOUD } from "./policy-rules.js";
+import { buildClassificationMap } from "./field-classification.js";
 import { addEnforcementEventHash } from "./evidence-anchor.js";
 
 /** Thrown when a call is actually blocked in live mode. */
@@ -73,8 +79,28 @@ export interface SignerIdentity {
  * 默认 dlpEnabled=false → 仍是无 DLP 的 Shadow 体验（向后兼容，企业档建议开启）。
  */
 function buildEngine(): TrustPolicyEngine {
-  const dlpRules = config.permission.dlpEnabled ? DEFAULT_POLICY_RULES : [];
-  return new TrustPolicyEngine(dlpRules, undefined, { failOpen: true, verbose: false });
+  // ── 2026-08-28 修复（原 Control 断链）─────────────────────────────────────
+  // 两个缺陷叠加，使 deny 永不命中：
+  //   ① classifier 传 undefined → 分类恒回退 confidential，
+  //      依赖 strictly_private 的 deny 规则永不命中。
+  //   ② 规则集受 dlpEnabled 控制，默认注入 [] （零规则）。
+  // 修复：预载 field-classification 的 classifier + 始终安装 deny 规则。
+  // 是否真正阻断仍由 mode(dry_run|live) 决定，保持 fail-open 不误伤。
+  const classifier = new SourceBasedClassifier(buildClassificationMap());
+
+  const denyRules = config.permission.denyRulesEnabled
+    ? [RULE_STRICTLY_PRIVATE_NO_CLOUD]
+    : [];
+
+  // DLP 档追加完整规则集（含 ask_user），去重避免 deny 规则重复注册。
+  const dlpRules = config.permission.dlpEnabled
+    ? DEFAULT_POLICY_RULES.filter((r) => r.id !== RULE_STRICTLY_PRIVATE_NO_CLOUD.id)
+    : [];
+
+  return new TrustPolicyEngine([...denyRules, ...dlpRules], classifier, {
+    failOpen: true,
+    verbose: false,
+  });
 }
 
 // Single shared engine instance (rules are additive; v0 ships no deny rules,

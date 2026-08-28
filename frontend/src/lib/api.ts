@@ -143,6 +143,52 @@ export async function fetchTraces(taskId: string, userId: string) {
   return res.json();
 }
 
+// ── Human Review Queue (real backend data) ──────────────────────────────────
+
+export interface HumanReviewRequest {
+  id: string;
+  taskId: string;
+  contractId?: string;
+  cycleIndex: number;
+  status: "pending" | "approved" | "rejected" | "needs_revision" | "cancelled";
+  reasonCode:
+    | "required_human_review"
+    | "llm_uncertain"
+    | "high_risk"
+    | "security_sensitive"
+    | "manual_escalation";
+  severity: "low" | "medium" | "high" | "security";
+  createdAt: string;
+  resolvedAt?: string;
+  resolution?: { action: "accept" | "revise" | "rewrite" | "block"; note?: string; resolvedBy?: string };
+  audit: {
+    taskId: string;
+    riskLevel?: string;
+    recommendedAction: "human_review";
+    criteriaCount: number;
+    blockingIssues: number;
+    hasSecurityIssue: boolean;
+  };
+}
+
+/** Fetch human-review requests from the backend (real persisted queue). */
+export async function fetchHumanReviews(
+  userId: string,
+  opts?: { status?: string; limit?: number }
+): Promise<{ requests: HumanReviewRequest[] }> {
+  const { apiBase } = getApiConfig();
+  const params = new URLSearchParams();
+  if (opts?.status) params.set("status", opts.status);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString() ? `?${params.toString()}` : "";
+
+  const res = await fetch(`${apiBase}/v1/human-review${qs}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载人工审核队列失败 (${res.status})`);
+  return res.json();
+}
+
 // H1: Runtime Health Dashboard
 export interface HealthStatus {
   status: "ok" | "degraded" | "error";

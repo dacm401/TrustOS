@@ -14,10 +14,58 @@
 import { Hono } from "hono";
 import { query } from "../db/connection.js";
 import { config } from "../config.js";
+import {
+  countEvents,
+  getStorePath,
+  getChainTail,
+  verifyStoredChain,
+} from "../services/trst1/jsonl-event-store.js";
+import { currentEnforcementMode } from "../trust/policy-enforcement.js";
 
 export const healthRouter = new Hono();
 
 const START_TIME = Date.now();
+
+/**
+ * Event Backbone status — honest reporting:
+ * `not_initialised` when the store was never wired into this process
+ * (the pre-2026-08-28 bug: enforcement events were silently dropped).
+ */
+function getEventBackboneStatus() {
+  const path = getStorePath();
+  if (!path) {
+    return {
+      status: "not_initialised" as const,
+      note: "initEventStore() was never called — events are NOT persisted",
+    };
+  }
+  const chain = verifyStoredChain();
+  return {
+    status: chain.valid ? ("ok" as const) : ("chain_broken" as const),
+    path,
+    events: countEvents(),
+    chain_valid: chain.valid,
+    ...(chain.brokenAtIndex !== null ? { broken_at_index: chain.brokenAtIndex } : {}),
+    ...(chain.reason ? { reason: chain.reason } : {}),
+    chain_tail: getChainTail()?.slice(0, 16) ?? null,
+  };
+}
+
+/**
+ * Policy / Control status. `deny_rules_count` is the honest signal for
+ * "can this system ever block anything?" — zero means Control is a no-op.
+ */
+function getPolicyStatus() {
+  const mode = currentEnforcementMode();
+  const denyEnabled = config.permission.denyRulesEnabled !== false;
+  return {
+    mode, // "dry_run" (shadow, default) | "live" (actually blocks)
+    deny_rules_enabled: denyEnabled,
+    deny_rules_count: denyEnabled ? 1 : 0,
+    can_block: mode === "live" && denyEnabled,
+    dlp_enabled: config.permission.dlpEnabled,
+  };
+}
 
 function getProviders(): string[] {
   const providers: string[] = [];
@@ -93,6 +141,10 @@ healthRouter.get("/", async (c) => {
       web_search: {
         status: webSearchStatus,
       },
+      // ── Event Backbone (hash-chained, append-only) ──
+      event_backbone: getEventBackboneStatus(),
+      // ── Policy / Control ──
+      policy_enforcement: getPolicyStatus(),
     },
     stats: stats,
   });

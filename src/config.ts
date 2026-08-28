@@ -31,6 +31,12 @@ export const config = {
   openaiBaseUrl: process.env.OPENAI_BASE_URL || "",
   // TRST-2: Gateway URL for real caller correlation (feature-flagged, unset = direct upstream)
   trustosGatewayUrl: process.env.TRUSTOS_GATEWAY_URL || "",
+  /**
+   * Event Backbone log path (append-only JSONL, hash-chained).
+   * Previously the store was only initialised by standalone Gateway scripts,
+   * so events produced by the main backend were silently dropped.
+   */
+  trustosEventLogPath: process.env.TRUSTOS_EVENT_LOG_PATH || ".trustos/events.jsonl",
 
   // TRST-4F: Policy Enforcement mode (Private Beta).
   // "dry_run" (default): decisions are computed + logged as divergence events,
@@ -202,6 +208,21 @@ export const config = {
      * 开启。开启后会在 dry_run 影子窗口采集 PII 分歧信号，不自动拦截真实流量。
      */
     dlpEnabled: process.env.TRUSTOS_DLP_ENABLED === "true",
+    /**
+     * 是否安装内建 deny 规则（strictly-private-no-cloud）。
+     *
+     * 背景（2026-08-28 修复）：此前 Control 环节形同虚设——引擎以
+     * classifier=undefined 构建，数据分类永远回退 confidential，
+     * 导致依赖 strictly_private 的 deny 规则永不命中；
+     * 且规则集受 dlpEnabled 控制，默认注入为空数组（0 条规则）。
+     * 两者叠加 = 无论 dry_run 还是 live，都不可能有任何拦截。
+     *
+     * 默认 true：deny 规则始终可达（命中即产生 deny 决策并入链）。
+     * 是否真正阻断仍由 TRUSTOS_POLICY_MODE 决定（默认 dry_run，
+     * 保持 Shadow 体验、不静默阻断合法流量）。
+     * 设为 false 可紧急回退到"零规则 fail-open"。
+     */
+    denyRulesEnabled: process.env.TRUSTOS_DENY_RULES_ENABLED !== "false",
     // User data exposure preferences (defaults)
     userDataPreferences: {
       allowCloudConversationHistory: process.env.ALLOW_CLOUD_CONVERSATION_HISTORY !== "false",
