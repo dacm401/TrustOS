@@ -25,6 +25,7 @@ import { createHash } from "node:crypto";
 
 import { createEventId, extractTaskId, type TrstEventEnvelope } from "./event-envelope.js";
 import { appendEvent, countEvents, getStorePath } from "./jsonl-event-store.js";
+import { getJsonlEventIndex } from "./jsonl-event-index.js";
 import { getEventIndex, type EventIndex } from "./event-index.js";
 import { extractContextBlocks } from "./context-trace-lite.js";
 import { estimateCost } from "./cost-ledger-lite.js";
@@ -52,40 +53,63 @@ let _eventIndexInstance: EventIndex | null = null;
 let _eventIndexDisabled = false;
 
 /**
- * The SQLite index is backed by better-sqlite3 (native module).
- * In some container images the native binding crashes the process with
- * SIGSEGV (exit 139) — try/catch CANNOT recover from a segfault, so the
- * only safe mitigation is to never load it.
+ * Event index resolution (2026-08-28).
  *
- * Set TRUSTOS_EVENT_INDEX=0 to run JSONL-only (event chain stays intact;
- * only the fast /events query endpoints degrade).
+ * The SQLite index needs better-sqlite3 (native). When its binding is broken
+ * it SIGSEGVs (exit 139) on `require()` — try/catch CANNOT recover from that.
+ * So we never load it: the JSONL index serves the same contract in pure JS
+ * (see jsonl-event-index.ts), since JSONL is the source of truth anyway.
+ *
+ * Set TRUSTOS_EVENT_INDEX=sqlite to opt into the native index (requires a
+ * correctly built better-sqlite3). Default is the safe pure-JS path.
  */
+
+/** Which index backend is actually serving requests. */
+let _indexBackend: "jsonl" | "sqlite" | "none" = "none";
+
 function eventIndexEnabled(): boolean {
-  return process.env.TRUSTOS_EVENT_INDEX !== "0";
+  return process.env.TRUSTOS_EVENT_INDEX !== "off";
 }
 
-/** Returns the index, or null when disabled/unavailable. */
+/** Returns the index, or null when indexing is disabled. */
 function initEventIndex(): EventIndex | null {
   if (_eventIndexDisabled) return null;
   if (!_eventIndexInstance) {
     if (!eventIndexEnabled()) {
       _eventIndexDisabled = true;
+      _indexBackend = "none";
       return null;
     }
+    _eventIndexInstance = resolveIndex();
+  }
+  return _eventIndexInstance;
+}
+
+function resolveIndex(): EventIndex {
+  // Opt-in native backend (only if the operator explicitly asks for it).
+  if (process.env.TRUSTOS_EVENT_INDEX === "sqlite") {
     try {
-      _eventIndexInstance = getEventIndex(getStorePath());
-      _eventIndexInstance.syncFromJsonl();
+      const idx = getEventIndex(getStorePath());
+      idx.syncFromJsonl();
+      _indexBackend = "sqlite";
+      return idx;
     } catch (err) {
-      _eventIndexDisabled = true;
       process.stderr.write(
-        `[gateway] event index unavailable, running JSONL-only: ${
+        `[gateway] SQLite index unavailable, falling back to JSONL: ${
           err instanceof Error ? err.message : String(err)
         }\n`,
       );
-      return null;
     }
   }
-  return _eventIndexInstance;
+  // Default: pure JS, zero native dependencies, cannot segfault.
+  _indexBackend = "jsonl";
+  const storePath = getStorePath();
+  if (!storePath) {
+    // Store not initialised — report "none" rather than indexing a bogus path.
+    _indexBackend = "none";
+    return null as unknown as EventIndex;
+  }
+  return getJsonlEventIndex(storePath) as unknown as EventIndex;
 }
 
 /** Append event to JSONL + (optional) SQLite index */
@@ -166,8 +190,8 @@ export function createGatewayApp(config: GatewayConfig): Hono {
       uptime_seconds: uptimeSeconds,
       events_count: eventsCount,
       gateway_overhead_ms: null,
-      // Honest: reflect whether the SQLite index is actually in use.
-      index: initEventIndex() ? "sqlite" : "jsonl_only", // TRST-4C
+      // Honest: report the backend actually serving index queries.
+      index: (initEventIndex() ? _indexBackend : "none"), // TRST-4C
     });
   });
 

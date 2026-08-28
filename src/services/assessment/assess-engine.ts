@@ -41,6 +41,27 @@ export const SIGNALS: Record<string, AssessSignalDef> = {
   SINGLE_EVENT_TRACE: { code: "SINGLE_EVENT_TRACE", label: "单事件 Trace", severity: "low", category: "trace_integrity" },
   TIMESTAMP_DISORDER: { code: "TIMESTAMP_DISORDER", label: "时间戳乱序", severity: "high", category: "trace_integrity" },
   TOOL_WITHOUT_MODEL: { code: "TOOL_WITHOUT_MODEL", label: "工具调用缺少模型调用", severity: "medium", category: "trace_integrity" },
+  MISSING_TRACE_ID: { code: "MISSING_TRACE_ID", label: "缺少 Trace 关联", severity: "medium", category: "trace_integrity" },
+
+  // ── 2026-08-28 新增：把 Event Backbone 的哈希链能力接入评估 ──
+  // 全部基于元数据（hash 指针关系），不触碰任何 raw content，
+  // 不引入 DLP / 语义检测 —— 符合 TRST-0.3 冻结护栏。
+  CHAIN_BREAK: {
+    code: "CHAIN_BREAK",
+    label: "证据链断裂",
+    severity: "high",
+    category: "trace_integrity",
+  },
+  CHAIN_GENESIS_UNEXPECTED: {
+    code: "CHAIN_GENESIS_UNEXPECTED",
+    label: "非首条事件却无前驱哈希",
+    severity: "high",
+    category: "trace_integrity",
+  },
+  // 行为 / 运行异常（元数据可观测，无需读取内容）
+  REPEATED_FAILURE: { code: "REPEATED_FAILURE", label: "重复失败", severity: "medium", category: "behavior" },
+  RUNAWAY_TRACE: { code: "RUNAWAY_TRACE", label: "事件数异常（疑似失控循环）", severity: "medium", category: "behavior" },
+  UNMEASURED_LATENCY: { code: "UNMEASURED_LATENCY", label: "未记录延迟", severity: "low", category: "operational" },
 } as const;
 
 export type RiskLevel = "none" | "low" | "medium" | "high";
@@ -55,12 +76,15 @@ export interface AssessmentEvent {
   event_type?: string | null;
   status?: string | null;
   event_hash?: string | null;
+  /** Hash-chain predecessor pointer (null/undefined only for the genesis event). */
+  prev_hash?: string | null;
   input_hash?: string | null;
   output_hash?: string | null;
   args_hash?: string | null;
   result_hash?: string | null;
   timestamp?: string | null;
   latency_ms?: number | null;
+  error_code?: string | null;
 }
 
 // ── Per-trace assessment result ───────────────────────────────────────────────
@@ -78,6 +102,51 @@ export interface TraceAssessment {
 
 function isMissingHash(value: unknown): boolean {
   return value === undefined || value === null || value === "";
+}
+
+/**
+ * Verify hash-chain linkage across an ordered event sequence, using ONLY the
+ * hash pointer metadata (no raw content is read — no DLP, per TRST-0.3).
+ *
+ * Rules:
+ *   - events[0] must be a genesis event (prev_hash === null)
+ *   - events[i].prev_hash must equal events[i-1].event_hash
+ *
+ * Catches what per-event hashing cannot: DELETION. If a middle event is
+ * removed, the surviving successor no longer links to its predecessor.
+ *
+ * Events without any event_hash are skipped (pre-chain legacy data) — those
+ * are already reported by MISSING_EVENT_HASH rather than counted as breaks.
+ */
+function verifyChainLinkage(events: AssessmentEvent[]): {
+  broken: boolean;
+  unexpectedGenesis: boolean;
+} {
+  const chained = events.filter((e) => !!e.event_hash);
+  if (chained.length === 0) return { broken: false, unexpectedGenesis: false };
+
+  // First chained event must be genesis (no predecessor).
+  let unexpectedGenesis = false;
+  if (chained[0].prev_hash !== null && chained[0].prev_hash !== undefined) {
+    unexpectedGenesis = true;
+  }
+
+  for (let i = 1; i < chained.length; i++) {
+    const prev = chained[i - 1];
+    const cur = chained[i];
+
+    // A non-first event with no predecessor is a distinct anomaly:
+    // it suggests the log was truncated or two chains were spliced,
+    // rather than a simple hash mismatch. Report it as such.
+    if (cur.prev_hash === null || cur.prev_hash === undefined) {
+      unexpectedGenesis = true;
+      continue;
+    }
+    if (cur.prev_hash !== prev.event_hash) {
+      return { broken: true, unexpectedGenesis };
+    }
+  }
+  return { broken: false, unexpectedGenesis };
 }
 
 function computeEventSignals(ev: AssessmentEvent): AssessSignalDef[] {
@@ -151,6 +220,36 @@ function computeTraceSignals(events: AssessmentEvent[]): AssessSignalDef[] {
   const maxLatency = Math.max(...events.map((e) => Number(e.latency_ms ?? 0)));
   if (maxLatency > 30000) {
     sigs.push(SIGNALS.HIGH_LATENCY);
+  }
+
+  // ── Hash-chain integrity (metadata pointer checks only) ──
+  // Detects both tampering AND deletion, which per-event hashing cannot.
+  const chainCheck = verifyChainLinkage(events);
+  if (chainCheck.broken) {
+    sigs.push(SIGNALS.CHAIN_BREAK);
+  }
+  if (chainCheck.unexpectedGenesis) {
+    sigs.push(SIGNALS.CHAIN_GENESIS_UNEXPECTED);
+  }
+
+  // ── Behavioral / operational anomalies ──
+  const failureCount = events.filter((e) => e.status === "failure").length;
+  if (failureCount >= 2) {
+    sigs.push(SIGNALS.REPEATED_FAILURE);
+  }
+  if (events.length > 50) {
+    sigs.push(SIGNALS.RUNAWAY_TRACE);
+  }
+  // A completed event that reports 0 latency was never actually measured.
+  if (
+    events.some(
+      (e) => e.status === "success" && (e.latency_ms === 0 || e.latency_ms === null),
+    )
+  ) {
+    sigs.push(SIGNALS.UNMEASURED_LATENCY);
+  }
+  if (events.every((e) => !e.trace_id)) {
+    sigs.push(SIGNALS.MISSING_TRACE_ID);
   }
 
   // Tool without model

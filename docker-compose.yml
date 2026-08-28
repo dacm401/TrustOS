@@ -106,6 +106,12 @@ services:
       ARCHIVE_TTL_DAYS: "30"
       # Event Backbone: append-only hash-chained log (must survive restarts)
       TRUSTOS_EVENT_LOG_PATH: /app/.trustos/events.jsonl
+      # HMAC key for evidence-bundle signing.
+      # Tamper-EVIDENT, not tamper-proof (TRST-0.3): holders of this key can
+      # re-sign. When unset the API returns signed:false with an explicit
+      # reason — we never fake a signature.
+      # ⚠️ Replace with your own secret for any real deployment.
+      TRUSTOS_EVIDENCE_SIGNING_KEY: ${TRUSTOS_EVIDENCE_SIGNING_KEY:-dev-local-evidence-key}
     volumes:
       # Persist the Event Backbone across container restarts —
       # without this the hash chain restarts from genesis on every reboot.
@@ -140,10 +146,10 @@ services:
       # own chain (single-writer principle).
       TRUSTOS_EVENT_LOG_PATH: /app/.trustos/events-gateway.jsonl
       TRUSTOS_PROJECT_ID: trustos-docker
-      # better-sqlite3 (native) segfaults (exit 139) in this image.
-      # Run JSONL-only: the hash chain stays intact, only fast /events
-      # queries degrade (they return 503 with an honest reason).
-      TRUSTOS_EVENT_INDEX: "0"
+      # Event index backend. Default = pure-JS JSONL index (no native deps).
+      # "sqlite" opts into better-sqlite3 (needs a correctly built binding);
+      # "off" disables the index entirely.
+      TRUSTOS_EVENT_INDEX: "jsonl"
       NODE_ENV: production
     volumes:
       - trustos_events:/app/.trustos

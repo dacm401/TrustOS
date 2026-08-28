@@ -6,6 +6,12 @@ ENV NODE_ENV production
 RUN npm install -g tsx
 
 # 复制 package 文件并安装依赖（包含 devDependencies）
+#
+# 注意：--ignore-scripts 会跳过 better-sqlite3 的 prebuild 下载，使其
+# native binding 处于损坏状态（require() 时 SIGSEGV / exit 139，
+# try/catch 无法捕获）。在 alpine 上补编译需要完整工具链且极慢。
+# 因此事件索引已改为纯 JS 实现（src/services/trst1/jsonl-event-index.ts），
+# 不依赖任何 native 模块。better-sqlite3 仅为可选依赖，缺失不影响运行。
 COPY package*.json ./
 RUN npm install --ignore-scripts
 

@@ -29,6 +29,13 @@ export interface EventIndexRow {
   error_code: string | null;
   /** MWT-3B1: nullable task correlation ID (null = unassigned / pre-task). */
   task_id: string | null;
+  /**
+   * Hash-chain columns.
+   * Previously absent, so every event served from this index reported
+   * event_hash === null, which Assessment read as MISSING_EVENT_HASH (high).
+   */
+  event_hash: string | null;
+  prev_hash: string | null;
 }
 
 export interface PaginatedEvents {
@@ -104,6 +111,13 @@ export class EventIndex {
     this.db.exec(`ALTER TABLE events ADD COLUMN task_id TEXT;`);
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_events_task_id ON events(task_id);`);
 
+    // Hash-chain migration (idempotent). Without these columns the index
+    // cannot return event_hash, so Assessment flags every indexed event as
+    // MISSING_EVENT_HASH (high severity) — a false positive.
+    this.db.exec(`ALTER TABLE events ADD COLUMN event_hash TEXT;`);
+    this.db.exec(`ALTER TABLE events ADD COLUMN prev_hash TEXT;`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_events_event_hash ON events(event_hash);`);
+
     // Track last synced line number
     this.db
       .prepare("INSERT OR IGNORE INTO index_meta (key, value) VALUES (?, ?)")
@@ -129,10 +143,12 @@ export class EventIndex {
     const insert = this.db.prepare(`
       INSERT OR REPLACE INTO events
         (event_id, event_type, timestamp, session_id, agent_id, status,
-         request_mode, model, token_count, input_hash, output_hash, error_code, cost_estimate, task_id)
+         request_mode, model, token_count, input_hash, output_hash, error_code,
+         cost_estimate, task_id, event_hash, prev_hash)
       VALUES
         (@event_id, @event_type, @timestamp, @session_id, @agent_id, @status,
-         @request_mode, @model, @token_count, @input_hash, @output_hash, @error_code, @cost_estimate, @task_id)
+         @request_mode, @model, @token_count, @input_hash, @output_hash, @error_code,
+         @cost_estimate, @task_id, @event_hash, @prev_hash)
     `);
 
     const insertMany = this.db.transaction((newLines: string[]) => {
@@ -154,6 +170,8 @@ export class EventIndex {
             error_code: e.error_code || null,
             cost_estimate: e.cost_estimate || null,
             task_id: e.task_id ?? null,
+            event_hash: (e as { event_hash?: string | null }).event_hash ?? null,
+            prev_hash: (e as { prev_hash?: string | null }).prev_hash ?? null,
           });
         } catch {
           // Skip malformed lines
@@ -180,14 +198,17 @@ export class EventIndex {
       .prepare(
         `INSERT OR REPLACE INTO events
         (event_id, event_type, timestamp, session_id, agent_id, status,
-         request_mode, model, token_count, input_hash, output_hash, error_code, cost_estimate, task_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         request_mode, model, token_count, input_hash, output_hash, error_code,
+         cost_estimate, task_id, event_hash, prev_hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         e.event_id, e.event_type, e.timestamp, e.session_id, e.agent_id || null,
         e.status || "success", e.request_mode || null, e.model || null,
         e.token_count || null, e.input_hash || null, e.output_hash || null,
-        e.error_code || null, e.cost_estimate || null, e.task_id ?? null
+        e.error_code || null, e.cost_estimate || null, e.task_id ?? null,
+        (e as { event_hash?: string | null }).event_hash ?? null,
+        (e as { prev_hash?: string | null }).prev_hash ?? null
       );
 
     // Update line count for sync position

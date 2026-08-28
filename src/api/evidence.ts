@@ -2,6 +2,11 @@ import { Hono } from "hono";
 import { EvidenceRepo } from "../db/repositories.js";
 import type { EvidenceInput } from "../types/index.js";
 import { getContextUserId } from "../middleware/identity.js";
+import {
+  buildEvidenceBundleFromLog,
+  verifyBundleSignature,
+  type EvidenceBundle,
+} from "../services/trst1/evidence-bundle-service.js";
 
 export const evidenceRouter = new Hono();
 
@@ -10,6 +15,44 @@ const VALID_SOURCES = ["web_search", "http_request", "manual"] as const;
 function errorResp(c: any, message: string, status = 400) {
   return c.json({ error: message }, status);
 }
+
+// ── GET /v1/evidence/bundle — signed, privacy-safe evidence bundle ──────────
+// Server-side generation (previously built in the browser and never signed).
+// Read-only over the Event Backbone; never mutates the log.
+evidenceRouter.get("/bundle", async (c) => {
+  try {
+    const traceId = c.req.query("trace_id") || undefined;
+    const sessionId = c.req.query("session_id") || undefined;
+    const bundle = buildEvidenceBundleFromLog({ traceId, sessionId });
+    return c.json(bundle, 200);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ error: `Failed to build evidence bundle: ${message}` }, 500);
+  }
+});
+
+// ── POST /v1/evidence/bundle/verify — re-verify an issued bundle ────────────
+// Lets a third party confirm the bundle was not altered after issuance.
+evidenceRouter.post("/bundle/verify", async (c) => {
+  let bundle: EvidenceBundle;
+  try {
+    bundle = (await c.req.json()) as EvidenceBundle;
+  } catch {
+    return errorResp(c, "Invalid JSON body", 400);
+  }
+  if (!bundle || bundle.schema_version !== "trstos-evidence-bundle/v1") {
+    return errorResp(c, "Unsupported or missing bundle (expected trstos-evidence-bundle/v1)", 400);
+  }
+  return c.json(
+    {
+      valid: verifyBundleSignature(bundle),
+      signed: Boolean(bundle.signature?.signed),
+      algorithm: bundle.signature?.algorithm ?? null,
+      reason: bundle.signature?.reason ?? null,
+    },
+    200,
+  );
+});
 
 // POST /v1/evidence — create evidence record
 evidenceRouter.post("/", async (c) => {
