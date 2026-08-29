@@ -66,13 +66,30 @@
 
 已实现「出」侧：`src/services/egress/egress-processor.ts`
 
+### 3.4 数据主权原则（ADR-002，Boss 决策 2026-08-29）
+
+**核心认知**（Boss 指出，此前被算错）：
+- 加工解决「**少泄露**」，留存解决「**谁拥有**」
+- 只加工不留存 ⇒ **唯一拥有完整数据的是云端** ⇒ 自主权是空话
+- 风险不对称：云端是**确定性**泄露且完全失控；本地是可能性泄露且完全可控
+- 差异不在"更安全"，而在**主权归属**：同等便利，数据在你手上
+
+**分层主权模型**：L1 原始意图（本地/加密/从不外发）→ L2 加工产物（唯一外发层）
+→ L3 模型输出（回落本地）→ L4 云端副本（已知损失，仅含 L2）
+
+**演进方向**：Phase 1 主权数据层 → Phase 2 主权数据包（可打包迁移）
+→ Phase 3 本地模型读取（**先 RAG 后微调**）→ Phase 4 自主闭环（远期预留）
+
+**诚实接受的局限**：本地泄露的浓缩性风险、"机器被控"应用层无解、
+加密与检索的矛盾（采用索引明文+内容加密，无法消除只能管理）、本地模型能力有限
+
 ## 4. 当前待办
 
 | 状态 | 事项 |
 |---|---|
-| 🔴 **待 Boss 拍板** | **RFC-001「入」侧实施**（5 个决策点：加密方案 / L2 是否做 / 保留期 / 低置信度处理 / 是否回溯历史） |
+| 🔴 **待 Boss 拍板** | **RFC-001 Phase 1 实施**（5 项：加密方案 / L2 是否做 / 保留期 / 低置信度处理 / 是否回溯历史）。Phase 2-3 仅确认方向，现只需拍板 Phase 1 |
 | 🟡 待网络恢复 | push 全部本地 commit（github.com:443 阻断） |
-| 🟢 可随时做 | 更新 `TRST-0` 文档中的旧护栏表述（ADR-001 已变更，原文未同步） |
+| 🟢 可随时做 | 同步 `TRST-0` 文档中的旧护栏表述（已被 ADR-001/002 变更，原文未同步） |
 
 ## 5. 验证入口
 
@@ -96,8 +113,9 @@ npm run verify:trust
 |---|---|
 | **`CURRENT-STATUS.md`**（本文件） | 会话恢复入口 |
 | `TRST-execution-log.md` | 完整时间线（3828+ 行） |
-| `ADR-001-local-first-egress-processing.md` | 护栏重述决策 |
-| `RFC-001-local-memory-distillation.md` | 本地存储 + Memory 蒸馏设计（待拍板） |
+| `ADR-001-local-first-egress-processing.md` | 护栏重述决策（本地存 + 外发加工） |
+| `ADR-002-data-sovereignty-principle.md` | **数据主权原则**（为什么必须本地留存；分层主权模型 L1-L4） |
+| `RFC-001-local-memory-distillation.md` | 主权数据战略 + Memory 蒸馏 + 四阶段演进路线（待拍板 Phase 1） |
 | `trst-system-review-and-competitive-analysis-2026-08-28.md` | 系统全景 + 竞品对比 + 诚实评估 |
 | `TRST-0-trustos-architecture-thesis.md` | 战略基线（⚠️ 护栏表述已被 ADR-001 变更，待同步） |
 | `TRST-5-charter-draft.md` | TRST-5 章程 |

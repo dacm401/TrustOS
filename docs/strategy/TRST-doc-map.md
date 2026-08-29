@@ -37,7 +37,8 @@
 | 文档 | 状态 | 说明 |
 |---|---|---|
 | `ADR-001-local-first-egress-processing.md` | **ACCEPTED** | 护栏重述：本地优先存储 + 外发强制加工 |
-| `RFC-001-local-memory-distillation.md` | **待拍板** | 本地存储 + Memory 增量蒸馏设计（5 个决策点） |
+| `ADR-002-data-sovereignty-principle.md` | **ACCEPTED** | **数据主权原则**：为什么必须本地留存；分层主权模型 L1-L4 |
+| `RFC-001-local-memory-distillation.md` | **待拍板** | 主权数据战略 + Memory 蒸馏 + 四阶段演进路线（Phase 1 待拍板） |
 
 ### 2.3 系统评估
 
