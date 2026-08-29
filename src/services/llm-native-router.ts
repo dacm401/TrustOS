@@ -67,7 +67,9 @@ import type { KnowledgeBoundarySignal } from "../types/index.js";
 // Sensitive Data Guard: 信息分发红线
 import { detectSensitiveData } from "./gating/sensitive-data-rule.js";
 // P4: Learning Layer — 用户记忆检索
-import { retrieveMemoriesHybrid, buildCategoryAwareMemoryText } from "./memory-retrieval.js";
+import { retrieveMemoriesHybrid } from "./memory-retrieval.js";
+// RFC-001 Phase 1: rule-driven memory injection with a token budget
+import { selectMemories } from "./memory/injector.js";
 // Sprint 56: Artifact Revision Routing
 import { applyArtifactRevisionRoutingGuard } from "./context/artifact-revision-intent.js";
 import type { ActiveArtifactContext } from "./context/active-artifact.js";
@@ -327,9 +329,14 @@ export async function routeWithManagerDecision(
   };
 
   // P4: Learning Layer — 检索用户记忆，与 Manager 调用并行执行（节省 200-500ms）
-  const memoryPromise = (async () => {
+  //
+  // RFC-001 Phase 1: selection now goes through the injection engine, which
+  // owns the rules, the token budget and the local/remote split. Retrieval
+  // itself still uses the existing hybrid retriever (vector + keyword, with
+  // graceful degradation) — the engine consumes its candidates.
+  const memoryPromise = (async (): Promise<string | undefined> => {
     try {
-      const memories = await retrieveMemoriesHybrid({
+      const retrieved = await retrieveMemoriesHybrid({
         userId: user_id,
         context: { userMessage: message },
         categoryPolicy: {
@@ -340,9 +347,29 @@ export async function routeWithManagerDecision(
         },
         maxTotalEntries: 5,
       });
-      if (memories.length > 0) {
-        const formatted = buildCategoryAwareMemoryText(memories);
-        return formatted.combined;
+
+      // Adapt the hybrid retriever's shape ({ entry, score }) to the injection
+      // engine's candidate shape (MemoryEntry & { similarity }).
+      const injection = await selectMemories(user_id, message, "local", {
+        candidates: retrieved.map((r) => ({
+          ...r.entry,
+          similarity: typeof r.score === "number" ? Math.min(1, Math.max(0, r.score)) : 0,
+        })),
+      });
+
+      // Injection is observable: log what was selected and why.
+      if (injection.memories.length > 0) {
+        console.log(
+          `[memory-inject] selected=${injection.stats.selected}/${injection.stats.candidates} ` +
+            `tokens≈${injection.stats.approxTokens}/${injection.stats.budget} ` +
+            `method=${injection.stats.method} truncated=${injection.stats.truncated}`
+        );
+        for (const m of injection.memories) {
+          console.log(
+            `[memory-inject] · [${m.rule}] ${m.category} rel=${m.relevance.toFixed(2)} imp=${m.importance}`
+          );
+        }
+        return injection.block;
       }
       return undefined;
     } catch (e: any) {

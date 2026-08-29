@@ -94,6 +94,37 @@
 - 「记住我的测试框架是 Vitest」→ `auto_learn | fact | {explicit,rule:remember,turn:sovereign-…}`
 - 「以后都用 pnpm 不要再用 npm」→ 1 条（修复前 3 条）
 
+### 3.4b Memory 注入闭环（存→用，2026-08-29）
+
+蒸馏只解决「存」，注入解决「用」——闭环后主权数据才真正产生价值。
+
+**实现** `src/services/memory/injector.ts`：
+- **三层注入**：always（指令/约束、高权重偏好）/ on_relevance（事实、技能）/ 会话层（现有历史机制）
+- **规则驱动**：`DEFAULT_RULES` 可按 category / importance / confidence / 阈值配置
+- **预算硬截断**：8k 本地 Manager 默认总 500 token（常驻 ≤200，fact top-k 3）
+  → `TRUSTOS_MEMORY_INJECT_MAX_TOKENS` 可调，换模型无需改代码
+- **接收方分档**：`local` 不加工（数据不出本机）/ `remote` 必须加工
+- **注入可见**：日志记录选中条数、token、方法、每条的规则名与相关度
+
+**架构决策——不重复造轮子**：
+现有 `retrieveMemoriesHybrid`（向量+关键词混合、DB 降级）检索能力更强，
+故 injector **复用其检索结果**（`candidates` 参数），自己只负责
+**选择 / 排序 / 预算 / 渲染**。职责分离，两套逻辑不并存。
+
+**实施中发现并修复的两个真实问题**：
+1. **中文关键词匹配失效**：中文无空格，「测试框架」整句被当作一个 token，
+   与「测试框架是 Vitest」匹配得 0 分。改为 **CJK bigram 切分**（无需分词库）。
+2. **相关度失去区分度**：混合检索 score 未归一化，clamp 后全部变 1.00，
+   导致 `on_relevance` 门控形同虚设（全部通过）。
+   增加「无区分度时回退关键词重算」逻辑。
+
+**端到端实测**（问「我的测试怎么跑？」）：
+```
+[memory-inject] selected=5/5 tokens≈56/500 method=vector truncated=false
+  · [relevant_facts]     fact        rel=0.50  ← 相关，命中注入
+  · [global_constraints] instruction rel=0.00  ← 不相关但仍注入（约束必须每轮可见）
+```
+
 ### 3.5 数据主权原则（ADR-002，Boss 决策 2026-08-29）
 
 **核心认知**（Boss 指出，此前被算错）：
