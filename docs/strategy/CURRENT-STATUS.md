@@ -166,7 +166,38 @@ memory_distilled_entries_total{rule="remember"} 1
 - §4 非声明项新增 3 条诚实边界：
   整机被控无解 / 密文不可检索 / 归档口令丢失不可恢复
 
-### 3.7 数据主权原则（ADR-002，Boss 决策 2026-08-29）
+### 3.7 开发考古（2026-03 → 2026-08，2026-08-29）
+
+产出 `docs/strategy/trst-archaeology-2026-03-to-08.md`，追溯方向演变并审计遗留：
+
+**方向演变五阶段**：
+起步(03) → **路由性能产品** SmartRouter Pro(04) → 工程化与 Context Boundary(05)
+→ **可信 AI 操作系统** TrustOS(06-07) → **个人 PC OS + 数据主权**(08)
+
+**被改掉的原优点（重要）**：
+- 🚨 **Delegation Archive 的 O(1) token 检索模型名存实亡**——
+  04-16 O-005 设计「新任务开新对话、查档案库」，
+  现 `DelegationArchiveRepo` 的**读方法无任何调用方**，表**只写不读**：
+  付出写入成本却无读取收益，是最差状态
+- `/chat-result` 轮询被 SSE 取代（合理演进）
+- Phase 5 `LocalArchiveStore` 降级为 legacy 兼容
+
+**废而未除的代码**：
+- **13 个前端孤儿组件**未被 import（`ActionBar`/`CodeBlock`/`PreviewPane`/
+  `AdminPanel`/`BetaPanel`/`DecisionTimeline`/`DelegationLogsPanel`/
+  `GrowthChart`/`LearningPanel`/`StatsCards`/`TokenSankey`/`CommandPalette` 等）
+  其中 `LearningPanel`/`TokenSankey` 在 05-09 日志中记录为「已集成」，
+  说明**集成后被回退、文件却留下**
+- 多处 `@deprecated` 仍导出（`LocalArchiveStore`、MCP forwarder 三函数、
+  `routing_correct` 字段）
+- `slow-worker-loop.ts` 大量 legacy 双轨分支并存
+
+**保留完好**：KB-1 知识边界信号（gating 链路活跃）、Intent 分类器、
+Context Boundary、Gated Delegation G0-G4、Manager-Worker 隔离
+
+**待决**：`delegation_archive` 去留（恢复查档案能力 or 停止写入）
+
+### 3.8 数据主权原则（ADR-002，Boss 决策 2026-08-29）
 
 **核心认知**（Boss 指出，此前被算错）：
 - 加工解决「**少泄露**」，留存解决「**谁拥有**」
