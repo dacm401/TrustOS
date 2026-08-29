@@ -3,6 +3,8 @@ import { AsyncLocalStorage } from "async_hooks";
 import type { ChatMessage } from "../../types/index.js";
 import type { ModelProvider, ModelResponse, ToolCallParam, ToolParam } from "./base-provider.js";
 import { config } from "../../config.js";
+// ADR-001: local-first storage + mandatory egress processing
+import { processEgress, getEgressPolicy, describeEgress } from "../../services/egress/egress-processor.js";
 
 // ── TRST-2: Gateway Trace Headers (AsyncLocalStorage) ──────────────────────────
 // Per-request gateway identity propagated via OpenAI SDK request options.
@@ -103,10 +105,21 @@ async function callChat(
   const agentId = rawHeaders ? resolveAgent(rawHeaders) : undefined;
   const hasGatewayTrace = !!(traceId && sessionId && runId);
 
+  // ADR-001: egress processing — single choke point.
+  // Callers reach this function via several routes (callModelFull,
+  // callOpenAIWithOptions / …Traced, Gateway passthrough). Processing here
+  // guarantees nothing leaves unprocessed regardless of the entry path.
+  const egressPolicy = getEgressPolicy();
+  const egress = processEgress(messages, egressPolicy);
+  const outbound = egress.messages;
+  if (egressPolicy.level !== "off") {
+    process.stderr.write(describeEgress(egress.stats) + "\n");
+  }
+
   const response = await client.chat.completions.create(
     {
       model,
-      messages: messages.map((m) => ({
+      messages: outbound.map((m) => ({
         role: m.role as "system" | "user" | "assistant",
         content: m.content,
       })),

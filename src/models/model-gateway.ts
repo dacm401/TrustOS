@@ -10,6 +10,8 @@ import { getRequestTrace, recordLlmCall } from "../services/runtime-trace.js";
 import { config } from "../config.js";
 import { enforceBeforeLlmCall, PolicyBlockedError } from "../trust/policy-enforcement.js";
 import type { PolicyCheckRequest } from "../trust/policy-engine.js";
+// ADR-001: local-first storage + mandatory egress processing
+import { processEgress, getEgressPolicy, describeEgress } from "../services/egress/egress-processor.js";
 
 const providers: ModelProvider[] = [openaiProvider, anthropicProvider];
 
@@ -544,9 +546,19 @@ export async function callModelFull(
   try {
     // TRST-4F: enforcement checkpoint (dry_run logs only; live may throw PolicyBlockedError)
     preLlmEnforce(model, llmCallKind);
+
+    // ADR-001: egress processing — nothing leaves the machine unprocessed.
+    // Raw prompt stays local; only the trimmed/truncated/redacted copy is
+    // sent upstream. Logged stats are counts only, never matched text.
+    const egressPolicy = getEgressPolicy();
+    const egress = processEgress(messages, egressPolicy);
+    if (egressPolicy.level !== "off") {
+      process.stderr.write(describeEgress(egress.stats) + "\n");
+    }
+
     // S93P: 带超时的 provider 调用
     const timeoutMs = getTimeoutMs(llmCallKind);
-    const response = await callProviderWithTimeout(provider, model, messages, tools, timeoutMs);
+    const response = await callProviderWithTimeout(provider, model, egress.messages, tools, timeoutMs);
     recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
     return response;
   } catch (error: any) {
@@ -594,9 +606,17 @@ export async function callModelWithTools(
   try {
     // TRST-4F: enforcement checkpoint (dry_run logs only; live may throw PolicyBlockedError)
     preLlmEnforce(model, llmCallKind);
+
+    // ADR-001: egress processing (same guarantee as callModelFull).
+    const egressPolicy = getEgressPolicy();
+    const egress = processEgress(messages, egressPolicy);
+    if (egressPolicy.level !== "off") {
+      process.stderr.write(describeEgress(egress.stats) + "\n");
+    }
+
     // S93P: 带超时的 provider 调用
     const timeoutMs = getTimeoutMs(llmCallKind);
-    const response = await callProviderWithTimeout(provider, model, messages, tools, timeoutMs);
+    const response = await callProviderWithTimeout(provider, model, egress.messages, tools, timeoutMs);
     recordLlmCall(llmCallKind ?? "unknown", model, startedAt, Date.now(), true);
     return response;
   } catch (error: any) {
@@ -707,11 +727,20 @@ export async function* callModelStream(
     throw new Error(`[mock-llm] BLOCKED external provider call for ${model} (callModelStream) — mock gate was bypassed`);
   }
 
+  // ADR-001: egress processing — the streaming path is a second outbound
+  // route and must be processed exactly like the non-streaming one.
+  const streamEgressPolicy = getEgressPolicy();
+  const streamEgress = processEgress(messages, streamEgressPolicy);
+  const outbound = streamEgress.messages;
+  if (streamEgressPolicy.level !== "off") {
+    process.stderr.write(describeEgress(streamEgress.stats) + "\n");
+  }
+
   if (model.startsWith("claude-")) {
     // Anthropic streaming path
     const anthropicClient = new Anthropic({ apiKey: config.anthropicApiKey });
-    const systemMsg = messages.find((m) => m.role === "system");
-    const nonSystemMsgs = messages.filter((m) => m.role !== "system");
+    const systemMsg = outbound.find((m) => m.role === "system");
+    const nonSystemMsgs = outbound.filter((m) => m.role !== "system");
 
     try {
       const stream = anthropicClient.messages.stream({
@@ -765,7 +794,8 @@ export async function* callModelStream(
     try {
       const stream = await openaiClient.chat.completions.create({
         model,
-        messages: messages.map((m) => ({
+        // ADR-001: send the processed copy, never the raw local messages.
+        messages: outbound.map((m) => ({
           role: m.role as "system" | "user" | "assistant",
           content: m.content,
         })),
