@@ -15,6 +15,7 @@ import { config } from "../config.js";
 import { ConversationTurnRepo, MemoryEntryRepo, TaskRepo, ExecutionResultRepo } from "../db/repositories.js";
 // RFC-001 Phase 1: L0 rule-based memory distillation (no LLM call)
 import { distilTurn, partitionByConfidence, toMemoryEntryInput } from "../services/memory/distiller.js";
+import { memoryDistilledEntries } from "../metrics/prometheus.js";
 import { formatExecutionResultsForPlanner } from "../services/execution-result-formatter.js";
 // EL-003: Execution Loop
 import { taskPlanner } from "../services/task-planner.js";
@@ -188,6 +189,9 @@ chatRouter.post("/chat", async (c) => {
         if (process.env.TRUSTOS_MEMORY_DISTILL !== "0") {
           const distilled = distilTurn(userText);
           const { active } = partitionByConfidence(distilled);
+          for (const entry of distilled) {
+            memoryDistilledEntries.inc({ rule: entry.rule });
+          }
           for (const entry of active) {
             void MemoryEntryRepo.create(
               toMemoryEntryInput(entry, userId, sessionId as string)

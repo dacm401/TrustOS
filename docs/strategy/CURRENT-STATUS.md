@@ -125,7 +125,48 @@
   · [global_constraints] instruction rel=0.00  ← 不相关但仍注入（约束必须每轮可见）
 ```
 
-### 3.5 数据主权原则（ADR-002，Boss 决策 2026-08-29）
+### 3.5 注入可观测性（为「观察后调参」做准备）
+
+新增 Prometheus 指标（`src/metrics/prometheus.ts`），让注入规则可以
+**基于数据调优**，而非凭感觉：
+
+| 指标 | 用途 |
+|---|---|
+| `memory_injections_total{target}` | 注入次数 |
+| `memory_injected_entries_total{rule}` | 每条规则贡献的条目数 → 看哪些规则在起作用 |
+| `memory_inject_tokens` | 单轮 token 消耗 → 看预算是否合适 |
+| `memory_inject_truncated_total` | 超预算次数 → 频繁说明预算太紧 |
+| `memory_inject_method_total{method}` | vector / keyword → keyword 占比高说明向量区分度不足 |
+| `sovereign_turns_stored_total{result}` | 落库 / 因密钥跳过 / 空内容跳过 |
+| `memory_distilled_entries_total{rule}` | 蒸馏命中哪些规则 |
+
+**首次基线（2026-08-29，2 轮对话）**：
+```
+memory_injections_total{target="local"} 2
+memory_injected_entries_total{rule="relevant_facts"} 2
+memory_injected_entries_total{rule="global_constraints"} 4
+memory_inject_tokens 32                        ← 仅占预算 500 的 6.4%
+memory_inject_method_total{method="keyword"} 2  ← 回退到关键词
+sovereign_turns_stored_total{result="stored"} 2
+memory_distilled_entries_total{rule="remember"} 1
+```
+
+**初步洞察（待更多数据验证，不急于调参）**：
+1. token 仅用 32/500 → 保守默认**绰绰有余**，可考虑放宽 top-k 或降低阈值
+2. `method=keyword` → 向量 score 区分度不足而回退，是后续优化点
+
+**调参入口**：`TRUSTOS_MEMORY_INJECT_MAX_TOKENS`（预算，默认 500），无需改代码。
+**建议积累数天真实对话后再调**，避免过早优化。
+
+### 3.6 威胁模型同步（2026-08-29）
+
+`TRST-threat-model-v0.1.md` 已同步 ADR-001/002：
+- 头部加护栏变更说明（新资产需防御 + 外发从「观察」升级为「强制」）
+- §3 新增威胁「**主权数据静态存储被攻破**」（部分覆盖，附缓解措施）
+- §4 非声明项新增 3 条诚实边界：
+  整机被控无解 / 密文不可检索 / 归档口令丢失不可恢复
+
+### 3.7 数据主权原则（ADR-002，Boss 决策 2026-08-29）
 
 **核心认知**（Boss 指出，此前被算错）：
 - 加工解决「**少泄露**」，留存解决「**谁拥有**」

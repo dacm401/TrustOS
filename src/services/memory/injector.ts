@@ -25,6 +25,13 @@
 
 import { MemoryEntryRepo } from "../../db/repositories.js";
 import { getEmbedding } from "../embedding.js";
+import {
+  memoryInjectedEntries,
+  memoryInjectionsTotal,
+  memoryInjectMethod,
+  memoryInjectTokens,
+  memoryInjectTruncated,
+} from "../../metrics/prometheus.js";
 import type { MemoryCategory, MemoryEntry } from "../../types/index.js";
 
 // ── Configuration ───────────────────────────────────────────────────────────
@@ -227,22 +234,48 @@ function recencyScore(updatedAt: string | undefined): number {
  * Safe by construction: any failure degrades to "inject nothing" rather than
  * breaking the turn. Memory is an enhancement, never a dependency.
  */
+/**
+ * Public entry point. Wraps the selection logic so metrics are ALWAYS
+ * recorded — callers cannot forget, and a metrics failure can never break
+ * injection (observability is a side effect, not a dependency).
+ */
 export async function selectMemories(
   userId: string,
   query: string,
   target: InjectionTarget = "local",
-  options?: {
-    rules?: InjectionRule[];
-    budget?: InjectionBudget;
-    now?: number;
-    /**
-     * Pre-retrieved candidates. When supplied the engine skips its own
-     * retrieval — this lets the caller reuse the existing hybrid retriever
-     * (`retrieveMemoriesHybrid`, vector+keyword with graceful DB degradation)
-     * while this engine owns selection, ranking and budgeting.
-     */
-    candidates?: Array<MemoryEntry & { similarity?: number }>;
+  options?: SelectMemoriesOptions
+): Promise<InjectionResult> {
+  const result = await selectMemoriesInner(userId, query, target, options);
+  try {
+    memoryInjectionsTotal.inc({ target });
+    for (const m of result.memories) memoryInjectedEntries.inc({ rule: m.rule });
+    memoryInjectTokens.set(result.stats.approxTokens);
+    if (result.stats.truncated) memoryInjectTruncated.inc();
+    memoryInjectMethod.inc({ method: result.stats.method });
+  } catch {
+    /* metrics must never break injection */
   }
+  return result;
+}
+
+type SelectMemoriesOptions = {
+  rules?: InjectionRule[];
+  budget?: InjectionBudget;
+  now?: number;
+  /**
+   * Pre-retrieved candidates. When supplied the engine skips its own
+   * retrieval — this lets the caller reuse the existing hybrid retriever
+   * (`retrieveMemoriesHybrid`, vector+keyword with graceful DB degradation)
+   * while this engine owns selection, ranking and budgeting.
+   */
+  candidates?: Array<MemoryEntry & { similarity?: number }>;
+};
+
+async function selectMemoriesInner(
+  userId: string,
+  query: string,
+  target: InjectionTarget = "local",
+  options?: SelectMemoriesOptions
 ): Promise<InjectionResult> {
   const { rules, budget } = loadConfig();
   const activeRules = options?.rules ?? rules;

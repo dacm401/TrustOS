@@ -20,6 +20,7 @@
 
 import { createHash } from "node:crypto";
 import { query } from "../connection.js";
+import { sovereignTurnsStored } from "../../metrics/prometheus.js";
 
 export type TurnRole = "user" | "assistant" | "system" | "tool";
 export type TurnSensitivity = "normal" | "sensitive";
@@ -118,10 +119,12 @@ export const ConversationTurnRepo = {
   > {
     const content = input.content ?? "";
     if (!content.trim()) {
+      sovereignTurnsStored.inc({ result: "skipped_empty" });
       return { stored: false, skipped: true, reason: "empty_content" };
     }
     // Guardrail 2: secrets never enter the sovereign store.
     if (containsSecret(content)) {
+      sovereignTurnsStored.inc({ result: "skipped_secret" });
       return { stored: false, skipped: true, reason: "contains_secret" };
     }
 
@@ -140,6 +143,7 @@ export const ConversationTurnRepo = {
         input.sensitivity ?? "normal",
       ]
     );
+    sovereignTurnsStored.inc({ result: "stored" });
     return { stored: true, id: result.rows[0].id as string };
   },
 

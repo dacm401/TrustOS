@@ -7,6 +7,25 @@ Status: PM Review
 
 ---
 
+> **⚠️ Amended 2026-08-29 — data-retention guardrails changed**
+>
+> This threat model predates **ADR-001**（本地优先存储 + 外发强制加工）and
+> **ADR-002**（数据主权原则）. Two consequences for the threat surface:
+>
+> 1. **A new asset must be defended**: the original prompt is now retained on
+>    the local machine (the sovereign data layer, `conversation_turns`, plus
+>    distilled memory). Previously nothing sensitive was stored at rest, so
+>    "data at rest" was barely a threat — that is no longer true.
+> 2. **The egress boundary is now enforced, not just observed**: everything
+>    sent to a cloud model passes through mandatory egress processing
+>    (`src/services/egress/egress-processor.ts`).
+>
+> New/updated entries reflecting this are marked **[ADR-001/002]** below.
+> Secrets remain never-persisted — "raw secrets" in §3 still means
+> credentials, and the no-secrets-at-rest rule is unchanged and strengthened.
+
+---
+
 ## 1. Purpose
 
 This document defines the threat boundaries for TrustOS under the **AI Execution Gateway entry strategy**. It specifies what TrustOS aims to protect against, what it does not claim to prevent, how the enforcement surface is layered, how failure modes are handled, and what evidence integrity guarantees are provided.
@@ -40,7 +59,8 @@ This threat model covers the Gateway's interception path. Agents that do not rou
 |---|---|---|
 | **Unauthorized tool/action execution** | Agent calls tools or actions outside its permitted scope | Shadow Mode: observes and reports. Enforcement: TRST-2+. |
 | **Secret exposure** | Raw API keys, tokens, or credentials entering model context or agent environment | v1: Credential Vacuum as design invariant (no raw secrets in agent context). Implementation: TRST-2+. |
-| **Data exfiltration** | Sensitive data sent to unauthorized model providers or external APIs | Shadow Mode: records model/tool destinations and data classification flags. Blocking: future. |
+| **Data exfiltration** | Sensitive data sent to unauthorized model providers or external APIs | Shadow Mode: records model/tool destinations and data classification flags. Blocking: future. **[ADR-001/002]** Mandatory egress processing now trims/truncates/redacts every outbound payload before it leaves the machine — so this is partly **enforced**, no longer purely observed. |
+| **Sovereign data at rest compromised** **[ADR-001/002]** | An attacker with local access (malware, stolen device, copied disk) reads the retained raw conversation log | **Partially covered.** Hot layer is unencrypted **by decision** (must stay searchable for local models) — see non-claims §4. Mitigations: (a) secrets are never persisted, (b) archived bundles are passphrase-encrypted, (c) OS full-disk encryption recommended to users. **Not covered:** full machine compromise — see §4. |
 | **Cost runaway** | Unbounded token consumption or model call costs | Shadow Mode: records per-call cost and session totals. Hard budget cap: future. |
 | **Unobserved execution** | Agent performs actions without evidence records | **Core v1 invariant.** Every mediated call must produce an event or a telemetry failure event. |
 | **Unattributed output** | Cannot trace which session/model/tool produced a given artifact | Session attribution and artifact refs in event envelope from day one. |
@@ -61,6 +81,9 @@ This section is the most important part of the threat model. **Statements here a
 | **DLP detection** | v1 Gateway reserves fields for privacy flags and data classification, but does not claim automatic DLP detection — semantic or pattern-based. Pattern-based detection may be introduced later (post-TRST-1). |
 | **Compliance certification** | TrustOS produces structured evidence that *supports* compliance (SOC2, ISO42001, EU AI Act), but does not self-certify. |
 | **Agent code integrity** | TrustOS mediates external calls; it does not verify the agent's internal logic, prompt engineering, or runtime state. |
+| **Full machine compromise** **[ADR-001/002]** | Under the hot/cold split, active sovereign data is unencrypted **by decision** so it stays searchable and readable by local models. If the host is fully compromised, that data is readable. Application-layer encryption cannot solve this — a key stored on the same machine is compromised with it. We recommend OS full-disk encryption, but **do not claim** protection against a fully controlled host. |
+| **Encrypted-state retrieval** **[ADR-001/002]** | `at-rest encryption` ≠ `searchable ciphertext`. Homomorphic encryption is orders of magnitude too slow for interactive use. We manage this tension by **data layering** (hot plaintext / cold encrypted), not by cryptography. |
+| **Recovering a lost archive passphrase** **[ADR-001/002]** | Archived bundles use a passphrase-derived key. Losing the passphrase means the archive is **unrecoverable** — by design, not by defect. There is no back door and none will be added. |
 
 ---
 

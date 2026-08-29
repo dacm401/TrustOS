@@ -202,6 +202,58 @@ export const costSavedUsd = new Gauge({
   registers: [register],
 });
 
+// ── Sovereign data / memory (RFC-001) ───────────────────────────────────────
+// These exist so the injection rules can be TUNED FROM DATA rather than from
+// guesswork: after a few days of real usage, hit-rate, token cost and
+// truncation rate show whether the conservative defaults are right.
+
+export const memoryInjectionsTotal = new Counter({
+  name: 'memory_injections_total',
+  help: 'Number of turns for which memory injection ran',
+  labelNames: ['target'] as const,
+  registers: [register],
+});
+
+export const memoryInjectedEntries = new Counter({
+  name: 'memory_injected_entries_total',
+  help: 'Number of memory entries actually injected',
+  labelNames: ['rule'] as const,
+  registers: [register],
+});
+
+export const memoryInjectTokens = new Gauge({
+  name: 'memory_inject_tokens',
+  help: 'Approximate tokens consumed by injected memory (last turn)',
+  registers: [register],
+});
+
+export const memoryInjectTruncated = new Counter({
+  name: 'memory_inject_truncated_total',
+  help: 'Number of turns where the injection budget was exceeded',
+  registers: [register],
+});
+
+export const memoryInjectMethod = new Counter({
+  name: 'memory_inject_method_total',
+  help: 'Relevance method used by the injection engine (vector vs keyword fallback)',
+  labelNames: ['method'] as const,
+  registers: [register],
+});
+
+export const sovereignTurnsStored = new Counter({
+  name: 'sovereign_turns_stored_total',
+  help: 'Conversation turns retained in the local sovereign store',
+  labelNames: ['result'] as const, // stored | skipped_secret | skipped_empty
+  registers: [register],
+});
+
+export const memoryDistilledEntries = new Counter({
+  name: 'memory_distilled_entries_total',
+  help: 'Memory entries produced by the L0 rule distiller',
+  labelNames: ['rule'] as const,
+  registers: [register],
+});
+
 // 设置默认指标采集
 promClient.collectDefaultMetrics({
   register,
