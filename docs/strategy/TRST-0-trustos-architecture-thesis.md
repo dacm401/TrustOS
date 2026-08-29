@@ -7,6 +7,29 @@ Status: PM Review
 
 ---
 
+> **⚠️ Data-handling guardrails amended — 2026-08-29**
+>
+> The data-retention guardrails implied by earlier drafts (commonly summarised
+> as "raw content is not persisted") have been superseded by:
+>
+> - **ADR-001 — Local-First Storage + Mandatory Egress Processing**
+> - **ADR-002 — Data Sovereignty Principle**
+> - **RFC-001 — Sovereign Data Strategy & Evolution Roadmap**
+>
+> **Current guardrails** (now invariants 11 & 12 in §7):
+>
+> | Direction | Rule |
+> |---|---|
+> | **Ingress (storage)** | Local-first — the original prompt is retained on the machine |
+> | **Egress (transmission)** | Anything sent to a cloud model **must** be processed |
+> | **Evidence / audit export** | Hash-only (third-party facing) |
+> | **Protection** | Active data unencrypted (searchable); archived bundles encrypted, retained indefinitely |
+>
+> Rationale: processing reduces **leakage**, retention determines **ownership**.
+> Doing only the former leaves the sole complete copy in the cloud.
+
+---
+
 ## 1. Executive Thesis
 
 **TrustOS is an AI-native operating system for trusted AI work.**
@@ -260,6 +283,7 @@ The CPU of AI OS.
 - Multi-model role assignment — fast model for classification, strong model for reasoning
 - Cost-aware scheduling — don't use GPT-4 for "hello world"
 - Privacy-aware routing — don't send PII to cloud models
+  (enforced by mandatory egress processing — see ADR-001)
 - Verification routing — reviewer model for critical outputs
 
 **Key questions:**
@@ -561,6 +585,22 @@ The following invariants are non-negotiable architecture constraints. They are t
 10. Hard-deny policy rules must not be overridden by LLM judgment.
     The Policy Engine is the single source of truth for access decisions,
     not the model's reasoning.
+
+11. Raw intent stays local; only processed context leaves.
+    The original prompt / conversation is retained on the local machine;
+    anything sent to a cloud model must pass egress processing
+    (trim / truncate / redact). Evidence exports remain hash-only.
+    Processing reduces leakage; retention determines ownership.
+    Doing only the former leaves the sole complete copy in the cloud —
+    where the user has no control. Retention is therefore mandatory,
+    not optional. (ADR-001)
+
+12. Hot/cold separation governs protection vs. accessibility.
+    Data in active use stays unencrypted so it remains searchable and
+    readable by local models; archived bundles are encrypted and
+    retained indefinitely (no expiry). Memory distillates never age out.
+    This resolves the encryption-vs-retrieval tension by data layering
+    rather than by cryptographic means. (ADR-002 / RFC-001)
 ```
 
 ---

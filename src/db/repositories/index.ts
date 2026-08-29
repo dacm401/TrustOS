@@ -13,6 +13,10 @@ export {
   SessionContextRepo,
   TaskWorkspaceRepo,
 } from "./system.js";
+// Sovereign Data Layer (RFC-001 Phase 1) — L1 raw intent, local retention
+export { ConversationTurnRepo, containsSecret, hashContent } from "./conversation-turn.js";
+export type { ConversationTurn, TurnInput, TurnRole, TurnSensitivity } from "./conversation-turn.js";
+
 export { HumanReviewRequestRepo } from "../human-review-repo.js";
 export { HumanReviewResumeDecisionRepo } from "../human-review-decision-repo.js";
 export { HumanReviewResumeExecutionRepo } from "../human-review-execution-repo.js";

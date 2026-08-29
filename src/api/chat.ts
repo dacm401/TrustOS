@@ -12,7 +12,9 @@ const VALID_FEEDBACK_TYPES: readonly FeedbackType[] = [
 ] as const;
 import { logDecision } from "../logging/decision-logger.js";
 import { config } from "../config.js";
-import { MemoryEntryRepo, TaskRepo, ExecutionResultRepo } from "../db/repositories.js";
+import { ConversationTurnRepo, MemoryEntryRepo, TaskRepo, ExecutionResultRepo } from "../db/repositories.js";
+// RFC-001 Phase 1: L0 rule-based memory distillation (no LLM call)
+import { distilTurn, partitionByConfidence, toMemoryEntryInput } from "../services/memory/distiller.js";
 import { formatExecutionResultsForPlanner } from "../services/execution-result-formatter.js";
 // EL-003: Execution Loop
 import { taskPlanner } from "../services/task-planner.js";
@@ -155,6 +157,54 @@ chatRouter.post("/chat", async (c) => {
 
   if (!useLLMNative) {
     return c.json({ error: "Legacy routing path (use_llm_native_routing=false) has been removed. Please remove this flag." }, 400);
+  }
+
+  // ── Sovereign Data Layer (RFC-001 Phase 1 / ADR-002) ────────────────────────
+  // Two things happen here, both fire-and-forget:
+  //
+  // ① Retain the user's ORIGINAL message locally — the L1 "raw intent" layer.
+  //    Without it the only complete copy of the user's data would live in the
+  //    cloud, where they have no control.
+  // ② Distil explicit signals into memory entries. L0 rules only (no LLM call,
+  //    zero cost). Low-confidence items are held for review rather than
+  //    activated, because a wrong memory misleads every later turn.
+  //
+  // Both are best-effort: retention must never block or break a response.
+  if (process.env.TRUSTOS_SOVEREIGN_STORE !== "0") {
+    try {
+      const userText = (body.message ?? "").trim();
+      if (userText) {
+        // ① Retain raw intent
+        const turnIndex = Array.isArray(body.history) ? body.history.length : 0;
+        ConversationTurnRepo.recordAsync({
+          sessionId: sessionId as string,
+          turnIndex,
+          role: "user",
+          content: userText,
+          userId,
+        });
+
+        // ② Distil explicit memory signals (rules only — no model call)
+        if (process.env.TRUSTOS_MEMORY_DISTILL !== "0") {
+          const distilled = distilTurn(userText);
+          const { active } = partitionByConfidence(distilled);
+          for (const entry of active) {
+            void MemoryEntryRepo.create(
+              toMemoryEntryInput(entry, userId, sessionId as string)
+            ).catch((err: unknown) => {
+              // Best-effort: never surface to the user, but never silent either
+              // (a silent failure would be indistinguishable from "no signal").
+              const message = err instanceof Error ? err.message : String(err);
+              process.stderr.write(
+                `[sovereign] distill persist failed (rule=${entry.rule}): ${message}\n`
+              );
+            });
+          }
+        }
+      }
+    } catch {
+      // Never let retention/distillation logic affect the response path.
+    }
   }
 
   // Sprint 69: 轻量 features 提取（仅用于 logDecision / execute mode）

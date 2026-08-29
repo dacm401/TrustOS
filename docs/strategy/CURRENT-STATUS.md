@@ -66,7 +66,35 @@
 
 已实现「出」侧：`src/services/egress/egress-processor.ts`
 
-### 3.4 数据主权原则（ADR-002，Boss 决策 2026-08-29）
+### 3.4 主权数据层 Phase 1 实施（RFC-001，2026-08-29）
+
+**B-0 数据层**：
+- migration `032_sovereign_conversation_turns.sql`：`conversation_turns` 表
+  （session / turn_index / role / content / content_hash / sensitivity / archive_id）
+- `src/db/repositories/conversation-turn.ts`：
+  - 密钥**永不落库**（命中即丢弃，不存脱敏副本——脱敏的主权记录是损坏的记录）
+  - `recordAsync` 异步写入，绝不阻塞响应
+  - 预留 Phase 2 归档字段（`archive_id` / `listArchivable` / `markArchived`）
+- 聊天管线接入：用户原始消息落库（热层明文，按 ADR-002 冷热分离决策）
+
+**B-1 L0 规则蒸馏**（**零 LLM 调用**）：
+- `src/services/memory/distiller.ts`：11 条显式信号规则
+  （记住 / 以后都 / 我喜欢 / 用X不要用Y / 我们决定 / 不要 / 必须 / 我是 + 英文 4 条）
+- 精确率优先：普通对话**保持沉默**（宁可漏，不可错——错误记忆会误导后续每一轮）
+- 每条带 `rule:` 与 `turn:` 标签，**provenance 可追溯到来源会话**
+- 密钥类内容拒绝蒸馏
+
+**实施中发现并修复的两个质量问题**：
+1. **规则重叠导致冗余记忆**：一条消息被 3 条规则命中，生成 3 条表达同一事实的记忆
+   → 实现 `suppressOverlaps()`：按 evidence 长度贪心选择，保留最完整匹配
+2. **跨句贪婪合并**：`(.{2,120})` 跨越句号，把两个独立信号合并成一条
+   → 捕获组改为句边界感知 `[^。！？；;!?\n]`
+
+**端到端实测**：
+- 「记住我的测试框架是 Vitest」→ `auto_learn | fact | {explicit,rule:remember,turn:sovereign-…}`
+- 「以后都用 pnpm 不要再用 npm」→ 1 条（修复前 3 条）
+
+### 3.5 数据主权原则（ADR-002，Boss 决策 2026-08-29）
 
 **核心认知**（Boss 指出，此前被算错）：
 - 加工解决「**少泄露**」，留存解决「**谁拥有**」

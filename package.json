@@ -31,6 +31,8 @@
     "verify:index": "npx tsx scripts/verify-jsonl-index.mts",
     "verify:egress": "npx tsx scripts/verify-egress-processing.mts",
     "verify:egress-fp": "npx tsx scripts/verify-egress-false-positive.mts",
+    "verify:distill": "npx tsx scripts/verify-memory-distiller.mts",
+    "verify:trust": "npm run verify:chain && npm run verify:assess && npm run verify:bundle && npm run verify:index && npm run verify:egress && npm run verify:egress-fp && npm run verify:distill",
     "trst1:report": "npx tsx scripts/trst1/generate-shadow-report.ts",
     "trst1:tool": "npx tsx scripts/trst1/simulate-tool-call.ts",
     "trst1:mcp:fake-server": "npx tsx scripts/trst1/fake-mcp-server.ts",

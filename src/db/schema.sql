@@ -739,6 +739,48 @@ CREATE INDEX IF NOT EXISTS idx_pr_action
   ON permission_requests(action_id)
   WHERE action_id IS NOT NULL;
 
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Sovereign Data Layer — Phase 1 (RFC-001) / Migration 032
+--
+-- L1 "raw intent" layer: original prompt + conversation text, retained locally.
+-- See src/db/migrations/032_sovereign_conversation_turns.sql for full rationale.
+--
+-- Key properties:
+--   - Hot layer is UNENCRYPTED by decision (ADR-002 hot/cold split) so active
+--     data stays searchable and readable by local models.
+--   - Secrets are never persisted (filtered at write time).
+--   - No retention policy — rows accumulate; archiving (Phase 2) encrypts into
+--     bundles but must never delete.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS conversation_turns (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id     VARCHAR(128) NOT NULL,
+  turn_index     INTEGER      NOT NULL,
+  role           VARCHAR(16)  NOT NULL,
+  content        TEXT         NOT NULL,
+  user_id        VARCHAR(64)  NOT NULL,
+  content_hash   VARCHAR(64),
+  sensitivity    VARCHAR(16)  NOT NULL DEFAULT 'normal',
+  archive_id     VARCHAR(64),
+  archived_at    TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_convturns_session
+  ON conversation_turns(session_id, turn_index);
+
+CREATE INDEX IF NOT EXISTS idx_convturns_user
+  ON conversation_turns(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_convturns_created
+  ON conversation_turns(created_at);
+
+CREATE INDEX IF NOT EXISTS idx_convturns_hot
+  ON conversation_turns(created_at)
+  WHERE archive_id IS NULL;
+
 COMMIT;
 
 
