@@ -3826,3 +3826,105 @@ maps to honest clarification message with no fake task id / no worker, frontend 
 Manager message (no C2 needed). src/api/manager-route.ts untouched (legacy M-diff isolated).
 npm run validate 17/17 PASS. Sealed MWT-4B/MWT-5 untouched. Next: PM acceptance of TRST-4H-II +
 split commit.*
+
+---
+
+## 2026-08-26 ~ 2026-08-29 — 稳定性修复 + 信任架构断链修复 + 护栏重述
+
+> 本段为补录。此前日志停在 2026-08-11（TRST-4H-II），期间工作未记录。
+> 详见 `CURRENT-STATUS.md`（会话恢复卡片）与各专题文档。
+> 分支：feature/trst-3-private-beta-readiness
+
+### A. 用户报告驱动的稳定性修复
+
+**A1. 首页 client-side exception（Application error）**
+- 现象：登录后 `/` 看板整页崩溃
+- 根因：`app/providers.tsx` 只包 `AuthProvider`，缺 `QueryClientProvider`；
+  TRST-5 的 5F2 把看板视图改为 `React.lazy` 后，视图内 `useQuery` 在
+  组件树上找不到 QueryClient → 整页崩溃（堆栈：`No QueryClient set`）
+- 修复：Providers 包裹 `QueryClientProviderWrapper`
+- commit `1cbcc44`
+
+**A2. 聊天返回"处理您的请求时出现了问题"**
+- 根因①（LLM 不可达）：`docker-compose.yml` 硬写 `Qwen/Qwen2.5-*`，
+  覆盖 `.env` 的 `deepseek-ai/DeepSeek-V4-Flash`，SiliconFlow 上调不通
+- 根因②（401）：`ChatInterface` 调 `/api/chat` **只带 `X-User-Id`，
+  不带 `Authorization: Bearer`**，后端要求鉴权
+  （实测：仅 X-User-Id → 401；带 Bearer → 200）
+- 修复：模型改由 `.env` 控制（删除 compose 硬写）；
+  `sendStreaming` / `sendFallback` 两个路径补 Bearer 头
+- 附带：`NEXT_PUBLIC_API_URL` 改为 build args 注入（此前只在 run 时注入，
+  对 build 阶段固化的 `NEXT_PUBLIC_*` 无效，导致 fallback 到已停用的 3002）
+- commit `1e01a83`
+
+### B. 系统回顾发现并修复的架构断链（P0-P2）
+
+触发：一次全量代码勘察 + 与主流 Agent 框架对比分析
+（产出 `trst-system-review-and-competitive-analysis-2026-08-28.md`）
+
+| # | 断链 | 根因 | commit |
+|---|---|---|---|
+| B1 | Event Backbone 主后端写不进 | `initEventStore()` 仅被 Gateway 脚本调用，`src/index.ts`/`app.ts` 全文无调用 → enforcement 事件 100% 丢失 | `d339fa1` |
+| B2 | Evidence 无哈希链 | 只有逐条哈希，无 `prev_hash` → 只能证单条未改，**无法发现删除** | `d339fa1` |
+| B3 | Gateway 未部署 | compose 无该服务；`Dockerfile` 未 COPY scripts；`better-sqlite3` SIGSEGV(139) | `d339fa1` + `945ca73` |
+| B4 | Control 永不拦截 | ① `buildEngine` 传 `classifier=undefined` → 分类恒回退 confidential ② 规则集受 `dlpEnabled` 控制，默认注入 `[]` | `d339fa1` |
+| B5 | Audit UI 为 fixture | 渲染 4 个静态样例 | `d339fa1` |
+| B6 | Assessment 仅元数据 | 12 信号无完整性维度 | `945ca73` |
+| B7 | Evidence Bundle 仅前端 | 剪贴板导出，`signed:false` | `945ca73` |
+
+**B3 的关键转折**：`better-sqlite3` 在 `npm install --ignore-scripts` 下
+prebuild 缺失 → `require()` 时 SIGSEGV（try/catch 无法捕获）。
+曾尝试 alpine 编译工具链（8+ 分钟仍卡在 gcc 安装）→ **放弃编译，
+改为消除 native 依赖**：新增 `src/services/trst1/jsonl-event-index.ts`
+纯 JS 实现（JSONL 本就是 source of truth）。结果：三个索引端点
+从 503 降级恢复 200。
+
+**B7 的诚实设计**：HMAC-SHA256 + 规范 JSON；未配密钥时返回
+`signed:false` + 明确原因，**绝不伪造签名**；定位 tamper-evident 非 tamper-proof。
+
+### C. 护栏重述（ADR-001，Boss 决策 2026-08-29）
+
+**决策背景**：Boss 指出「系统相当于个人 PC 的 OS，安全要考虑本地数据为主，
+原始 prompt 存本地，发给云端的要加工」。
+
+旧护栏「raw content 不落库」制定于多用户/云端假设，把「本机存储」与
+「外发传输」混为一谈 —— 单用户定位下过度限制本机能力，却未精确覆盖外发风险。
+
+**新护栏（方向相反的两条）**：
+- 入：本地优先，原始 prompt 存本机
+- 出：发往云端必须加工
+- 证据链/审计导出仍仅哈希
+
+**已实现「出」侧**（commit `9320976`）：`src/services/egress/egress-processor.ts`
+
+实施中发现的两个真问题：
+1. **主路径绕过加工**：`_callFastModel` 在有 auth override 时走
+   `callOpenAIWithOptionsTraced`，**绕过 `callModelFull`** —— 而当前配置
+   正是该路径，导致加工完全不生效。改到 `callChat`（所有 OpenAI 调用的
+   最终汇聚点）单点覆盖。
+2. **脱敏误伤破坏 prompt**：`ASSIGNED_SECRET` 规则会脱敏
+   `apiKey: string` 这类类型声明，破坏外发 prompt 中的 JSON schema
+   —— **比漏掉密钥更糟**。改为带 `looksLikeSecret()` 校验的规则。
+
+### D. 文档产出
+
+| 文档 | 说明 |
+|---|---|
+| `CURRENT-STATUS.md` | **新建** — 会话恢复卡片（含环境坑登记） |
+| `ADR-001-local-first-egress-processing.md` | 护栏重述决策 |
+| `RFC-001-local-memory-distillation.md` | 本地存储 + Memory 蒸馏设计（待拍板） |
+| `trst-system-review-and-competitive-analysis-2026-08-28.md` | 系统全景 + 竞品对比 + 诚实评估 |
+
+### E. 验证体系
+
+统一入口 `npm run verify:trust`，当前 135 断言全绿：
+chain 14 / egress 39 / index 39 / bundle 26 / assess 11 / egress-fp 6
+
+### F. 当前状态与下一步
+
+- 全栈运行正常；所有本地 commit **未 push**（github.com:443 阻断）
+- **待 Boss 拍板**：RFC-001 的 5 个决策点（加密方案 / L2 是否做 /
+  保留期 / 低置信度处理 / 是否回溯历史）
+- 待办：同步 `TRST-0` 文档中的旧护栏表述（ADR-001 已变更，原文未同步）
+
+*Last updated: 2026-08-29*

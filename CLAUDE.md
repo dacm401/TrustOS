@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Documentation Discipline（重要，必须遵守）
+
+上下文会被压缩，文档不会。**文档是跨会话的持久记忆**。养成习惯：
+
+1. **完成一批工作后立即记录**，不要等被要求。
+2. **优先更新 `docs/strategy/CURRENT-STATUS.md`**（会话恢复卡片）——
+   新会话或上下文压缩后，先读它恢复上下文。
+3. **重大工作补录 `docs/strategy/TRST-execution-log.md`**（时间线）。
+4. **架构/护栏决策写 ADR**（`ADR-00X-*.md`）；**待实施方案先写 RFC**（`RFC-00X-*.md`），
+   讲清「主要策略 / 为什么做 / 好处坏处 / 怎么做」，拍板后再动手。
+5. 记录**为什么**（决策依据），不只是**做了什么**；诚实记录坏处与局限。
+6. 发现环境坑写入 `CURRENT-STATUS.md` §7（避免重复踩坑）。
+
+文档命名：小写连字符 + 日期后缀（既有规范）。
+
 ## Commands
 
 ```bash
