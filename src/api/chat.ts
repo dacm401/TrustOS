@@ -653,6 +653,22 @@ chatRouter.post("/chat", async (c) => {
                   revisionOfArtifactId: isLineageRevision ? activeArtifact!.artifactId : undefined,
                   revisionOfTaskId: isLineageRevision ? activeArtifact!.taskId : undefined,
                 });
+
+                // ── Sovereign: the streamed result is complete at this point ──
+                // Covers delegated (slow-model) replies, which are delivered
+                // via SSE — the legacy /chat-result polling endpoint is gone.
+                // recordAssistant dedupes by content_hash, so overlapping
+                // paths cannot create duplicates.
+                if (process.env.TRUSTOS_SOVEREIGN_STORE !== "0") {
+                  const streamed = (normalizedEvent.stream ?? "").trim();
+                  if (streamed) {
+                    ConversationTurnRepo.recordAssistantAsync({
+                      sessionId: sessionId as string,
+                      userId,
+                      content: streamed,
+                    });
+                  }
+                }
                 (normalizedEvent as any).meta = {
                   ...envelope.meta,
                   summaryForManager: envelope.brief.summaryForManager,
@@ -982,6 +998,22 @@ chatRouter.post("/chat", async (c) => {
       console.warn("[chat] routeWithManagerDecision returned null/undefined — returning safe error");
       return c.json({ error: nonSseLang === "zh" ? "抱歉，我暂时无法完成这个请求。请稍后重试。" : "Sorry, I couldn't complete this request. Please try again later." }, 500);
     }
+    // ── Sovereign: persist the assistant reply (completes the Q/A pair) ──
+    // Placed AFTER the `!llmNativeResult` guard above, so the value is known
+    // non-null here. This single point covers every non-streaming return
+    // below (null-decision fallback, archive-create-failed, main return)
+    // because they all emit `llmNativeResult.message`.
+    if (process.env.TRUSTOS_SOVEREIGN_STORE !== "0") {
+      const replyText = (llmNativeResult.message ?? "").trim();
+      if (replyText) {
+        ConversationTurnRepo.recordAssistantAsync({
+          sessionId: sessionId as string,
+          userId,
+          content: replyText,
+        });
+      }
+    }
+
     // S92P-HF2: 防御 null decision
     // S95P fix: null decision 但 message 有内容时，作为正常的 direct_answer 降级返回
     if (!llmNativeResult.decision) {

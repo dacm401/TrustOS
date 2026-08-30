@@ -197,7 +197,39 @@ Context Boundary、Gated Delegation G0-G4、Manager-Worker 隔离
 
 **待决**：`delegation_archive` 去留（恢复查档案能力 or 停止写入）
 
-### 3.8 完成度评估与下一步规划（2026-08-30）
+### 3.8 P0 两项已实施（2026-08-30，按 PLAN-P0 执行）
+
+**① 助手回复落库**（补齐 Q/A 配对）：
+- `ConversationTurnRepo.recordAssistant()` —— 密钥过滤同用户消息、
+  空内容跳过、**content_hash 去重**（流式/非流式路径重叠时不重复写）
+- 接线：`chat.ts` 非流式单一插入点覆盖 3 个 return（必须在 null 检查之后）；
+  流式在 SSE `result` 事件落库（**委托结果也走 SSE**，无需在 worker 单独处理）
+- 端到端实测：
+  ```
+  turn_index=0 | user      | 用一句话解释什么是哈希表
+  turn_index=1 | assistant | 哈希表是一种通过哈希函数将键映射到数组下标…
+  ```
+
+**② 备份/恢复**（没有备份的主权不是主权）：
+- `src/services/sovereign/backup.ts` —— 快照 schema v1 + SHA-256 校验和 +
+  可选加密（scrypt + AES-256-GCM）+ upsert 幂等恢复 + dryRun
+- 排除 `embedding`（派生数据，写入时异步再生成，避免大向量过 JSON）
+- CLI：`npm run backup:create` / `backup:restore`
+- 实测：导出 24 turns + 14 memories；明文/加密均跨进程往返成功；
+  错误口令明确报错（AES-GCM 认证失败），无静默降级
+
+**实施中发现并修复的真实 bug（重要）**：
+> **checksum 跨进程不一致** —— pg 驱动把 `created_at` 等返回为 **Date 对象**，
+> 而 `canonicalize` 把 Date 当普通 object（`Object.entries(Date)` 为空 → 序列化成 `{}`）；
+> 但写入文件后是 ISO **字符串**。两者哈希不同 → **导出的快照永远无法恢复**。
+>
+> 单进程 round-trip 测试**抓不到**（数据未经过 JSON 往返）。
+> 修复：在 `computeChecksum` **内部**做 JSON 规范化（修复根因，
+> 而非要求每个调用方记得先往返）；并补跨进程回归测试锁定。
+
+**验证**：`npm run verify:trust` **283 断言全绿**（11 组，新增 assistant 21 + backup 23）
+
+### 3.9 完成度评估与下一步规划（2026-08-30）
 
 产出 `docs/strategy/TRST-maturity-assessment-and-next-steps-2026-08-30.md`
 

@@ -147,6 +147,66 @@ export const ConversationTurnRepo = {
     return { stored: true, id: result.rows[0].id as string };
   },
 
+  /**
+   * Persist an assistant reply, completing the Q/A pair.
+   *
+   * Why this exists: the sovereign store originally only kept the USER turn,
+   * so the local record was half a conversation — distillation and replay
+   * could only ever see the question, never the answer.
+   *
+   * Idempotent by content: when the most recent assistant turn in the session
+   * has the same content_hash, this write is skipped. Several response paths
+   * (non-streaming vs. streaming result event) can otherwise both fire for the
+   * same reply.
+   */
+  async recordAssistant(input: {
+    sessionId: string;
+    userId: string;
+    content: string;
+  }): Promise<{ stored: boolean; reason?: string }> {
+    const content = input.content ?? "";
+    if (!content.trim()) return { stored: false, reason: "empty_content" };
+    // Guardrail unchanged: secrets never enter the sovereign store.
+    if (containsSecret(content)) return { stored: false, reason: "contains_secret" };
+
+    try {
+      const hash = hashContent(content);
+
+      // Dedupe: skip when the last assistant turn is byte-identical.
+      const prev = await query(
+        `SELECT content_hash FROM conversation_turns
+          WHERE session_id=$1 AND role='assistant'
+          ORDER BY turn_index DESC LIMIT 1`,
+        [input.sessionId]
+      );
+      if (prev.rows[0]?.content_hash === hash) {
+        return { stored: false, reason: "duplicate" };
+      }
+
+      const turnIndex = await ConversationTurnRepo.nextTurnIndex(input.sessionId);
+      await query(
+        `INSERT INTO conversation_turns
+           (session_id, turn_index, role, content, user_id, content_hash, sensitivity)
+         VALUES ($1, $2, 'assistant', $3, $4, $5, 'normal')`,
+        [input.sessionId, turnIndex, content, input.userId, hash]
+      );
+      sovereignTurnsStored.inc({ result: "stored" });
+      return { stored: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[sovereign] assistant persist failed: ${message}\n`);
+      return { stored: false, reason: "error" };
+    }
+  },
+
+  /**
+   * Non-blocking variant of recordAssistant. Safe to call from the response
+   * path — retention must never delay or break a reply.
+   */
+  recordAssistantAsync(input: { sessionId: string; userId: string; content: string }): void {
+    void ConversationTurnRepo.recordAssistant(input).catch(() => {});
+  },
+
   /** Non-blocking write. Safe to call from the request path. */
   recordAsync(input: TurnInput): void {
     void ConversationTurnRepo.record(input).catch((err) => {
