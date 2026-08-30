@@ -10,6 +10,7 @@ import {
   type LoginRequest,
   type AuthUser,
 } from "@/lib/auth";
+import { installFetchAuthRecovery } from "@/lib/api";
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -35,6 +36,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(storedUser);
     }
     setIsLoading(false);
+    // Install the fetch-level 401 recovery — survives the "first batch of
+    // useQueries fired before this useEffect ran" race.
+    installFetchAuthRecovery();
   }, []);
 
   const login = useCallback(async (req: LoginRequest) => {

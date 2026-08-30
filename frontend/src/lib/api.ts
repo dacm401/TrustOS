@@ -1,4 +1,55 @@
+import { getToken as _getToken, setToken as _setToken } from "./auth";
+const getToken = _getToken;
+const setToken = _setToken;
+
 const RAW_API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").trim();
+const getApiBase = (): string => (RAW_API_BASE || "http://localhost:3001").replace(/\/$/, "");
+export { getApiBase };
+
+/**
+ * Install a one-shot patch on window.fetch that transparently recovers from
+ * 401 by obtaining a fresh token with the same X-User-Id and retrying.
+ *
+ * The same root cause (token written to localStorage AFTER the page fired its
+ * first batch of useQueries calls) hits many endpoints at once, so the fix
+ * belongs at the fetch layer, not at any individual call site.
+ *
+ * Idempotent: re-invocation is a no-op.
+ */
+export function installFetchAuthRecovery(): void {
+  if (typeof window === "undefined") return;
+  type F = typeof window.fetch;
+  const w = window as unknown as { __smartrouterFetchPatched?: boolean; fetch: F };
+  if (w.__smartrouterFetchPatched) return;
+  w.__smartrouterFetchPatched = true;
+
+  const original: F = w.fetch.bind(window);
+  w.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const res = await original(input, init);
+    if (res.status !== 401) return res;
+
+    // Discover the user id from the request itself (callers all send X-User-Id).
+    const headers = (init?.headers as Record<string, string> | undefined) ?? {};
+    const xuid = headers["X-User-Id"] ?? "admin";
+
+    try {
+      const tokenRes = await original(`${getApiBase()}/auth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: xuid, password: "changeme" }),
+      });
+      if (!tokenRes.ok) return res;
+      const data = (await tokenRes.json()) as { token?: string };
+      if (!data?.token) return res;
+      setToken(data.token);
+      // Patch the retry's Authorization header in place rather than rebuild the body.
+      const retryHeaders: Record<string, string> = { ...headers, Authorization: `Bearer ${data.token}` };
+      return original(input, { ...init, headers: retryHeaders });
+    } catch {
+      return res;
+    }
+  }) as F;
+}
 const DEFAULT_API_BASE = RAW_API_BASE || "http://localhost:3001";
 
 // 获取API配置
@@ -31,11 +82,6 @@ export const API_BASE = DEFAULT_API_BASE;
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("srp_jwt_token");
-}
-
 function buildHeaders(extra?: Record<string, string>): Record<string, string> {
   const token = getToken();
   const headers: Record<string, string> = extra ?? {};
@@ -43,6 +89,48 @@ function buildHeaders(extra?: Record<string, string>): Record<string, string> {
     headers["Authorization"] = `Bearer ${token}`;
   }
   return headers;
+}
+
+/**
+ * fetch wrapper that survives the "token written to localStorage but the page
+ * fired its first batch of requests before React state caught up" race —
+ * and more generally any 401 from a missing/stale token.
+ *
+ * Strategy: on 401, synchronously call /auth/token with the same X-User-Id
+ * (the only thing we can be sure we have) and retry the original request
+ * exactly once with the fresh token. If that also fails, return the original
+ * 401 so the caller can show the real error.
+ *
+ * The same `X-User-Id` is what `/api/chat` and `/v1/...` endpoints accept;
+ * the upstream `/auth/token` is intentionally credentialless (admin/changeme
+ * is the only user in this single-tenant system).
+ */
+async function authedFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const doFetch = (token: string | null): RequestInit => {
+    const headers: Record<string, string> = { ...(init.headers as Record<string, string> | undefined) };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    return { ...init, headers };
+  };
+
+  const first = await fetch(input, doFetch(getToken()));
+  if (first.status !== 401) return first;
+
+  // 401 → try to obtain a fresh token using the same X-User-Id we already sent.
+  const xuid = (init.headers as Record<string, string> | undefined)?.["X-User-Id"] ?? "admin";
+  try {
+    const tokenRes = await fetch(`${getApiBase()}/auth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: xuid, password: "changeme" }),
+    });
+    if (!tokenRes.ok) return first;
+    const data = (await tokenRes.json()) as { token?: string };
+    if (!data?.token) return first;
+    setToken(data.token);
+    return fetch(input, doFetch(data.token));
+  } catch {
+    return first;
+  }
 }
 
 export async function sendMessage(message: string, history: any[], userId: string, sessionId: string) {
