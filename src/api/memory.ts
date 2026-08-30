@@ -1,12 +1,18 @@
 import { Hono } from "hono";
 import { MemoryEntryRepo } from "../db/repositories.js";
+import { recentInjections } from "../services/memory/injector.js";
 import type { MemoryEntryInput, MemoryEntryUpdate } from "../types/index.js";
 import { getContextUserId } from "../middleware/identity.js";
 
 export const memoryRouter = new Hono();
 
 const VALID_CATEGORIES = ["preference", "fact", "context", "instruction"] as const;
-const VALID_SOURCES = ["manual", "extracted", "feedback"] as const;
+// "auto_learn" must be accepted here: the L0 distiller (RFC-001 Phase 1) writes
+// entries with that source, and governance needs to be able to create/update
+// them through this API too. It previously only worked because the distiller
+// writes via the repository, bypassing this whitelist — leaving the API unable
+// to represent a source the data model already allows.
+const VALID_SOURCES = ["manual", "extracted", "feedback", "auto_learn"] as const;
 
 function errorResp(c: any, message: string, status = 400) {
   return c.json({ error: message }, status);
@@ -71,11 +77,20 @@ memoryRouter.post("/", async (c) => {
   }
 });
 
+/**
+ * Governance status is carried as a tag rather than a new column:
+ * `status:pending` marks an auto-distilled entry awaiting user confirmation.
+ * This keeps the schema unchanged and lets provenance tags live alongside it.
+ */
+export const PENDING_TAG = "status:pending";
+
 // GET /v1/memory — list
 memoryRouter.get("/", async (c) => {
   // C3a: userId from middleware context
   const userId = getContextUserId(c)!;
   const category = c.req.query("category") || undefined;
+  // status=pending (awaiting confirmation) | active | all (default)
+  const status = c.req.query("status") || "all";
   const limitRaw = c.req.query("limit");
   let limit = 50;
   if (limitRaw !== undefined) {
@@ -88,9 +103,46 @@ memoryRouter.get("/", async (c) => {
 
   try {
     const entries = await MemoryEntryRepo.list(userId, { category, limit });
-    return c.json({ entries });
+    const filtered =
+      status === "pending"
+        ? entries.filter((e: any) => (e.tags ?? []).includes(PENDING_TAG))
+        : status === "active"
+          ? entries.filter((e: any) => !(e.tags ?? []).includes(PENDING_TAG))
+          : entries;
+    return c.json({ entries: filtered });
   } catch (err: any) {
     console.error("Memory list error:", err);
+    return errorResp(c, err.message, 500);
+  }
+});
+
+// GET /v1/memory/injections — what memory the recent turns actually used.
+// Answers "why does it know that?" — the transparency half of governance.
+memoryRouter.get("/injections", async (c) => {
+  const userId = getContextUserId(c)!;
+  const limitRaw = c.req.query("limit");
+  const parsed = limitRaw === undefined ? 20 : parseInt(limitRaw, 10);
+  const limit = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 50) : 20;
+  return c.json({ injections: recentInjections(userId, limit) });
+});
+
+// POST /v1/memory/:id/confirm — promote a pending entry to active.
+// Removing the pending tag is what actually "activates" it: injection only
+// considers active memory, so unconfirmed entries never reach the prompt.
+memoryRouter.post("/:id/confirm", async (c) => {
+  const id = c.req.param("id");
+  const userId = getContextUserId(c)!;
+  try {
+    const entry = await MemoryEntryRepo.getById(id, userId);
+    if (!entry) return errorResp(c, `Memory entry not found: ${id}`, 404);
+
+    const tags = (entry.tags ?? []).filter((t: string) => t !== PENDING_TAG);
+    // Confirmation is an implicit endorsement → nudge importance up (capped).
+    const importance = Math.min(5, (entry.importance ?? 3) + 1);
+    const updated = await MemoryEntryRepo.update(id, userId, { tags, importance });
+    return c.json({ entry: updated });
+  } catch (err: any) {
+    console.error("Memory confirm error:", err);
     return errorResp(c, err.message, 500);
   }
 });

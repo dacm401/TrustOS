@@ -25,6 +25,7 @@
 
 import { MemoryEntryRepo } from "../../db/repositories.js";
 import { getEmbedding } from "../embedding.js";
+import { PENDING_TAG } from "../../api/memory.js";
 import {
   memoryInjectedEntries,
   memoryInjectionsTotal,
@@ -183,6 +184,37 @@ function recencyScore(updatedAt: string | undefined): number {
  * Safe by construction: any failure degrades to "inject nothing" rather than
  * breaking the turn. Memory is an enhancement, never a dependency.
  */
+// ── Injection observability (bounded, in-memory) ────────────────────────────
+//
+// Not persisted on purpose: injection runs every turn, so a DB table would grow
+// faster than the sovereign data it describes. The UI only needs "what did the
+// last few turns use?", and Prometheus carries the long-term aggregate.
+
+export interface InjectionRecord {
+  at: string;
+  userId: string;
+  sessionId?: string;
+  target: InjectionTarget;
+  memories: Array<{ id: string; rule: string; category: MemoryCategory; relevance: number }>;
+  approxTokens: number;
+  method: string;
+  truncated: boolean;
+}
+
+const INJECTION_LOG_LIMIT = 50;
+const injectionLog: InjectionRecord[] = [];
+
+export function recordInjection(rec: InjectionRecord): void {
+  injectionLog.push(rec);
+  if (injectionLog.length > INJECTION_LOG_LIMIT) injectionLog.shift();
+}
+
+/** Most recent injections, newest first. */
+export function recentInjections(userId?: string, limit = 20): InjectionRecord[] {
+  const filtered = userId ? injectionLog.filter((r) => r.userId === userId) : injectionLog;
+  return filtered.slice(-limit).reverse();
+}
+
 /**
  * Public entry point. Wraps the selection logic so metrics are ALWAYS
  * recorded — callers cannot forget, and a metrics failure can never break
@@ -192,7 +224,7 @@ export async function selectMemories(
   userId: string,
   query: string,
   target: InjectionTarget = "local",
-  options?: SelectMemoriesOptions
+  options?: SelectMemoriesOptions & { sessionId?: string }
 ): Promise<InjectionResult> {
   const result = await selectMemoriesInner(userId, query, target, options);
   try {
@@ -201,6 +233,23 @@ export async function selectMemories(
     memoryInjectTokens.set(result.stats.approxTokens);
     if (result.stats.truncated) memoryInjectTruncated.inc();
     memoryInjectMethod.inc({ method: result.stats.method });
+
+    // UI-facing record (bounded ring buffer — see InjectionRecord docs).
+    recordInjection({
+      at: new Date().toISOString(),
+      userId,
+      sessionId: options?.sessionId,
+      target,
+      memories: result.memories.map((m) => ({
+        id: m.id,
+        rule: m.rule,
+        category: m.category,
+        relevance: m.relevance,
+      })),
+      approxTokens: result.stats.approxTokens,
+      method: result.stats.method,
+      truncated: result.stats.truncated,
+    });
   } catch {
     /* metrics must never break injection */
   }
@@ -371,6 +420,10 @@ async function selectMemoriesInner(
 function matchesRule(entry: MemoryEntry, rule: InjectionRule): boolean {
   if (!rule.categories.includes(entry.category)) return false;
   if (rule.minImportance && (entry.importance ?? 0) < rule.minImportance) return false;
+  // Unconfirmed entries must never reach the prompt. Governance is not
+  // decoration: if a pending memory could be injected, "awaiting confirmation"
+  // would mean nothing.
+  if ((entry.tags ?? []).includes(PENDING_TAG)) return false;
   // Confidence is only tracked via tags for auto-learned entries; manual
   // entries have no rule tag and are treated as fully trusted.
   if (rule.minConfidence) {

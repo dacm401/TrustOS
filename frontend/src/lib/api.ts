@@ -317,6 +317,96 @@ export async function fetchMemoryGovernance(userId: string): Promise<MemoryGover
   return res.json() as Promise<MemoryGovernanceApiResponse>;
 }
 
+// ── Memory governance actions (P1-2) ────────────────────────────────────────
+// Governance without the ability to act is just a report. These let the user
+// remove a wrong memory, down-weight a noisy one, or confirm a candidate that
+// the distiller was not confident enough to activate on its own.
+
+export interface MemoryEntryLite {
+  id: string;
+  user_id: string;
+  category: string;
+  content: string;
+  importance: number;
+  tags: string[];
+  source: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const MEMORY_PENDING_TAG = "status:pending";
+
+/** status: "pending" | "active" | "all" (default) */
+export async function fetchMemories(
+  userId: string,
+  opts?: { status?: string; limit?: number }
+): Promise<{ entries: MemoryEntryLite[] }> {
+  const { apiBase } = getApiConfig();
+  const params = new URLSearchParams();
+  if (opts?.status) params.set("status", opts.status);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString() ? `?${params}` : "";
+  const res = await fetch(`${apiBase}/v1/memory${qs}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载记忆列表失败 (${res.status})`);
+  return res.json() as Promise<{ entries: MemoryEntryLite[] }>;
+}
+
+/** Edit content / tags / importance (used for down-weighting). */
+export async function updateMemory(
+  id: string,
+  userId: string,
+  patch: { content?: string; importance?: number; tags?: string[]; category?: string }
+): Promise<{ entry: MemoryEntryLite }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/memory/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(`更新记忆失败 (${res.status})`);
+  return res.json() as Promise<{ entry: MemoryEntryLite }>;
+}
+
+/** Promote a pending (low-confidence) memory to active. */
+export async function confirmMemory(id: string, userId: string): Promise<{ entry: MemoryEntryLite }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/memory/${encodeURIComponent(id)}/confirm`, {
+    method: "POST",
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`确认记忆失败 (${res.status})`);
+  return res.json() as Promise<{ entry: MemoryEntryLite }>;
+}
+
+// ── Injection transparency (P1-2.3) ─────────────────────────────────────────
+// Answers "why does the assistant know that?" by showing which memories were
+// actually injected into recent turns.
+
+export interface InjectionRecordLite {
+  at: string;
+  userId: string;
+  sessionId?: string;
+  target: string;
+  memories: Array<{ id: string; rule: string; category: string; relevance: number }>;
+  approxTokens: number;
+  method: string;
+  truncated: boolean;
+}
+
+export async function fetchMemoryInjections(
+  userId: string,
+  limit = 20
+): Promise<{ injections: InjectionRecordLite[] }> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/memory/injections?limit=${limit}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载注入记录失败 (${res.status})`);
+  return res.json() as Promise<{ injections: InjectionRecordLite[] }>;
+}
+
 export interface SessionEventRecord {
   id: string;
   sessionId: string;

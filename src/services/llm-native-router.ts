@@ -351,6 +351,7 @@ export async function routeWithManagerDecision(
       // Adapt the hybrid retriever's shape ({ entry, score }) to the injection
       // engine's candidate shape (MemoryEntry & { similarity }).
       const injection = await selectMemories(user_id, message, "local", {
+        sessionId: session_id,
         candidates: retrieved.map((r) => ({
           ...r.entry,
           similarity: typeof r.score === "number" ? Math.min(1, Math.max(0, r.score)) : 0,

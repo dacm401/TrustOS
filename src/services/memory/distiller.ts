@@ -22,6 +22,7 @@
  */
 
 import type { MemoryCategory } from "../../types/index.js";
+import { PENDING_TAG } from "../../api/memory.js";
 
 export interface DistilledMemory {
   category: MemoryCategory;
@@ -294,6 +295,10 @@ export function toMemoryEntryInput(
   const importance = entry.confidence >= 0.9 ? 4 : entry.confidence >= 0.8 ? 3 : 2;
   const tags = [...entry.tags, `rule:${entry.rule}`];
   if (provenanceRef) tags.push(`turn:${provenanceRef}`);
+  // Below the confidence threshold the entry is held for user confirmation
+  // rather than activated. The injector skips pending entries, so an
+  // unconfirmed memory can never reach a prompt.
+  if (entry.confidence < LOW_CONFIDENCE_THRESHOLD) tags.push(PENDING_TAG);
 
   return {
     user_id: userId,

@@ -781,6 +781,40 @@ CREATE INDEX IF NOT EXISTS idx_convturns_hot
   ON conversation_turns(created_at)
   WHERE archive_id IS NULL;
 
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Evidence Bundle persistence (PLAN-P1) / Migration 033
+--
+-- Stores generated evidence bundles so they can be retrieved and re-verified
+-- later. Contains hash-only metadata — raw content is never persisted.
+-- See src/db/migrations/033_evidence_bundles.sql for rationale.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS evidence_bundles (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        VARCHAR(64)  NOT NULL,
+  trace_id       VARCHAR(128),
+  session_id     VARCHAR(128),
+  schema_version VARCHAR(64)  NOT NULL,
+  bundle         JSONB        NOT NULL,
+  digest         VARCHAR(128),
+  signed         BOOLEAN      NOT NULL DEFAULT false,
+  chain_valid    BOOLEAN,
+  event_count    INTEGER      NOT NULL DEFAULT 0,
+  created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_bundles_user
+  ON evidence_bundles(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_bundles_trace
+  ON evidence_bundles(trace_id)
+  WHERE trace_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_evidence_bundles_session
+  ON evidence_bundles(session_id)
+  WHERE session_id IS NOT NULL;
+
 COMMIT;
 
 

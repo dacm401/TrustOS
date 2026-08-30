@@ -107,6 +107,48 @@ function deriveKey(passphrase: string, salt: Buffer): Buffer {
   });
 }
 
+/** Payload shape shared by snapshots and archive bundles. */
+export interface SnapshotPayloadShape {
+  conversation_turns: unknown[];
+  memory_entries: unknown[];
+}
+
+/**
+ * Encrypt a payload → base64 of salt|iv|tag|ciphertext.
+ * Exported so the archive bundle reuses the exact same scheme
+ * (archive and backup must never drift apart cryptographically).
+ */
+export function encryptSnapshotPayload(payload: unknown, passphrase: string): string {
+  const salt = randomBytes(16);
+  const iv = randomBytes(12);
+  const key = deriveKey(passphrase, salt);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const enc = Buffer.concat([
+    cipher.update(JSON.stringify(payload), "utf8"),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([salt, iv, tag, enc]).toString("base64");
+}
+
+/** Reverse of encryptSnapshotPayload. Throws on wrong passphrase / corruption. */
+export function decryptSnapshotPayload(payloadB64: string, passphrase: string): unknown {
+  const buf = Buffer.from(payloadB64, "base64");
+  if (buf.length < 16 + 12 + 16) {
+    throw new Error("encrypted payload is truncated or malformed");
+  }
+  const salt = buf.subarray(0, 16);
+  const iv = buf.subarray(16, 28);
+  const tag = buf.subarray(28, 44);
+  const enc = buf.subarray(44);
+
+  const key = deriveKey(passphrase, salt);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  const dec = Buffer.concat([decipher.update(enc), decipher.final()]);
+  return JSON.parse(dec.toString("utf8"));
+}
+
 // ── Export ──────────────────────────────────────────────────────────────────
 
 export async function createSnapshot(
@@ -160,36 +202,13 @@ export async function createSnapshot(
   }
 
   // Encrypted form: salt + iv + tag + ciphertext, all base64 in one string.
-  const salt = randomBytes(16);
-  const iv = randomBytes(12);
-  const key = deriveKey(opts.passphrase, salt);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const plaintext = JSON.stringify(data);
-  const enc = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-
-  const payload = Buffer.concat([salt, iv, tag, enc]).toString("base64");
-  return { ...base, encrypted: true, data: payload };
+  return { ...base, encrypted: true, data: encryptSnapshotPayload(data, opts.passphrase) };
 }
 
 // ── Import ──────────────────────────────────────────────────────────────────
 
-function decryptPayload(payload: string, passphrase: string): unknown {
-  const buf = Buffer.from(payload, "base64");
-  if (buf.length < 16 + 12 + 16) {
-    throw new Error("encrypted payload is truncated or malformed");
-  }
-  const salt = buf.subarray(0, 16);
-  const iv = buf.subarray(16, 28);
-  const tag = buf.subarray(28, 44);
-  const enc = buf.subarray(44);
-
-  const key = deriveKey(passphrase, salt);
-  const decipher = createDecipheriv("aes-256-gcm", key, iv);
-  decipher.setAuthTag(tag);
-  const dec = Buffer.concat([decipher.update(enc), decipher.final()]);
-  return JSON.parse(dec.toString("utf8"));
-}
+// Re-exported alias kept for readability at the restore call site.
+const decryptPayload = decryptSnapshotPayload;
 
 export async function restoreSnapshot(
   snapshot: Snapshot,

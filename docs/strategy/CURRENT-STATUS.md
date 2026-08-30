@@ -229,7 +229,38 @@ Context Boundary、Gated Delegation G0-G4、Manager-Worker 隔离
 
 **验证**：`npm run verify:trust` **283 断言全绿**（11 组，新增 assistant 21 + backup 23）
 
-### 3.9 完成度评估与下一步规划（2026-08-30）
+### 3.9 P1 三项已实施（2026-08-30，按 PLAN-P1 执行）
+
+**① Phase 2 主权数据包**（「能带走的数据才是你的」）：
+- `src/services/sovereign/archive.ts` —— 复用 backup 的 checksum 与加密（不重复实现）
+- 与备份的区别：归档**强制口令加密**、**热层移出**、**永不删除**；
+  备份默认明文、不动热层、用于灾难恢复
+- **只归档 `conversation_turns`，`memory_entries` 永不归档**
+  （蒸馏物常驻，是「越来越懂你」的核心）
+- CLI：`archive:create` / `archive:import` / `archive:status`
+- 端到端实测（18/18）：归档后 turns **仍存在（只标记未删除）**、
+  热层缩小、蒸馏物不受影响、导入可恢复
+
+**② 治理能力**（从只读报告 → 可操作）：
+- 后端：`GET /v1/memory?status=pending|active`、`POST /v1/memory/:id/confirm`、
+  `GET /v1/memory/injections`
+- **pending 真正阻断注入**（injector 加门控）—— 否则「待确认」形同虚设
+- 待确认状态用 `status:pending` 标签承载，**不改表结构**
+- 前端：待确认队列（确认/删除）+ provenance（规则/会话）+ 最近注入面板
+- 端到端实测：create → pending → confirm(importance 2→3, 移除 tag) → active → delete ✅
+
+**③ Evidence Bundle 持久化**：
+- migration `033_evidence_bundles.sql` + schema.sql 同步
+- API：`POST /bundle/save`、`GET /bundles`、`GET /bundles/:id`
+- 实测：save 201(signed=true, chain_valid=true) → list → get → **verify 仍 valid=true**
+  （JSONB 往返未破坏签名，复用了 backup 的 Date 规范化经验）
+
+**修复的真实不一致**：`VALID_SOURCES` 缺 `auto_learn`（类型允许但 API 白名单没有，
+此前靠 distiller 直写库绕过）—— 已补。
+
+**验证**：`npm run verify:trust` **301 断言全绿**（12 组，新增 sovereign 18）
+
+### 3.10 完成度评估与下一步规划（2026-08-30）
 
 产出 `docs/strategy/TRST-maturity-assessment-and-next-steps-2026-08-30.md`
 
