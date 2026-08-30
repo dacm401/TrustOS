@@ -15,7 +15,9 @@ import { config } from "../config.js";
 import { ConversationTurnRepo, MemoryEntryRepo, TaskRepo, ExecutionResultRepo } from "../db/repositories.js";
 // RFC-001 Phase 1: L0 rule-based memory distillation (no LLM call)
 import { distilTurn, partitionByConfidence, toMemoryEntryInput } from "../services/memory/distiller.js";
-import { memoryDistilledEntries } from "../metrics/prometheus.js";
+import { memoryDistilledEntries, archiveReplaysTotal } from "../metrics/prometheus.js";
+// Archive replay: answer repeated questions from history (0 model calls)
+import { findReplayableAnswer, renderReplay } from "../services/archive-replay.js";
 import { formatExecutionResultsForPlanner } from "../services/execution-result-formatter.js";
 // EL-003: Execution Loop
 import { taskPlanner } from "../services/task-planner.js";
@@ -233,6 +235,38 @@ chatRouter.post("/chat", async (c) => {
       }
     };
   })();
+
+  // ── Archive Replay fast path (restores the 04-16 O-005 "查档案库" model) ──
+  // A near-identical question already answered before is served from the
+  // archive with ZERO model calls. Gated hard: high similarity, not
+  // time-sensitive, and the answer is labelled as historical.
+  // Placed before routing so we never even pay for the Manager call.
+  if (process.env.TRUSTOS_ARCHIVE_REPLAY !== "0") {
+    try {
+      const replay = await findReplayableAnswer(userId, body.message ?? "");
+      if (replay.hit) {
+        console.log(
+          `[archive-replay] hit score=${replay.hit.score.toFixed(2)} task=${replay.hit.entry.task_id} — serving from archive, 0 model calls`
+        );
+        archiveReplaysTotal.inc();
+        return c.json({
+          message: renderReplay(replay.hit),
+          reply: renderReplay(replay.hit),
+          session_id: sessionId,
+          replayed: true,
+          replay_score: replay.hit.score,
+          source_task_id: replay.hit.entry.task_id,
+          decision: null,
+          routing_layer: "L-archive",
+        });
+      }
+      if (replay.reason !== "empty_input") {
+        console.log(`[archive-replay] miss (${replay.reason})`);
+      }
+    } catch {
+      // Replay must never break a turn.
+    }
+  }
 
   // SSE 契约强制：stream=true 必须走 SSE 路径，否则 500
   // 防止 stream=true 但走错了路径导致前端 SSE reader 永远挂起

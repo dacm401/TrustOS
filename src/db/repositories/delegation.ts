@@ -1,4 +1,5 @@
 import { v4 as uuid } from "uuid";
+import { keywordRelevance } from "../../services/text/similarity.js";
 import { query } from "../connection.js";
 import type { DelegationLog, DelegationLogInput, DelegationLogExecutionUpdate } from "../../types/index.js";
 
@@ -240,6 +241,62 @@ export const DelegationArchiveRepo = {
       [userId, sessionId]
     );
     return result.rows.map(mapDelegationArchiveRow);
+  },
+
+  /**
+   * Find archived delegations similar to the current query.
+   *
+   * Restores the 「查档案库」 capability originally designed on 04-16 (O-005):
+   * repeated / similar questions should be answered from history instead of
+   * paying for a fresh LLM call — the O(1) token model that was the product's
+   * original cost advantage.
+   *
+   * Until this method existed, `delegation_archive` was effectively
+   * WRITE-ONLY: rows accumulated via a backward-compat path that nothing ever
+   * read, so the write cost was paid with no retrieval benefit.
+   *
+   * Matching is lexical (this table has no embedding column), sharing the
+   * CJK-aware tokenizer with the memory injector.
+   */
+  async findSimilar(
+    userId: string,
+    queryText: string,
+    opts?: { limit?: number; minScore?: number; scanDepth?: number }
+  ): Promise<Array<DelegationArchiveEntry & { score: number }>> {
+    const limit = opts?.limit ?? 3;
+    const minScore = opts?.minScore ?? 0;
+    // Scan a bounded recent window (indexed by user_id, created_at DESC).
+    const scanDepth = opts?.scanDepth ?? 200;
+
+    const result = await query(
+      `SELECT * FROM delegation_archive
+        WHERE user_id=$1 AND status='completed' AND slow_result IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT $2`,
+      [userId, scanDepth]
+    );
+
+    return result.rows
+      .map(mapDelegationArchiveRow)
+      .map((entry) => ({
+        ...entry,
+        // ASYMMETRIC coverage, deliberately not Jaccard.
+        //
+        // The question is "can this archive entry answer the current query?",
+        // which is about whether every point of the query is covered by the
+        // archived question. Jaccard is diluted by length difference —
+        // "写一个快速排序" vs "写一个快速排序算法" scores only 0.75 even though
+        // the archive entry clearly answers it — so a 0.9 Jaccard gate would
+        // only ever fire on byte-identical questions, making replay useless.
+        //
+        // Coverage is also the SAFE direction: if the current query asks for
+        // something the archive entry never contained, coverage drops and we
+        // correctly refuse to replay.
+        score: keywordRelevance(queryText, entry.original_message),
+      }))
+      .filter((e) => e.score >= minScore)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
   },
 };
 

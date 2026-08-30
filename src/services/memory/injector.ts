@@ -157,65 +157,14 @@ export type InjectionTarget = "local" | "remote";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Rough token estimate: CJK ≈ 1.5 tokens/char, latin ≈ 0.25 tokens/char. */
-export function estimateTokens(text: string): number {
-  let tokens = 0;
-  for (const ch of text) {
-    // CJK ranges
-    tokens += /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff]/.test(ch) ? 1.5 : 0.25;
-  }
-  return Math.ceil(tokens);
-}
-
-/** Keyword overlap in [0,1] — zero-dependency fallback relevance. */
-export function keywordRelevance(query: string, text: string): number {
-  const q = new Set(tokenize(query));
-  const t = new Set(tokenize(text));
-  if (q.size === 0 || t.size === 0) return 0;
-  let hits = 0;
-  for (const w of q) if (t.has(w)) hits++;
-  return hits / q.size;
-}
-
-const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff]/;
-
-/**
- * Tokenize for relevance matching.
- *
- * Chinese has no spaces, so a whole clause would become ONE token and never
- * match a substring ("测试框架" vs "测试框架是 Vitest" scored 0). We therefore
- * split CJK runs into bigrams — the standard approach for Chinese retrieval
- * without pulling in a segmentation library.
- * Single CJK characters are kept as-is so short queries still work.
- */
-function tokenize(text: string): string[] {
-  const out: string[] = [];
-  const segments = (text ?? "")
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter(Boolean);
-
-  for (const seg of segments) {
-    if (!CJK_RE.test(seg)) {
-      if (seg.length >= 2) out.push(seg);
-      continue;
-    }
-    // Mixed CJK/latin (e.g. "用typescript") → split into CJK run + latin run.
-    const runs = seg.match(/[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff]+|[^\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff]+/g) ?? [];
-    for (const run of runs) {
-      if (!CJK_RE.test(run)) {
-        if (run.length >= 2) out.push(run);
-        continue;
-      }
-      if (run.length === 1) {
-        out.push(run);
-      } else {
-        for (let i = 0; i < run.length - 1; i++) out.push(run.slice(i, i + 2));
-      }
-    }
-  }
-  return out;
-}
+// Tokenization / relevance / token-estimation live in one shared module so the
+// injection engine and the delegation-archive replay use identical semantics.
+import {
+  estimateTokens,
+  keywordRelevance,
+  tokenize,
+} from "../text/similarity.js";
+export { estimateTokens, keywordRelevance, tokenize };
 
 /** Recency in [0,1]: 1 = now, decaying over ~90 days. */
 function recencyScore(updatedAt: string | undefined): number {

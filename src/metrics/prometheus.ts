@@ -254,6 +254,12 @@ export const memoryDistilledEntries = new Counter({
   registers: [register],
 });
 
+export const archiveReplaysTotal = new Counter({
+  name: 'archive_replays_total',
+  help: 'Turns answered from the delegation archive with zero model calls',
+  registers: [register],
+});
+
 // 设置默认指标采集
 promClient.collectDefaultMetrics({
   register,
