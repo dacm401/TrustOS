@@ -9,6 +9,7 @@
 
 import { TaskArchiveRepo } from "../../db/task-archive-repo.js";
 import { DelegationLogRepo } from "../../db/repositories.js";
+import { TERMINAL_TASK_STATES } from "../../types/task.js";
 
 const WATCHDOG_INTERVAL_MS = parseInt(process.env.TASK_WATCHDOG_SCAN_MS || "", 10) || 30_000; // 30s 扫描一次
 const STUCK_THRESHOLD_MS = parseInt(process.env.TASK_WATCHDOG_STUCK_MS || "", 10) || 5 * 60_000; // 5 分钟无进展视为 stuck
@@ -48,18 +49,21 @@ export function stopTaskWatchdog(): void {
 async function scanStuckTasks(): Promise<void> {
   const { query } = await import("../../db/connection.js");
 
-  // 查找 stuck 在非终态超过阈值的 task_archives
-  const stuckStates = ["executing", "waiting_result", "delegated", "synthesizing"];
-  const statePlaceholders = stuckStates.map((_, i) => `$${i + 1}`).join(", ");
+  // 查找 stuck 超过阈值的 task_archives。
+  // 判定条件是「不在终态集合内」而非「在活跃态白名单内」——
+  // 此前白名单漏掉非法状态 "running"，卡死任务连 watchdog 也救不回来。
+  // 反转后任何未知/非法状态都会被清理，不会永久卡死。
+  const terminalStates = [...TERMINAL_TASK_STATES];
+  const statePlaceholders = terminalStates.map((_, i) => `$${i + 1}`).join(", ");
 
   const result = await query(
     `SELECT id, state, updated_at, user_id, session_id
      FROM task_archives
-     WHERE state IN (${statePlaceholders})
-       AND updated_at < NOW() - INTERVAL '1 millisecond' * $${stuckStates.length + 1}
+     WHERE (state IS NULL OR state NOT IN (${statePlaceholders}))
+       AND updated_at < NOW() - INTERVAL '1 millisecond' * $${terminalStates.length + 1}
        AND delivered = false
      LIMIT 50`,
-    [...stuckStates, STUCK_THRESHOLD_MS]
+    [...terminalStates, STUCK_THRESHOLD_MS]
   );
 
   if (result.rows.length === 0) return;

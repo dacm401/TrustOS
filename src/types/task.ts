@@ -432,6 +432,41 @@ export type TaskState =
   /** S91P: Task stopped by timeout policy (soft or hard threshold exceeded) */
   | "timed_out";
 
+/**
+ * 终态集合 —— task_archives.state 一旦落入其中就不再变化。
+ *
+ * 消费方（SSE poller / watchdog）一律用「非终态即活跃」判定，而不是枚举
+ * 活跃态白名单。此前两处都用白名单（executing/delegated/waiting_result/
+ * synthesizing），导致非法状态 "running" 同时逃过 poller 与 watchdog，
+ * SSE 流永久挂起。反转后，任何未知/非法状态都会被当作活跃态并最终被
+ * 硬超时兜底，不会再出现无限挂起。
+ */
+export const TERMINAL_TASK_STATES: readonly TaskState[] = [
+  "completed",
+  "failed",
+  "cancelled",
+  "timed_out",
+] as const;
+
+/** 全部合法 state 值（写入边界校验用） */
+export const VALID_TASK_STATES: readonly TaskState[] = [
+  "new",
+  "clarifying",
+  "delegated",
+  "executing",
+  "waiting_result",
+  "synthesizing",
+  "completed",
+  "failed",
+  "cancelled",
+  "timed_out",
+] as const;
+
+/** 判断某个 state 是否已终结（未知状态一律视为未终结 → 受超时保护） */
+export function isTerminalTaskState(state: string | null | undefined): boolean {
+  return TERMINAL_TASK_STATES.includes(state as TaskState);
+}
+
 export type CommandStatus =
   | "queued"
   | "running"

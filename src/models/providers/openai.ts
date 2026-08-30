@@ -52,6 +52,27 @@ export function setExplicitGatewayTraceHeaders(
 
 // ── Default client ────────────────────────────────────────────────────────────
 
+/**
+ * 单次补全允许的最大输出 token 数。
+ *
+ * 为什么默认是 2560 而不是 4096：
+ * 实测 SiliconFlow 上的 deepseek-ai/DeepSeek-V4-Flash，输出长度与耗时呈**非线性**
+ * 增长，且长生成会被连接在 ~300s 处切断：
+ *
+ *   max_tokens  耗时      结果
+ *   500         13s       ✅ finish=length
+ *   1200        22s       ✅ finish=stop
+ *   2500        109s      ✅ finish=stop（自然结束，页面完整）
+ *   4096        >400s     ❌ 永不完成（非流式 307s 被切断；流式 400s 仍未结束）
+ *
+ * 原值 4096 使得「帮我写一个 XX 网页」这类 artifact 生成**必然**撞上
+ * TASK_HARD_TIMEOUT_MS(300s) 并失败，用户永远拿不到结果。
+ * 2560 落在实测安全区内（~110s），留足余量。
+ *
+ * 换用更快/更慢的 provider 时通过环境变量调整即可。
+ */
+export const DEFAULT_MAX_TOKENS = Number(process.env["PROVIDER_MAX_TOKENS"]) || 2560;
+
 // 默认 client（使用环境变量配置）
 const defaultClientOptions: ConstructorParameters<typeof OpenAI>[0] = {
   apiKey: config.openaiApiKey,
@@ -124,7 +145,7 @@ async function callChat(
         content: m.content,
       })),
       temperature: 0.3,
-      max_tokens: 4096,
+      max_tokens: DEFAULT_MAX_TOKENS,
       ...(tools ? { tools, tool_choice: "auto" } : {}),
     },
     hasGatewayTrace ? {

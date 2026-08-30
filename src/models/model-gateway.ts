@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ChatMessage } from "../types/index.js";
 import type { ModelProvider, ModelResponse, ToolParam } from "./providers/base-provider.js";
 import type { LlmCallKind } from "../types/runtime-trace.js";
+import { TASK_HARD_TIMEOUT_MS, TASK_SOFT_TIMEOUT_MS } from "../types/runtime-trace.js";
 import { openaiProvider, gatewayTraceStore } from "./providers/openai.js";
 import { callOpenAIWithOptions as _callOpenAIWithOptions } from "./providers/openai.js";
 import { anthropicProvider } from "./providers/anthropic.js";
@@ -198,6 +199,29 @@ function validateProviderConfig() {
       );
     }
   }
+
+  // ── 超时预算一致性校验 ────────────────────────────────────────────────
+  // 任务级硬超时必须严格大于单次模型调用预算，否则单次调用就会吃光整个
+  // 任务预算：模型调用与任务 kill 在同一瞬间发生，委托任务必然全部失败。
+  // （真实事故：WORKER_TIMEOUT_MS=300s 而 TASK_HARD_TIMEOUT_MS 未设置=300s，
+  //   两者相等 → 所有「帮我写一个网页」类任务 100% 超时失败。）
+  if (TASK_HARD_TIMEOUT_MS <= WORKER_TIMEOUT_MS) {
+    issues.push(
+      `TASK_HARD_TIMEOUT_MS (${TASK_HARD_TIMEOUT_MS}ms) must be STRICTLY greater than ` +
+      `WORKER_TIMEOUT_MS (${WORKER_TIMEOUT_MS}ms). Currently the whole task budget is ` +
+      `consumed by a single model call, so every delegated task is killed at the exact ` +
+      `moment the call would finish. Set TASK_HARD_TIMEOUT_MS >= ${WORKER_TIMEOUT_MS + 120_000}ms.`
+    );
+  }
+  if (TASK_SOFT_TIMEOUT_MS >= TASK_HARD_TIMEOUT_MS) {
+    issues.push(
+      `TASK_SOFT_TIMEOUT_MS (${TASK_SOFT_TIMEOUT_MS}ms) must be less than ` +
+      `TASK_HARD_TIMEOUT_MS (${TASK_HARD_TIMEOUT_MS}ms) — soft should warn before hard stops.`
+    );
+  }
+  // NOTE: DELEGATED_TASK_TIMEOUT_MS 故意不做与 TASK_HARD_TIMEOUT_MS 的比较 ——
+  // 它只用于 manager-route 的 delegated_task 调用，该路径不受任务看门狗约束，
+  // 比了只会产生误报。
 
   if (issues.length > 0) {
     console.warn(`[provider-config] ${issues.length} provider configuration issue(s):`);

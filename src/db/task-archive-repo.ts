@@ -13,6 +13,27 @@ import type {
   CommandStatus,
   TaskState,
 } from "../types/index.js";
+import { VALID_TASK_STATES } from "../types/task.js";
+
+/**
+ * 写入边界校验：拦下任何不属于 TaskState 的状态值。
+ *
+ * 背景：曾有人写 `updateState(id, "running" as TaskState)` —— "running" 其实是
+ * task_commands.status 的值，as 强转绕过了编译期检查。poller 与 watchdog 都
+ * 不认识该状态，导致 SSE 流永久挂起且永不超时。
+ *
+ * 这里做最后一道防线：非法状态一律记录显眼告警（不抛错，避免把可恢复的
+ * 写入变成崩溃），让问题在日志里立刻可见而不是变成静默挂起。
+ */
+function assertValidTaskState(newState: string, archiveId: string): void {
+  if (!VALID_TASK_STATES.includes(newState as TaskState)) {
+    console.error(
+      `[task-archive] ⚠️ ILLEGAL TASK STATE "${newState}" written for archive ${archiveId}. ` +
+      `Valid states: ${VALID_TASK_STATES.join(", ")}. ` +
+      `Poller/watchdog may never terminate this task.`
+    );
+  }
+}
 
 // ── TaskArchiveRepo ────────────────────────────────────────────────────────────
 
@@ -149,8 +170,9 @@ export const TaskArchiveRepo = {
     archiveId: string,
     newState: TaskState
   ): Promise<void> {
+    assertValidTaskState(newState, archiveId);
     await query(
-      `UPDATE task_archives SET state = $1 WHERE id = $2`,
+      `UPDATE task_archives SET state = $1, updated_at = NOW() WHERE id = $2`,
       [newState, archiveId]
     );
   },

@@ -24,6 +24,8 @@ import {
 import { TaskRepo } from "../../db/repositories";
 import { DelegationLogRepo } from "../../db/repositories";
 import { getPool } from "../../db/connection";
+// Non-terminal ⇒ active: guards against unknown/illegal states hanging forever
+import { isTerminalTaskState } from "../../types/task.js";
 
 // ── SSE 事件类型 ─────────────────────────────────────────────────────────────
 
@@ -409,7 +411,7 @@ export async function* pollArchiveAndYield(
     if (!task) break;
 
     // 检查 task_commands 是否有失败（防止 SSE 无限挂起）
-    if (!failedChecked && task.state !== "completed" && task.state !== "failed" && task.state !== "cancelled" && task.state !== "timed_out") {
+    if (!failedChecked && !isTerminalTaskState(task.state)) {
       try {
         const pool = getPool();
         const result = await pool.query(
@@ -442,7 +444,7 @@ export async function* pollArchiveAndYield(
     const currentState = task.state || task.status;
 
     // 安抚消息（30s / 60s / 120s 节点）
-    if (currentState === "executing" || currentState === "delegated" || currentState === "waiting_result" || currentState === "synthesizing") {
+    if (!isTerminalTaskState(currentState)) {
       if (elapsed > 30000 && elapsed < 31000 && lastStatusTime < 30000) {
         yield { type: "status", stream: msgs.running30s, routing_layer: "L2" };
         lastStatusTime = Date.now();
@@ -461,8 +463,7 @@ export async function* pollArchiveAndYield(
     // S88P: Emit progress event periodically (every 5s) during active execution
     // Only while worker is executing or synthesizing — not during idle states
     if (
-      (currentState === "executing" || currentState === "delegated" ||
-       currentState === "waiting_result" || currentState === "synthesizing") &&
+      !isTerminalTaskState(currentState) &&
       elapsed - lastProgressTime >= PROGRESS_INTERVAL_MS
     ) {
       lastProgressTime = elapsed;
@@ -544,10 +545,7 @@ export async function* pollArchiveAndYield(
 
     // S89P: Check for new partial results from slow_execution.partialResults[]
     // Only during active execution — not after completion/delivery
-    if (
-      (currentState === "executing" || currentState === "delegated" ||
-       currentState === "waiting_result" || currentState === "synthesizing")
-    ) {
+    if (!isTerminalTaskState(currentState)) {
       try {
         const partialResults = Array.isArray(task.slow_execution?.partialResults)
           ? (task.slow_execution.partialResults as Array<{
@@ -589,10 +587,7 @@ export async function* pollArchiveAndYield(
 
     // MWT-2: Emit new cycle events in real-time during active execution
     // (Previously only emitted at terminal state — now visible as they are stored)
-    if (
-      (currentState === "executing" || currentState === "delegated" ||
-       currentState === "waiting_result" || currentState === "synthesizing")
-    ) {
+    if (!isTerminalTaskState(currentState)) {
       try {
         const cycleEvents = Array.isArray(task.slow_execution?.cycleEvents)
           ? (task.slow_execution.cycleEvents as Record<string, unknown>[])
@@ -998,7 +993,9 @@ export async function* pollArchiveAndYield(
     // S101R-H3: Poller timeout using system constant instead of hardcoded 180s
     // S101R-C3: Poller timeout now updates task_commands terminal status
     const pollerTimeoutSec = Math.round(TASK_HARD_TIMEOUT_MS / 1000);
-    if (elapsed > TASK_HARD_TIMEOUT_MS && (currentState === "executing" || currentState === "delegated" || currentState === "waiting_result" || currentState === "synthesizing")) {
+    // 硬超时兜底：覆盖**所有**非终态，而不是枚举活跃态白名单。
+    // 此前白名单漏掉非法状态 "running"，导致 SSE 永久挂起且永不超时。
+    if (elapsed > TASK_HARD_TIMEOUT_MS && !isTerminalTaskState(currentState)) {
       // C3: Update task_archives state to timed_out with unified timeout metadata
       try {
         await TaskArchiveRepo.markTimedOut(taskId, {

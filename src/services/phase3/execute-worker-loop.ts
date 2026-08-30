@@ -31,9 +31,12 @@ async function executePlanCommand(
   const { id, task_id, archive_id, user_id, payload_json } = commandRecord;
   const startTime = Date.now();
 
-  // 更新状态为 running
+  // 更新状态为 executing
+  // NOTE: "running" 属于 task_commands.status，不属于 task_archives.state。
+  // 此前用 "running" as TaskState 强转绕过类型检查，写入了 poller/watchdog
+  // 都不认识的非法状态，导致 SSE 永久挂起。正确值是 "executing"。
   await TaskCommandRepo.updateStatus(id, "running", { started_at: new Date() });
-  await TaskArchiveRepo.updateState(archive_id, "running" as TaskState);
+  await TaskArchiveRepo.updateState(archive_id, "executing");
 
   // S101R-C6: Check cancellation before execution — don't execute cancelled tasks
   if (await TaskArchiveRepo.isCancelled(archive_id)) {
@@ -185,7 +188,7 @@ async function executePlanCommand(
           finished_at: new Date(),
           error_message: "Task cancelled by user",
         });
-        await TaskArchiveRepo.updateState(archive_id, "cancelled" as TaskState);
+        await TaskArchiveRepo.updateState(archive_id, "cancelled");
         await TaskArchiveRepo.setSlowExecution(archive_id, {
           cancelledAt: new Date().toISOString(),
           cancelReason: "Task cancelled by user",

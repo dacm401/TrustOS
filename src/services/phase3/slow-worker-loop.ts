@@ -189,9 +189,12 @@ async function executeDelegateCommand(
     throw err;
   }
 
-  // 更新状态为 running
+  // 更新状态为 executing
+  // NOTE: "running" 是 task_commands.status 的值，不是 task_archives.state 的值。
+  // 此前写成 "running" as TaskState —— as 强转绕过了类型检查，导致 poller 与
+  // watchdog 都不认识该状态，SSE 流永久挂起。正确值是 "executing"。
   await TaskCommandRepo.updateStatus(id, "running", { started_at: new Date() });
-  await TaskArchiveRepo.updateState(archive_id, "running" as TaskState);
+  await TaskArchiveRepo.updateState(archive_id, "executing");
 
   // Sprint 60P-H1: 从 archive slow_execution 读取 traceId（用于关联 worker ledger 与 request ledger）
   let traceId: string | undefined;
@@ -1150,7 +1153,7 @@ async function executeDelegateCommand(
           try {
             await TaskArchiveRepo.updateStateWithIntegrity(archive_id, "failed");
           } catch {
-            await TaskArchiveRepo.updateState(archive_id, "failed" as TaskState);
+            await TaskArchiveRepo.updateState(archive_id, "failed");
           }
         }
       }
@@ -1189,7 +1192,7 @@ async function executeDelegateCommand(
           finished_at: new Date(),
           error_message: "Task cancelled by user",
         });
-        await TaskArchiveRepo.updateState(archive_id, "cancelled" as TaskState);
+        await TaskArchiveRepo.updateState(archive_id, "cancelled");
         await TaskArchiveRepo.setSlowExecution(archive_id, {
           cancelledAt: new Date().toISOString(),
           cancelReason: "Task cancelled by user",
