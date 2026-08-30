@@ -249,9 +249,44 @@ chatRouter.post("/chat", async (c) => {
           `[archive-replay] hit score=${replay.hit.score.toFixed(2)} task=${replay.hit.entry.task_id} — serving from archive, 0 model calls`
         );
         archiveReplaysTotal.inc();
+        const replayText = renderReplay(replay.hit);
+
+        // SSE CONTRACT: when the client asked for a stream, we MUST answer with
+        // a stream. Returning JSON here would leave the frontend's SSE reader
+        // waiting forever / failing to parse, surfacing as a generic error.
+        if (useStream) {
+          const lang = (features?.language as "zh" | "en") ?? "zh";
+          c.header("Content-Type", "text/event-stream");
+          c.header("Cache-Control", "no-cache");
+          c.header("Connection", "keep-alive");
+          return stream(c, async (s) => {
+            await s.write(`data: ${JSON.stringify({
+              type: "thinking",
+              thinking_state: "completed",
+              stream: lang === "zh" ? "✅ 完成" : "✅ Done",
+              routing_layer: "L-archive",
+              timestamp: Date.now(),
+              meta: { origin: "system", contentKind: "thinking" },
+            })}\n\n`);
+            await s.write(`data: ${JSON.stringify({
+              type: "fast_reply",
+              stream: replayText,
+              routing_layer: "L-archive",
+              meta: { origin: "manager", contentKind: "chat" },
+            })}\n\n`);
+            await s.write(`data: ${JSON.stringify({
+              type: "done",
+              routing_layer: "L-archive",
+              meta: { origin: "system", contentKind: "status" },
+              budget: null,
+            })}\n\n`);
+          });
+        }
+
         return c.json({
-          message: renderReplay(replay.hit),
-          reply: renderReplay(replay.hit),
+          message: replayText,
+          reply: replayText,
+          content: replayText,
           session_id: sessionId,
           replayed: true,
           replay_score: replay.hit.score,
