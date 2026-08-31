@@ -1056,13 +1056,24 @@ export async function routeWithManagerDecision(
     });
   }
 
-  // 对于其他路由动作，使用"人话"作为安抚语，或根据 decision_type 构建澄清/任务消息
-  // 这里我们将 parsedOutput.userFacingText 传入 routeByGatedDecision
   // Sprint 56: 如果有 active artifact 且检测到修订意图，注入修订指令到 message
   // 不论 LLM 是否自己选了 delegate（guard 可能没触发），都需要带 revision payload
+  //
+  // ⚠️ 任务输入必须始终是用户的原始 message，**绝不能**用 parsedOutput.userFacingText。
+  // userFacingText 是 Manager 生成给用户看的安抚语（prompt 模板里的
+  // on_task_delegated: 「立即回复主人『正在处理，请稍候』」），属于模型自由生成文本。
+  //
+  // 此前写成 `(parsedOutput.userFacingText || message)`，导致 Manager 的安抚语
+  // 被当成任务输入传给 Worker。真实事故：用户问「天为啥蓝」，Manager 结合历史
+  // 生成了「好的，正在为您生成快速排序代码并解释天空为什么是蓝色的，请稍候...」，
+  // 这句话成为 task_archives.user_input，Worker 据此生成了快速排序代码 —— 用户
+  // 拿到的是上一条问题的答案，且 prompt 里混着两条问题。
+  //
+  // 安抚语仍通过下面独立的 userFacingText 字段传递，用于即时展示给用户，
+  // 两件事各走各的通道，互不污染。
   const gatedMessage = (effectiveActiveArtifact && revisionGuard.artifactRevisionIntent)
     ? `[Artifact Revision Task]\nArtifact ID: ${effectiveActiveArtifact.artifactId || "unknown"}\nTask ID: ${effectiveActiveArtifact.taskId || "unknown"}\nKnown summary: ${effectiveActiveArtifact.summaryForManager}\n\nUser instruction: ${message}\n\nImportant: This is a revision of an existing Worker artifact. Use the archived artifact as the source of truth. Return the revised complete artifact.`
-    : (parsedOutput.userFacingText || message);
+    : message;
   const gatedRouteResult = await routeByGatedDecision(gatedResult, { 
       message: gatedMessage, 
       userFacingText: parsedOutput.userFacingText || gatedMessage,
@@ -1377,9 +1388,25 @@ async function callManagerModel(input: {
   // 保留最近 6 轮对话作为上下文，不传全量 history（Manager 只读当前任务）
   const recentHistory = history.filter((m) => m.role !== "system").slice(-6);
 
+  // 历史消息用显式边界包裹，并在边界里重申隔离规则。
+  // 背景：此前历史与普通对话无异，模型把历史上未收尾的问题并入了当前任务
+  // （问「天为啥蓝」却收到「快速排序」的答案）。边界标记让模型在消息层面
+  // 就能区分「已结束的历史」与「本轮要处理的输入」。
+  const HISTORY_OPEN: ChatMessage = {
+    role: "system",
+    content:
+      "[conversation_history_begin] 以下是**已结束的**历史对话，仅用于理解指代关系"
+      + "（如『它』『再改一下』『刚才那个』）。其中的问题都已处理完毕。"
+      + "严禁把这里的任何问题并入当前任务，也不要替用户续做看起来没完成的旧任务。",
+  };
+  const HISTORY_CLOSE: ChatMessage = {
+    role: "system",
+    content: "[conversation_history_end] 以上历史已结束。接下来是本轮需要处理的新输入。",
+  };
+
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
-    ...recentHistory,
+    ...(recentHistory.length > 0 ? [HISTORY_OPEN, ...recentHistory, HISTORY_CLOSE] : []),
     { role: "user", content: message },
   ];
 

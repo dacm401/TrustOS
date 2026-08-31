@@ -1,0 +1,65 @@
+fix(router): 修复 Manager 把历史问题并入当前任务
+
+用户测三条成功两条，第二条「天为啥蓝」却收到快速排序的答案。
+定位出两个叠加缺陷，根因是 Manager 侧缺少任务边界隔离。
+
+═══ 缺陷 1：Manager 的安抚语被当成任务输入 ═══
+
+llm-native-router.ts:1065 原写法：
+    const gatedMessage = (...)
+      ? `[Artifact Revision Task]...User instruction: ${message}...`
+      : (parsedOutput.userFacingText || message);
+
+parsedOutput.userFacingText 是 Manager 生成给用户看的**安抚语**
+（prompt 模板 on_task_delegated: 「立即回复主人『正在处理，请稍候』」），
+属于模型自由生成文本。它 fallback 成了 gatedMessage，而 gatedMessage
+同时喂给两个字段：
+    message:        gatedMessage                              ← 任务输入
+    userFacingText: parsedOutput.userFacingText || gatedMessage  ← 展示文本
+
+于是安抚语成为 task_archives.user_input 传给 Worker。
+
+真实事故数据：
+    task af1ea382  user_input = "好的，正在为您生成快速排序代码并解释
+                               天空为什么是蓝色的，请稍候..."
+    Worker 据此生成快速排序代码 —— 用户问「天为啥蓝」，拿到上一条的答案。
+
+修复：任务输入恒为用户原始 message，安抚语只走独立的 userFacingText
+通道用于展示。clarification / direct_response 原本就取 ctx.userFacingText
+（1730/1735），不依赖 message，改动安全。
+
+与同文件 484 行（policy bypass 路径）的写法对齐 —— 那里本就 fall back
+到 message，只有主路径写错了，属不一致引入的 bug。
+
+═══ 缺陷 2：Manager 缺少任务边界隔离指令 ═══
+
+Manager 决策里的 goal 是：
+    "用Python编写快速排序算法，并解释天空为什么是蓝色的"
+Manager 自己就把两条问题合并了 —— 它看到历史里「快速排序」的
+assistant 回复只是分析（看起来没做完），就把当前问题并了进去。
+
+两层原因：
+  a) callManagerModel 把 6 轮历史作为普通 messages 塞进去，模型无法
+     区分「已结束的历史」与「本轮输入」（注释却写着「Manager 只读当前
+     任务」，名不副实）
+  b) Worker prompt 早有「只使用 Task Brief 提供的信息，不要读取任何外部
+     历史对话」，Manager 侧一直没有对称的边界指令
+
+修复：
+  · DEFAULT_CORE_RULES 补三条【任务边界】规则，与 Worker 侧对称：
+      - 只针对 [current_user_input] 的本轮输入做决策
+      - 历史仅用于理解指代，严禁把历史问题并入当前任务
+      - 历史任务看似没完成也不要替用户续做
+  · callManagerModel 用 [conversation_history_begin/end] 包裹历史，
+     在消息层面给出显式边界并重申隔离规则
+
+═══ 验证 ═══
+
+复现原场景（先问快速排序 → 再问「天为啥蓝」）：
+    修复前：Turn2 回答快速排序代码，user_input 为污染的安抚语
+    修复后：Turn2 正确回答瑞利散射，且**根本没有创建任务**
+            —— 简单问题正确走 direct_answer，不再委托 Worker
+    DB 复核：input=用Python写一个快速排序算法（用户原话，未污染）
+
+新增 scripts/verify-manager-task-boundary.mts（9 条断言）锁住契约。
+npm run verify:trust 331 条断言全绿。
