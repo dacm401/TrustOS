@@ -50,30 +50,10 @@ function getPollInterval(elapsedMs: number): number {
   return 5000;                           // > 2min：降低频率
 }
 
-// 从 task_archives 读取 Archive 上下文
-async function loadArchiveContext(archiveId: string): Promise<{
-  command: CommandPayload | null;
-  userInput: string;
-  constraints: string[];
-}> {
-  const archive = await TaskArchiveRepo.getById(archiveId);
-  if (!archive) return { command: null, userInput: "", constraints: [] };
-
-  let command: CommandPayload | null = null;
-  try {
-    if (archive.command) {
-      command = typeof archive.command === "string"
-        ? JSON.parse(archive.command)
-        : archive.command;
-    }
-  } catch {}
-
-  return {
-    command,
-    userInput: archive.user_input ?? "",
-    constraints: archive.constraints ?? [],
-  };
-}
+// ADR-004 阶段 A：删除 loadArchiveContext()。
+// 它是一个没有任何调用者的死函数，且会读取 task_archives.user_input。
+// 按 ADR-004，user_input 是 L0 审计字段（只写不读），保留一个读取它的函数
+// 等于给未来的误用留了入口，因此整体移除。
 
 // S90P: Cancellation-aware error class — thrown when task is cancelled mid-execution
 // S101R-C6: Exported for reuse by execute-worker-loop
@@ -411,7 +391,10 @@ async function executeDelegateCommand(
 
       taskContract = buildTaskContract({
         traceId: traceId ?? archive_id,
-        userInstruction: archive?.user_input ?? "",
+        // ADR-004：任务描述一律取自 envelope（L2 分发层），不再读 user_input。
+        // user_input 是 L0 审计字段（用户原话，只写不读）——用它做验收依据会
+        // 让「执行依据(envelope)」与「验收依据(user_input)」指向两个不同任务。
+        userInstruction: payload_json.goal || payload_json.task_brief || "",
         localManager: localManager as any ?? null,
         qualityRouting: qualityRouting as any ?? null,
         targetArtifactId: archive_id,

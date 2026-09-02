@@ -12,6 +12,7 @@ import type {
   TaskWorkerResultRecord,
   CommandStatus,
   TaskState,
+  AuditUserInput,
 } from "../types/index.js";
 import { VALID_TASK_STATES } from "../types/task.js";
 
@@ -48,7 +49,8 @@ export const TaskArchiveRepo = {
     session_id: string;
     user_id: string;
     decision: ManagerDecision;
-    user_input: string;
+    /** ADR-004 L0 审计字段 —— 必须是用户本轮原话，不得由模型输出派生 */
+    user_input: AuditUserInput;
     task_brief?: string;
     goal?: string;
     /** Sprint 60P-H1: 初始 slow_execution 元数据（可选，用于传递 traceId） */

@@ -476,13 +476,38 @@ export type CommandStatus =
   /** S91P: Command stopped by timeout policy */
   | "timed_out";
 
+/**
+ * ADR-004 — L0 原始层「审计字段」：用户本轮输入的**逐字原文**。
+ *
+ * 语义：仅供审计、回溯与展示，**不得作为任何 agent 的任务输入**。
+ *
+ * 为什么需要这个区分（事故回顾）：
+ *   Manager 的安抚语「好的，正在为您生成…请稍候」曾被当作任务输入写入，
+ *   并被 Worker 当成任务描述执行，导致用户问「天为啥蓝」却收到快速排序答案。
+ *   根因是同一个字符串同时承担「给人看」与「给机器执行」两种互斥职责。
+ *
+ * 约束：
+ *   · 写入时必须是用户原话，**不得由任何模型输出派生**
+ *     （运行时由 assertUserInputIsVerbatim 校验，见 task-archive-repo）
+ *   · Worker 侧不得读取；任务描述一律走 CommandPayload
+ *     （goal / task_brief / constraints，即 L2 分发层）
+ *   · 本字段停留本机（L0）；出境内容必须是 L2 envelope 且已过 egress
+ *
+ * 刻意保持为 string 的结构兼容：它承担的是**文档与可检索性**职责，
+ * 真正的安全由 assertUserInputIsVerbatim 与 CI 断言保证，而非类型系统。
+ *
+ * 参考：docs/strategy/ADR-004-information-layering-and-transpilation.md
+ */
+export type AuditUserInput = string;
+
 /** task_archives 表记录（Phase 3.0 扩展版） */
 export interface TaskArchiveRecord {
   id: string;
   session_id: string;
   turn_id: number;
   command: Record<string, unknown> | null;
-  user_input: string;
+  /** ADR-004 L0 审计字段 —— 只写不读，见 AuditUserInput */
+  user_input: AuditUserInput;
   constraints: string[];
   task_type: string;
   task_brief: Record<string, unknown> | null;

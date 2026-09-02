@@ -558,6 +558,7 @@ export async function routeWithManagerDecision(
 
     const gatedRouteResult = await routeByGatedDecision(bypassGated, {
       message: gatedMessage,
+      verbatimUserInput: message, // ADR-004：用户原话，供审计字段使用
       userFacingText: language === "zh" ? "好的，我来修改。" : "Got it, let me modify that.",
       user_id, session_id, turn_id, language, reqApiKey,
       rawOutput: `[Policy Bypass] ${policyDecision.route}: ${message}`,
@@ -794,11 +795,17 @@ export async function routeWithManagerDecision(
           needs_archive: false,
           raw_output: managerOutput.slice(0, 500),
         };
+        // ADR-004：审计字段保真，不截断 —— 截断会让现场无法还原。
+        // （原为 message.slice(0, 200)，破坏了「逐字原文」语义。）
+        // 命名显式化：此处 message 是本函数入参，即用户本轮原话；
+        // 与 routeByDecision 里那个「可被包装的任务描述 message」同名但语义不同，
+        // 起一个自明的名字，避免审计字段被误写成任务描述。
+        const verbatimUserInputForAudit = message;
         const archive = await TaskArchiveRepo.create({
           session_id: session_id ?? "unknown",
           user_id: user_id ?? "unknown",
           decision: mockDecision,
-          user_input: message.slice(0, 200),
+          user_input: verbatimUserInputForAudit,
         });
         failedArchiveId = archive.id;
         await TaskArchiveRepo.updateState(archive.id, "failed");
@@ -842,7 +849,7 @@ export async function routeWithManagerDecision(
     // 尝试旧 v1 格式作为 backward compatibility fallback
     const decision = parseAndValidate(managerOutput);
     if (decision) {
-      return withLedger(await routeByDecision(decision, { message, user_id, session_id, language, reqApiKey, raw: managerOutput }), {
+      return withLedger(await routeByDecision(decision, { message, verbatimUserInput: message, user_id, session_id, language, reqApiKey, raw: managerOutput }), {
         callLedger, startTime: ledgerRequestStart, traceId: ledgerTraceId,
         userId: user_id, sessionId: session_id, delegated: false, fastPathHeuristic,
         policyRoute: policyDecision.route,
@@ -1076,6 +1083,7 @@ export async function routeWithManagerDecision(
     : message;
   const gatedRouteResult = await routeByGatedDecision(gatedResult, { 
       message: gatedMessage, 
+      verbatimUserInput: message, // ADR-004：用户原话，供审计字段使用
       userFacingText: parsedOutput.userFacingText || gatedMessage,
       user_id, session_id, turn_id, language, reqApiKey, 
       rawOutput: managerOutput, v2Decision,
@@ -1713,7 +1721,21 @@ function detectDecisionAmbiguity(
 // ── Gated Delegation: 按 Gated 结果路由 ──────────────────────────────────────
 
 interface GatedRouteContext {
+  /**
+   * 任务描述 —— 可能含 revision 包装（如 `[Artifact Revision Task]...`）。
+   * 用于构造 envelope（goal / task_brief），是**给机器执行**的内容。
+   */
   message: string;
+  /**
+   * ADR-004 L0 审计字段：用户本轮输入的**逐字原文**。
+   *
+   * 与 message 严格区分：message 是「要做什么」（可被包装、可由模型改写），
+   * verbatimUserInput 是「用户原话」（永不被改写、永不进入任何 prompt）。
+   *
+   * 事故背景：曾因二者共用同一个字符串，Manager 的安抚语「好的，正在为您
+   * 生成…请稍候」被写成任务输入，导致问「天为啥蓝」却收到快速排序答案。
+   */
+  verbatimUserInput: string;
   user_id: string;
   session_id: string;
   turn_id: number;
@@ -1851,6 +1873,8 @@ async function routeByGatedDecision(
 
 interface RouteContext {
   message: string;
+  /** ADR-004 L0 审计字段：用户本轮输入的逐字原文（区别于可被包装的 message） */
+  verbatimUserInput: string;
   user_id: string;
   session_id: string;
   language: "zh" | "en";
@@ -1958,9 +1982,28 @@ async function writeTaskArchiveAndCommand(
   eventType: string,
   workerRole: string,
   traceId: string,
+  /**
+   * ADR-004 L0 审计字段：用户本轮输入的逐字原文。
+   *
+   * 必须是 verbatimUserInput（用户原话），**不得**是 message（任务描述）。
+   * 传 undefined 时降级用 message 并告警 —— 这样遗漏的调用点会在日志里
+   * 立刻暴露，而不是悄悄把模型输出写成"用户原话"。
+   */
+  verbatimUserInput?: string,
 ): Promise<ArchiveCommandResult> {
   let archiveRecord: { id: string } | null = null;
   let commandRecord: { id: string } | null = null;
+
+  // ADR-004：审计字段只接受用户原话。缺失说明调用方未传，降级并告警。
+  let auditInput: string = verbatimUserInput ?? "";
+  if (verbatimUserInput === undefined) {
+    console.warn(
+      `[adr-004] writeTaskArchiveAndCommand called without verbatimUserInput ` +
+      `(eventType=${eventType}, task=${String(taskId).slice(0, 8)}) — ` +
+      `falling back to message. This may write model-generated text as user input.`
+    );
+    auditInput = message;
+  }
 
   try {
     // TRST-2: Capture Gateway trace headers from ALS for worker correlation
@@ -1971,7 +2014,7 @@ async function writeTaskArchiveAndCommand(
       user_id,
       session_id,
       decision,
-      user_input: message,
+      user_input: auditInput,
       task_brief: processedCommand?.task_brief,
       goal: processedCommand?.goal,
       // Sprint 60P-H1: 存入 slow_execution，供 slow-worker-loop 读取 traceId
@@ -2060,7 +2103,8 @@ async function routeByDecision(
           user_id,
           session_id,
           decision,
-          user_input: message,
+          // ADR-004：审计字段存用户原话，不存 ctx.message（后者可能含 revision 包装）
+          user_input: ctx.verbatimUserInput,
         });
         // create 默认 state=delegated，改为 clarifying 以便追踪
         await TaskArchiveRepo.updateState(clarifyingTaskId, "clarifying");
@@ -2132,6 +2176,7 @@ async function routeByDecision(
         taskId, decision, message, phase4Result.processedCommand,
         session_id, user_id, "delegate_to_slow", "slow_worker",
         traceId ?? taskId, // 用 traceId 或 taskId 作为 fallback
+        ctx.verbatimUserInput, // ADR-004：审计字段用用户原话，不用 message
       );
 
       return {
@@ -2189,6 +2234,7 @@ async function routeByDecision(
         taskId, decision, message, phase4Result.processedCommand,
         session_id, user_id, "execute_task", "execute_worker",
         traceId ?? taskId, // 用 traceId 或 taskId 作为 fallback
+        ctx.verbatimUserInput, // ADR-004：审计字段用用户原话，不用 message
       );
 
       // TaskPlanner 生成执行计划
