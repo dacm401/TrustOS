@@ -33,7 +33,11 @@ import {
   memoryInjectTokens,
   memoryInjectTruncated,
 } from "../../metrics/prometheus.js";
-import type { MemoryCategory, MemoryEntry } from "../../types/index.js";
+import type {
+  MemoryCategory,
+  MemoryEntry,
+  MemorySensitivityTier,
+} from "../../types/index.js";
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
@@ -269,6 +273,49 @@ type SelectMemoriesOptions = {
   candidates?: Array<MemoryEntry & { similarity?: number }>;
 };
 
+/**
+ * ADR-004 阶段 B1 —— 哪些敏感度的 memory 允许发给云端模型。
+ *
+ * 目前只有 `public`。为什么 `internal` 也暂时不放行：
+ *   `internal` 的语义是「可提炼后使用」——即把它转译成无敏感信息的
+ *   constraints 再给模型（ADR-004 阶段 D）。转译尚未实现，此刻放行就等于
+ *   把原文直接送上云，违背 internal 的定义。因此这里保守处理：
+ *   `internal` 留在本地，等阶段 D 的转译落地后再开放。
+ *
+ * `unknown` 不是「系统判断不了」，而是「用户还没审阅」（阶段 B0 赋予的
+ * 语义），所以它和 sensitive/restricted 一样拒绝，但用户可以主动解锁。
+ */
+const REMOTE_ALLOWED_SENSITIVITIES = new Set<MemorySensitivityTier>(["public"]);
+
+/**
+ * 按接收方过滤 memory 敏感度。
+ *
+ * 为什么必须在**选择阶段**过滤，而不能依赖下游 egress：
+ *   egress 是语法级正则，拦得住 sk-xxx / 邮箱 / 手机 / 身份证；
+ *   memory 的敏感性却是语义级 —— 「用户的老板叫张伟」「年薪 80 万」
+ *   「准备离职」不含任何敏感格式，egress 完全抓不到。
+ *   所以语义把关只能在这里做：让不该出境的条目**根本不进入候选集**，
+ *   而不是先选进来再指望下游拦下。
+ *
+ * LOCAL 不做任何过滤：数据不出本机，无需裁剪。
+ */
+function filterBySensitivity<T extends { sensitivity?: MemorySensitivityTier }>(
+  entries: T[],
+  target: InjectionTarget
+): { allowed: T[]; blocked: T[] } {
+  if (target !== "remote") return { allowed: entries, blocked: [] };
+
+  const allowed: T[] = [];
+  const blocked: T[] = [];
+  for (const e of entries) {
+    // 缺失一律按 unknown 处理 —— 绝不因为字段缺失就放行。
+    const s: MemorySensitivityTier = e.sensitivity ?? "unknown";
+    if (REMOTE_ALLOWED_SENSITIVITIES.has(s)) allowed.push(e);
+    else blocked.push(e);
+  }
+  return { allowed, blocked };
+}
+
 async function selectMemoriesInner(
   userId: string,
   query: string,
@@ -336,6 +383,18 @@ async function selectMemoriesInner(
       }
     }
 
+    if (candidates.length === 0) return empty("none");
+
+    // ADR-004 阶段 B1：语义级把关 —— 在规则匹配之前就剔出不许出境的条目。
+    const { allowed, blocked } = filterBySensitivity(candidates, target);
+    if (blocked.length > 0) {
+      // 可观测：静默拦截会让人以为「memory 没生效」，而实际是被安全策略挡下。
+      console.log(
+        `[memory-inject] target=${target} blocked ${blocked.length}/${candidates.length} ` +
+        `by sensitivity policy (allowed: ${[...REMOTE_ALLOWED_SENSITIVITIES].join(", ")})`
+      );
+    }
+    candidates = allowed;
     if (candidates.length === 0) return empty("none");
 
     const scored: InjectedMemory[] = [];

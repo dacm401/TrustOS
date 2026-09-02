@@ -441,7 +441,9 @@ export type MemorySensitivityTier = (typeof MEMORY_SENSITIVITIES)[number];
 /** 给用户看的中文说明 —— 让「unknown」的含义不是靠猜。 */
 export const MEMORY_SENSITIVITY_LABELS: Record<MemorySensitivityTier, string> = {
   public: "公开 · 可共享给云端",
-  internal: "内部 · 仅提炼后使用",
+  // 阶段 D（转译为 constraints）落地前，internal 实际也不上云 —— 文案照实说，
+  // 避免用户以为标了 internal 就已经会生效。
+  internal: "内部 · 待转译支持（暂不上云）",
   sensitive: "敏感 · 不上云",
   restricted: "受限 · 不上云",
   unknown: "未审阅 · 不上云",

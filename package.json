@@ -33,6 +33,7 @@
     "verify:taskstate": "npx tsx scripts/verify-task-state-lifecycle.mts",
     "verify:boundary": "npx tsx scripts/verify-manager-task-boundary.mts",
     "verify:auditinput": "npx tsx scripts/verify-user-input-audit.mts",
+    "verify:memgate": "npx tsx scripts/verify-memory-sensitivity-gate.mts",
     "verify:distill": "npx tsx scripts/verify-memory-distiller.mts",
     "verify:inject": "npx tsx scripts/verify-memory-inject.mts",
     "verify:replay": "npx tsx scripts/verify-archive-replay.mts",
@@ -45,7 +46,7 @@
     "archive:import": "npx tsx scripts/sovereign-archive.mts import",
     "archive:status": "npx tsx scripts/sovereign-archive.mts status",
 
-    "verify:trust": "npm run verify:chain && npm run verify:assess && npm run verify:bundle && npm run verify:index && npm run verify:egress && npm run verify:egress-fp && npm run verify:taskstate && npm run verify:boundary && npm run verify:auditinput && npm run verify:distill && npm run verify:inject && npm run verify:replay && npm run verify:assistant && npm run verify:backup && npm run verify:sovereign",
+    "verify:trust": "npm run verify:chain && npm run verify:assess && npm run verify:bundle && npm run verify:index && npm run verify:egress && npm run verify:egress-fp && npm run verify:taskstate && npm run verify:boundary && npm run verify:auditinput && npm run verify:memgate && npm run verify:distill && npm run verify:inject && npm run verify:replay && npm run verify:assistant && npm run verify:backup && npm run verify:sovereign",
     "trst1:report": "npx tsx scripts/trst1/generate-shadow-report.ts",
     "trst1:tool": "npx tsx scripts/trst1/simulate-tool-call.ts",
     "trst1:mcp:fake-server": "npx tsx scripts/trst1/fake-mcp-server.ts",
