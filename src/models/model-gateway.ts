@@ -88,6 +88,24 @@ function mapProviderError(error: any, model: string): ProviderError {
     );
   }
 
+  // 402 Payment Required — 账户余额不足。
+  // 必须单独识别：此前落入 provider_unknown_error，用户只看到「出现了
+  // 未知错误，请稍后重试」，会以为系统坏了，而实际是需要充值。
+  // provider 本身也给了明确信息（如 SiliconFlow 返回
+  // {"code":30001,"message":"Sorry, your account balance is insufficient"}），
+  // 这里给出可操作的提示，而不是含糊的"未知错误"。
+  if (status === 402) {
+    return new ProviderError(
+      status,
+      "AI 服务账户余额不足，请在服务商后台充值后重试。",
+      "provider_payment_required",
+      error
+    );
+  }
+
+  // 注：401/403 已在本函数前段统一处理（见上方 "AI 服务配置不可用" 分支），
+  // 此处不再重复判断，避免出现永远走不到的死分支。
+
   if (status >= 500) {
     return new ProviderError(
       status,
