@@ -10,9 +10,13 @@
 
 import type { MemoryGovernanceRecord } from "@/types/memory-governance";
 import {
+  MEMORY_SENSITIVITIES,
+  MEMORY_SENSITIVITY_LABELS,
+  type MemorySensitivityTier,
+} from "@/lib/api";
+import {
   statusDisplay,
   sensitivityTone,
-  sensitivityLabel,
   truncateFingerprint,
   toneClasses,
 } from "./memory-governance-status";
@@ -70,11 +74,20 @@ function RefList({ title, items }: { title: string; items: string[] }) {
 
 export default function MemoryGovernancePanel({
   record,
+  onSensitivityChange,
+  disabled,
 }: {
   record: MemoryGovernanceRecord;
+  /**
+   * ADR-004 阶段 B0：提供时敏感度可编辑；省略则保持只读展示。
+   * 之所以做成可选回调，是为了让 fixture/离线预览（无后端）仍能渲染。
+   */
+  onSensitivityChange?: (id: string, sensitivity: MemorySensitivityTier) => void;
+  disabled?: boolean;
 }) {
   const status = statusDisplay(record.status);
   const refs = record.trust_refs;
+  const current = (record.sensitivity ?? "unknown") as MemorySensitivityTier;
 
   return (
     <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -103,10 +116,42 @@ export default function MemoryGovernancePanel({
           <span className="text-xs text-gray-400 mr-1 ml-2">Retention:</span>
           <Chip tone="neutral">{record.retention}</Chip>
           <span className="text-xs text-gray-400 mr-1 ml-2">Sensitivity:</span>
-          <Chip tone={sensitivityTone(record.sensitivity)}>
-            {sensitivityLabel(record.sensitivity)}
-          </Chip>
+          {onSensitivityChange ? (
+            // ADR-004 阶段 B0：把标记权交给用户。选项文案带中文说明，
+            // 让「unknown」表示「未审阅」而不是让人猜它是安全还是危险。
+            <select
+              aria-label="敏感度"
+              value={current}
+              disabled={disabled}
+              onChange={(e) =>
+                onSensitivityChange(record.memory_id, e.target.value as MemorySensitivityTier)
+              }
+              className={`text-xs font-medium px-2 py-1 rounded-lg border ${toneClasses(
+                sensitivityTone(record.sensitivity)
+              )}`}
+            >
+              {MEMORY_SENSITIVITIES.map((s) => (
+                <option key={s} value={s}>
+                  {MEMORY_SENSITIVITY_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Chip tone={sensitivityTone(record.sensitivity)}>{record.sensitivity}</Chip>
+          )}
         </div>
+
+        {/* ADR-004：把「unknown 意味着什么」讲清楚 —— 它是待你审阅，不是安全。 */}
+        {current === "unknown" && onSensitivityChange && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <p className="text-xs text-amber-800">
+              ⚠️ 此条尚未审阅，因此<strong>不会</strong>被发送给云端模型。
+              {record.source === "auto_learn" && (
+                <> 它是系统从你的对话中自动学习的 —— 你可以在此确认或删除。</>
+              )}
+            </p>
+          </div>
+        )}
 
         {/* Key facts */}
         <div className="rounded-lg border border-gray-100 bg-gray-50/40 px-4 py-1">

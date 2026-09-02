@@ -115,6 +115,9 @@ function mapMemoryRow(r: any): MemoryEntry {
     relevance_score: r.relevance_score ?? 0.5,
     created_at: new Date(r.created_at).toISOString(),
     updated_at: new Date(r.updated_at).toISOString(),
+    // ADR-004 阶段 B0：migration 034 之前的旧行没有该列。
+    // 缺失一律按 'unknown'（未审阅）处理 —— 绝不因为字段缺失就当成可共享。
+    sensitivity: r.sensitivity ?? "unknown",
   };
 }
 
@@ -123,9 +126,11 @@ export const MemoryEntryRepo = {
     const id = uuid();
     // M2: default relevance_score based on source (manual=0.5, auto_learn=0.3)
     const relevanceScore = data.relevance_score ?? (data.source === "auto_learn" ? 0.3 : 0.5);
+    // ADR-004 阶段 B0：sensitivity 省略时为 'unknown'（未审阅），
+    // 与 DB 默认值一致 —— 创建路径绝不默认可共享。
     const result = await query(
-      `INSERT INTO memory_entries (id, user_id, category, content, importance, tags, source, relevance_score)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO memory_entries (id, user_id, category, content, importance, tags, source, relevance_score, sensitivity)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         id,
@@ -136,6 +141,7 @@ export const MemoryEntryRepo = {
         data.tags ?? [],
         data.source ?? "manual",
         relevanceScore,
+        data.sensitivity ?? "unknown",
       ]
     );
     const entry = mapMemoryRow(result.rows[0]);
@@ -249,6 +255,12 @@ export const MemoryEntryRepo = {
     if (data.category !== undefined) {
       sets.push(`category=$${idx++}`);
       params.push(data.category);
+    }
+    // ADR-004 阶段 B0：允许用户重新标记敏感度。
+    // 值合法性由 API 层白名单校验 + DB CHECK 约束双重保证。
+    if (data.sensitivity !== undefined) {
+      sets.push(`sensitivity=$${idx++}`);
+      params.push(data.sensitivity);
     }
     if (sets.length === 0) return this.getById(id, userId);
     sets.push(`updated_at=NOW()`);

@@ -260,6 +260,37 @@ export interface ModelPricing {
 export type MemoryCategory = "preference" | "fact" | "context" | "instruction" | "skill" | "behavioral";
 export type MemorySource = "manual" | "extracted" | "feedback" | "auto_learn";
 
+/**
+ * ADR-004 阶段 B0 —— memory 敏感度分级（**严格封闭**）。
+ *
+ * 为什么不用 services/mwt6 的 `MemorySensitivity`：
+ *   那个类型是开放联合（`| (string & {})`），任何字符串都能赋值，拦不住拼写
+ *   错误。而本类型用于三个必须精确的场合：
+ *     · DB 列有 CHECK 约束（封闭）
+ *     · 阶段 B1 的过滤逻辑依赖具体值
+ *     · UI 下拉框需要可枚举
+ *   因此这里用 `as const` 数组派生出封闭类型，并导出数组供白名单校验与 UI 使用。
+ *
+ * 语义（默认拒绝原则）：
+ *   public      用户显式标记可共享
+ *   internal    可提炼后使用（转译为 constraints，不给原文）
+ *   sensitive   禁止上云
+ *   restricted  禁止上云
+ *   unknown     用户尚未审阅/授权 —— 与 sensitive/restricted 同样不上云，
+ *               但区别在于：它可以被用户主动解锁，而不是永久失效。
+ *
+ * 存量数据默认 'unknown'（见 migration 034），绝不能因为「没人分类」就当可共享。
+ */
+export const MEMORY_SENSITIVITIES = [
+  "public",
+  "internal",
+  "sensitive",
+  "restricted",
+  "unknown",
+] as const;
+
+export type MemorySensitivityTier = (typeof MEMORY_SENSITIVITIES)[number];
+
 export interface MemoryEntry {
   id: string;
   user_id: string;
@@ -271,6 +302,8 @@ export interface MemoryEntry {
   relevance_score: number; // 0.0–1.0, defaults to 0.5
   created_at: string;   // ISO 8601 string (outward API)
   updated_at: string;
+  /** ADR-004 阶段 B0：敏感度分级，默认 'unknown'（未审阅 = 不上云） */
+  sensitivity: MemorySensitivityTier;
 }
 
 export interface MemoryEntryInput {
@@ -281,6 +314,8 @@ export interface MemoryEntryInput {
   tags?: string[];
   source?: MemorySource;
   relevance_score?: number; // defaults based on source (manual=0.5, auto_learn=0.3)
+  /** ADR-004：省略时按 'unknown'（未审阅）处理，绝不默认可共享 */
+  sensitivity?: MemorySensitivityTier;
 }
 
 export interface MemoryEntryUpdate {
@@ -288,6 +323,8 @@ export interface MemoryEntryUpdate {
   importance?: number;
   tags?: string[];
   category?: MemoryCategory;
+  /** ADR-004 阶段 B0：允许用户重新标记敏感度 */
+  sensitivity?: MemorySensitivityTier;
 }
 
 // ── Task Entities ─────────────────────────────────────────────────────────────

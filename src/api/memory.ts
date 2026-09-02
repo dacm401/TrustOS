@@ -14,6 +14,12 @@ const VALID_CATEGORIES = ["preference", "fact", "context", "instruction"] as con
 // to represent a source the data model already allows.
 const VALID_SOURCES = ["manual", "extracted", "feedback", "auto_learn"] as const;
 
+// ADR-004 阶段 B0：敏感度白名单。
+// 与 DB CHECK 约束、types/task.ts 的 MEMORY_SENSITIVITIES 保持一致。
+// 在 API 层先拦一次，是为了返回清晰的 400 错误，而不是让调用方收到一个
+// 来自数据库的约束违反异常。
+const VALID_SENSITIVITIES = ["public", "internal", "sensitive", "restricted", "unknown"] as const;
+
 function errorResp(c: any, message: string, status = 400) {
   return c.json({ error: message }, status);
 }
@@ -29,7 +35,7 @@ memoryRouter.post("/", async (c) => {
     return errorResp(c, "Invalid JSON body", 400);
   }
 
-  const { category, content, importance, tags, source } = body;
+  const { category, content, importance, tags, source, sensitivity } = body;
 
   if (!category || !VALID_CATEGORIES.includes(category as typeof VALID_CATEGORIES[number])) {
     return errorResp(c, `category is required and must be one of: ${VALID_CATEGORIES.join(" | ")}`, 400);
@@ -58,6 +64,13 @@ memoryRouter.post("/", async (c) => {
   if (source !== undefined && !VALID_SOURCES.includes(source as typeof VALID_SOURCES[number])) {
     return errorResp(c, `source must be one of: ${VALID_SOURCES.join(" | ")}`, 400);
   }
+  // ADR-004 阶段 B0：允许创建时指定敏感度。省略则由 Repo 层落为 'unknown'。
+  if (
+    sensitivity !== undefined &&
+    !VALID_SENSITIVITIES.includes(sensitivity as typeof VALID_SENSITIVITIES[number])
+  ) {
+    return errorResp(c, `sensitivity must be one of: ${VALID_SENSITIVITIES.join(" | ")}`, 400);
+  }
 
   const input: MemoryEntryInput = {
     user_id: userId,
@@ -66,6 +79,9 @@ memoryRouter.post("/", async (c) => {
     importance: importance !== undefined ? Number(importance) : undefined,
     tags: tags !== undefined ? (tags as string[]) : undefined,
     source: source !== undefined ? (source as MemoryEntryInput["source"]) : undefined,
+    sensitivity: sensitivity !== undefined
+      ? (sensitivity as MemoryEntryInput["sensitivity"])
+      : undefined,
   };
 
   try {
@@ -173,8 +189,10 @@ function mapEntryToGovernanceInput(entry: any): any {
     created_at: entry.created_at,
     created_by: entry.user_id,
     retention,
-    // Memory has no sensitivity field -> unknown (governance treats unknown as restricted)
-    sensitivity: "unknown",
+    // ADR-004 阶段 B0：此前硬编码为 "unknown"，使治理层的四级分类
+    // （public/internal/sensitive/restricted）完全空转 —— 它永远只收到同一个值。
+    // 现在读取真实字段；缺失仍按 unknown（未审阅）处理，保持默认拒绝。
+    sensitivity: entry.sensitivity ?? "unknown",
     provenance_refs: entry.tags ?? [],
   };
 }
@@ -229,7 +247,7 @@ memoryRouter
       return errorResp(c, "Invalid JSON body", 400);
     }
 
-    const { content, importance, tags, category } = body;
+    const { content, importance, tags, category, sensitivity } = body;
     const update: MemoryEntryUpdate = {};
 
     if (content !== undefined) {
@@ -265,6 +283,17 @@ memoryRouter
         return errorResp(c, `category must be one of: ${VALID_CATEGORIES.join(" | ")}`, 400);
       }
       update.category = category as MemoryEntryUpdate["category"];
+    }
+    // ADR-004 阶段 B0：允许用户重新标记敏感度（这是 B1 过滤的数据来源）。
+    if (sensitivity !== undefined) {
+      if (!VALID_SENSITIVITIES.includes(sensitivity as typeof VALID_SENSITIVITIES[number])) {
+        return errorResp(
+          c,
+          `sensitivity must be one of: ${VALID_SENSITIVITIES.join(" | ")}`,
+          400
+        );
+      }
+      update.sensitivity = sensitivity as MemoryEntryUpdate["sensitivity"];
     }
 
     try {

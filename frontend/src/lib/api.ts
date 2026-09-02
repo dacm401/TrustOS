@@ -420,7 +420,32 @@ export interface MemoryEntryLite {
   source: string;
   created_at?: string;
   updated_at?: string;
+  /** ADR-004 阶段 B0：敏感度分级。缺失按 'unknown'（未审阅）处理。 */
+  sensitivity?: MemorySensitivityTier;
 }
+
+/**
+ * ADR-004 阶段 B0 —— memory 敏感度分级。
+ * 与后端 migration 034 的 CHECK 约束、types/task.ts 的 MEMORY_SENSITIVITIES 一致。
+ */
+export const MEMORY_SENSITIVITIES = [
+  "public",
+  "internal",
+  "sensitive",
+  "restricted",
+  "unknown",
+] as const;
+
+export type MemorySensitivityTier = (typeof MEMORY_SENSITIVITIES)[number];
+
+/** 给用户看的中文说明 —— 让「unknown」的含义不是靠猜。 */
+export const MEMORY_SENSITIVITY_LABELS: Record<MemorySensitivityTier, string> = {
+  public: "公开 · 可共享给云端",
+  internal: "内部 · 仅提炼后使用",
+  sensitive: "敏感 · 不上云",
+  restricted: "受限 · 不上云",
+  unknown: "未审阅 · 不上云",
+};
 
 export const MEMORY_PENDING_TAG = "status:pending";
 
@@ -445,7 +470,14 @@ export async function fetchMemories(
 export async function updateMemory(
   id: string,
   userId: string,
-  patch: { content?: string; importance?: number; tags?: string[]; category?: string }
+  patch: {
+    content?: string;
+    importance?: number;
+    tags?: string[];
+    category?: string;
+    /** ADR-004 阶段 B0：重新标记敏感度 */
+    sensitivity?: MemorySensitivityTier;
+  }
 ): Promise<{ entry: MemoryEntryLite }> {
   const { apiBase } = getApiConfig();
   const res = await fetch(`${apiBase}/v1/memory/${encodeURIComponent(id)}`, {
