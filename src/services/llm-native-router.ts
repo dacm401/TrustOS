@@ -211,9 +211,14 @@ interface MemoryViews {
  *
  * 故设上限：超时则本轮放弃注入（fail-open 到「无记忆」），宁可少一次
  * 个性化，也不让首字延迟失控。可通过环境变量调整。
+ *
+ * 3000ms 的依据：embedding 正常 110–350ms、检索 30–50ms，合计约 150–400ms；
+ * 但冷启动与服务商抖动会显著拉长，实测存在超过 1500ms 的情况（原值 1500ms
+ * 因此多次触发跳过，导致 memory 时有时无）。3000ms 约为正常值的 7 倍余量，
+ * 同时仍不足以让用户感到卡顿。
  */
 const MEMORY_RETRIEVAL_TIMEOUT_MS =
-  Number(process.env["TRUSTOS_MEMORY_RETRIEVAL_TIMEOUT_MS"]) || 1500;
+  Number(process.env["TRUSTOS_MEMORY_RETRIEVAL_TIMEOUT_MS"]) || 3000;
 
 async function awaitMemoryViews(p: Promise<MemoryViews>): Promise<MemoryViews> {
   let timer: NodeJS.Timeout | undefined;
@@ -420,9 +425,18 @@ export async function routeWithManagerDecision(
 
       // Adapt the hybrid retriever's shape ({ entry, score }) to the injection
       // engine's candidate shape (MemoryEntry & { similarity }).
+      // 用 r.similarity（纯向量余弦相似度 0–1），不要用 r.score。
+      //
+      // r.score 是「向量+重要度+时效+关键词」的综合评分（量级 0~100），
+      // 此前被 clamp 到 [0,1] 冒充相似度：44 → 1.00、48 → 1.00……
+      // 所有候选变成同一个值，注入引擎判定「无区分度」而退化为关键词
+      // 重算，相关性恒为 0，于是只有 inject:"always" 的规则能命中 ——
+      // 向量检索白跑了。
       const candidates = retrieved.map((r) => ({
         ...r.entry,
-        similarity: typeof r.score === "number" ? Math.min(1, Math.max(0, r.score)) : 0,
+        similarity: typeof r.similarity === "number"
+          ? Math.min(1, Math.max(0, r.similarity))
+          : 0,
       }));
 
       const [localInjection, remoteInjection] = await Promise.all([

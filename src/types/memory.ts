@@ -27,6 +27,19 @@ export interface MemoryRetrievalResult {
   score: number;
   /** Plain-language reason for the score, useful for debugging */
   reason: string;
+  /**
+   * 向量余弦相似度（0–1），与 `score` 是两回事。
+   *
+   * `score` 是「向量 + 重要度 + 时效性 + 关键词」的**综合评分**（量级 0~100，
+   * 未归一化）；这里才是纯向量相似度，供注入引擎做相关性阈值判断。
+   *
+   * 二者曾被混用：调用方把 score  clamp 到 [0,1] 当相似度，导致 44、48 这类
+   * 分数全部变成 1.00 —— 引擎判定「所有候选无区分度」而退化成关键词重算，
+   * 相关性恒为 0，只有 inject:"always" 的规则还能命中。
+   *
+   * 无向量时（embedding 不可用或该条目尚未生成向量）为 undefined。
+   */
+  similarity?: number;
 }
 
 /**

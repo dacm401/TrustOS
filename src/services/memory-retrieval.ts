@@ -158,6 +158,9 @@ export function runRetrievalPipeline(
       reason: eligible ? reason : `${reason} → ineligible(${eligReason})`,
       eligible,
       alwaysInject: policy?.alwaysInject ?? false,
+      // 单独保留纯向量相似度（0–1）。score 是综合评分、量级 0~100，
+      // 二者不可混用 —— 详见 MemoryRetrievalResult.similarity 的说明。
+      similarity: vectorSim,
     };
   });
 
@@ -184,6 +187,9 @@ export function runRetrievalPipeline(
         entry: item.entry,
         score: item.score,
         reason: `[${cat}] ${item.reason}`,
+        // 必须带上 similarity：Step 1 算出来的向量相似度若在这里丢掉，
+        // 下游注入引擎收到的就全是 undefined，只能退化成关键词重算。
+        similarity: item.similarity,
       });
       categoryMaxCounts[cat] = currentCount + 1;
     }
@@ -197,6 +203,7 @@ export function runRetrievalPipeline(
       entry: s.entry,
       score: s.score,
       reason: `[${s.entry.category}] ${s.reason}`,
+      similarity: s.similarity,
     }));
 
   // Step 5: merge and sort by score
