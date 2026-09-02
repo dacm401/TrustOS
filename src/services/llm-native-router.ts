@@ -185,6 +185,62 @@ export function runGatedDelegation(
 export { buildManagerSystemPrompt, MANAGER_PROMPT_VERSION } from "../prompts/loader.js";
 export { getManagerPromptVersion } from "../prompts/loader.js";
 
+/**
+ * ADR-004 阶段 C —— memory 检索的两种视图。
+ *
+ * localBlock / remoteBlock 的区别不是「多少」，而是「能不能出境」：
+ *   localBlock  完整结果，只在本机使用（如本地元数据回答）
+ *   remoteBlock 经 sensitivity 门禁过滤，可注入云端模型
+ */
+interface MemoryViews {
+  localBlock: string;
+  remoteBlock: string;
+  /** 是否检索到可用记忆（用于统计，避免"没生效"与"被拦下"混淆） */
+  retrieved: boolean;
+  selectedCount: number;
+  /** 因 sensitivity 被 remote 视图剔除的条数 */
+  blockedBySensitivity: number;
+}
+
+/**
+ * ADR-004 阶段 C —— memory 检索超时。
+ *
+ * 阶段 C 之前，检索与 Manager 调用是并行的，因此 Manager 永远只能拿到
+ * undefined —— 这正是 memory 从未生效的结构性原因。要打通就必须串行等待，
+ * 但检索涉及向量化与 DB 查询，慢的时候会拖慢主链路。
+ *
+ * 故设上限：超时则本轮放弃注入（fail-open 到「无记忆」），宁可少一次
+ * 个性化，也不让首字延迟失控。可通过环境变量调整。
+ */
+const MEMORY_RETRIEVAL_TIMEOUT_MS =
+  Number(process.env["TRUSTOS_MEMORY_RETRIEVAL_TIMEOUT_MS"]) || 1500;
+
+async function awaitMemoryViews(p: Promise<MemoryViews>): Promise<MemoryViews> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<MemoryViews>((resolve) => {
+        timer = setTimeout(() => {
+          console.warn(
+            `[memory-inject] retrieval exceeded ${MEMORY_RETRIEVAL_TIMEOUT_MS}ms — ` +
+            `skipping memory injection for this turn`
+          );
+          resolve({
+            localBlock: "",
+            remoteBlock: "",
+            retrieved: false,
+            selectedCount: 0,
+            blockedBySensitivity: 0,
+          });
+        }, MEMORY_RETRIEVAL_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export interface LLMNativeRouterInput {
   message: string;
   user_id: string;
@@ -328,13 +384,27 @@ export async function routeWithManagerDecision(
     bypassReason: policyDecision.managerLlmRequired ? "policy_required_manager" : policyDecision.reason,
   };
 
-  // P4: Learning Layer — 检索用户记忆，与 Manager 调用并行执行（节省 200-500ms）
+  // P4: Learning Layer — 检索用户记忆。
   //
-  // RFC-001 Phase 1: selection now goes through the injection engine, which
-  // owns the rules, the token budget and the local/remote split. Retrieval
-  // itself still uses the existing hybrid retriever (vector + keyword, with
-  // graceful degradation) — the engine consumes its candidates.
-  const memoryPromise = (async (): Promise<string | undefined> => {
+  // ADR-004 阶段 C：一次检索产出**两个视图**。
+  //   localBlock  —— 完整，用于本地回答（数据不出本机，无需裁剪）
+  //   remoteBlock —— 经 sensitivity 门禁过滤，用于注入云端 Manager
+  // 两者必须分开：`local_answer_from_meta` 路径直接把记忆返回给用户、
+  // 不经任何模型，若套用 remote 过滤会让「本地回答」凭空少掉内容。
+  //
+  // RFC-001 Phase 1: selection goes through the injection engine, which owns
+  // the rules, the token budget and the local/remote split. Retrieval itself
+  // still uses the existing hybrid retriever (vector + keyword, with graceful
+  // degradation) — the engine consumes its candidates.
+  const EMPTY_MEMORY_VIEWS: MemoryViews = {
+    localBlock: "",
+    remoteBlock: "",
+    retrieved: false,
+    selectedCount: 0,
+    blockedBySensitivity: 0,
+  };
+
+  const memoryPromise = (async (): Promise<MemoryViews> => {
     try {
       const retrieved = await retrieveMemoriesHybrid({
         userId: user_id,
@@ -350,32 +420,53 @@ export async function routeWithManagerDecision(
 
       // Adapt the hybrid retriever's shape ({ entry, score }) to the injection
       // engine's candidate shape (MemoryEntry & { similarity }).
-      const injection = await selectMemories(user_id, message, "local", {
-        sessionId: session_id,
-        candidates: retrieved.map((r) => ({
-          ...r.entry,
-          similarity: typeof r.score === "number" ? Math.min(1, Math.max(0, r.score)) : 0,
-        })),
-      });
+      const candidates = retrieved.map((r) => ({
+        ...r.entry,
+        similarity: typeof r.score === "number" ? Math.min(1, Math.max(0, r.score)) : 0,
+      }));
+
+      const [localInjection, remoteInjection] = await Promise.all([
+        selectMemories(user_id, message, "local", { sessionId: session_id, candidates }),
+        selectMemories(user_id, message, "remote", { sessionId: session_id, candidates }),
+      ]);
 
       // Injection is observable: log what was selected and why.
-      if (injection.memories.length > 0) {
+      if (localInjection.memories.length > 0) {
         console.log(
-          `[memory-inject] selected=${injection.stats.selected}/${injection.stats.candidates} ` +
-            `tokens≈${injection.stats.approxTokens}/${injection.stats.budget} ` +
-            `method=${injection.stats.method} truncated=${injection.stats.truncated}`
+          `[memory-inject] selected=${localInjection.stats.selected}/${localInjection.stats.candidates} ` +
+          `tokens≈${localInjection.stats.approxTokens}/${localInjection.stats.budget} ` +
+          `method=${localInjection.stats.method} truncated=${localInjection.stats.truncated}`
         );
-        for (const m of injection.memories) {
+        for (const m of localInjection.memories) {
           console.log(
             `[memory-inject] · [${m.rule}] ${m.category} rel=${m.relevance.toFixed(2)} imp=${m.importance}`
           );
         }
-        return injection.block;
+        const blocked = localInjection.memories.length - remoteInjection.memories.length;
+        if (blocked > 0) {
+          console.log(
+            `[memory-inject] remote 视图剔除 ${blocked} 条（sensitivity 门禁）`
+          );
+        }
       }
-      return undefined;
+      // 只记录规模，不记录内容 —— 记忆正文属于用户隐私，不该进日志。
+      console.log(
+        `[memory-inject] views: local=${localInjection.memories.length}条/` +
+        `${localInjection.stats.approxTokens}tk, remote=${remoteInjection.memories.length}条/` +
+        `${remoteInjection.stats.approxTokens}tk → ` +
+        (remoteInjection.block ? "将注入 Manager" : "本轮不注入（无条目或全被门禁拦下）")
+      );
+
+      return {
+        localBlock: localInjection.block,
+        remoteBlock: remoteInjection.block,
+        retrieved: localInjection.memories.length > 0,
+        selectedCount: localInjection.memories.length,
+        blockedBySensitivity: localInjection.memories.length - remoteInjection.memories.length,
+      };
     } catch (e: any) {
       console.warn("[llm-native-router] Memory retrieval failed (fail-open):", e.message);
-      return undefined;
+      return EMPTY_MEMORY_VIEWS;
     }
   })();
 
@@ -385,9 +476,10 @@ export async function routeWithManagerDecision(
 
   // 路由 1: local_answer_from_meta — 不调任何模型
   if (policyDecision.route === "local_answer_from_meta") {
-    const memory = await memoryPromise; // 等 memory，但不发到模型
-    const localAnswer = memory
-      ? `[本地元数据回答]\n\n${memory}\n\n（以上内容来自你的历史记忆，不是 AI 模型生成的回复）`
+    // ADR-004：本地回答不经任何模型，数据不出本机 —— 用完整的 localBlock。
+    const memory = await awaitMemoryViews(memoryPromise);
+    const localAnswer = memory.localBlock
+      ? `[本地元数据回答]\n\n${memory.localBlock}\n\n（以上内容来自你的历史记忆，不是 AI 模型生成的回复）`
       : "我没有足够的历史数据来回答这个问题。请提供更多信息。";
     console.log(`[execution-policy] Bypass: local_answer_from_meta, returning local answer`);
     return withLedger({
@@ -406,7 +498,7 @@ export async function routeWithManagerDecision(
       sentArtifactContentToManagerRemote: false,
       sentArtifactContentToWorkerRemote: false,
       sentRawHistoryToRemote: false,
-      memoryWasRetrieved: memory !== undefined,
+      memoryWasRetrieved: memory.retrieved,
       memoryWasSentToManager: false,
       sensitiveMemoryWasSent: false,
       remoteContextBytesToManager: 0,
@@ -417,7 +509,7 @@ export async function routeWithManagerDecision(
 
   // 路由 2 & 3: direct_artifact_revision / direct_create_artifact — 绕过 Manager LLM
   if (policyDecision.route === "direct_artifact_revision" || policyDecision.route === "direct_create_artifact") {
-    const memory = await memoryPromise; // 等 memory，但不发到 Manager LLM
+    const memory = await awaitMemoryViews(memoryPromise); // 等 memory，但不发到 Manager LLM
 
     // 构造 bypass 的 GatedDelegationContext（跳过 Manager LLM）
     // 评分：强推 delegate_to_slow，confidence = 1.0（规则确定性）
@@ -498,7 +590,7 @@ export async function routeWithManagerDecision(
 
     // 如果 budget 阻断，直接返回 friendly message（不调用 Worker）
     if (bypassBudgetDecision.blocked) {
-      const memory = await memoryPromise;
+      const memory = await awaitMemoryViews(memoryPromise);
       return withLedger({
         message: language === "zh"
           ? "这次操作预计成本过高，已被预算策略拦截。如需继续，请调整预算配置。"
@@ -517,7 +609,7 @@ export async function routeWithManagerDecision(
         sentArtifactContentToManagerRemote: false,
         sentArtifactContentToWorkerRemote: false,
         sentRawHistoryToRemote: false,
-        memoryWasRetrieved: memory !== undefined,
+        memoryWasRetrieved: memory.retrieved,
         memoryWasSentToManager: false,
         sensitiveMemoryWasSent: false,
         remoteContextBytesToManager: 0,
@@ -528,7 +620,7 @@ export async function routeWithManagerDecision(
 
     // ask_user_confirm: 返回确认请求（V0 不做前端弹窗，返回 friendly message）
     if (bypassBudgetDecision.requiresUserConfirm && !bypassBudgetDecision.blocked) {
-      const memory = await memoryPromise;
+      const memory = await awaitMemoryViews(memoryPromise);
       return withLedger({
         message: language === "zh"
           ? `这次操作预计会超过当前预算（$${bypassBudgetDecision.requestBudgetUsd.toFixed(4)}），需要确认后继续。如需继续，请重新发送请求。`
@@ -547,7 +639,7 @@ export async function routeWithManagerDecision(
         sentArtifactContentToManagerRemote: false,
         sentArtifactContentToWorkerRemote: false,
         sentRawHistoryToRemote: false,
-        memoryWasRetrieved: memory !== undefined,
+        memoryWasRetrieved: memory.retrieved,
         memoryWasSentToManager: false,
         sensitiveMemoryWasSent: false,
         remoteContextBytesToManager: 0,
@@ -607,7 +699,7 @@ export async function routeWithManagerDecision(
       sentArtifactContentToManagerRemote: false, // bypass 路径不调 Manager
       sentArtifactContentToWorkerRemote: sentArtifactContentToWorker,
       sentRawHistoryToRemote: false,
-      memoryWasRetrieved: memory !== undefined,
+      memoryWasRetrieved: memory.retrieved,
       memoryWasSentToManager: false, // Policy bypass 确保不发 memory 到 Manager
       sensitiveMemoryWasSent: false,
       remoteContextBytesToManager: 0,
@@ -677,15 +769,29 @@ export async function routeWithManagerDecision(
   }
 
   let managerOutput: string;
-  let userMemories: string | undefined;
+  let memory: MemoryViews = EMPTY_MEMORY_VIEWS;
   let managerCallLatencyMs = 0;
   let managerWasCircuitBroken = false;
   try {
     const managerCallStart = Date.now();
-    [managerOutput, userMemories] = await Promise.all([
-      callManagerModel({ message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext, userMemories: undefined }),
-      memoryPromise,
-    ]);
+
+    // ADR-004 阶段 C：memory 注入的是 Manager 的 **system prompt**，
+    // 必须在发起调用前就拿到结果。
+    //
+    // 此前这里与 Manager 调用 `Promise.all` 并行，因此只能传
+    // `userMemories: undefined` —— 不是"故意禁用 memory"，而是并行优化
+    // 使其永远来不及注入。这是 memory 从未生效的**结构性原因**。
+    //
+    // 改为串行，并用 awaitMemoryViews() 加上限：检索过慢时本轮放弃注入，
+    // 宁可少一次个性化，也不让首字延迟失控。
+    memory = await awaitMemoryViews(memoryPromise);
+
+    managerOutput = await callManagerModel({
+      message, history, language, reqApiKey, reqLlmBaseUrl, fastModel, crossSessionContext,
+      // 注入的是 remoteBlock —— 已经过 sensitivity 门禁（ADR-004 阶段 B1），
+      // 未审阅(unknown)/敏感/restricted 的条目不会离开本机。
+      userMemories: memory.remoteBlock || undefined,
+    });
     managerCallLatencyMs = Date.now() - managerCallStart;
 
     // Sprint 59P: 记录 Manager 模型调用
@@ -1132,8 +1238,12 @@ export async function routeWithManagerDecision(
     sentArtifactContentToManagerRemote: false, // Context Boundary 确保 Manager 不收 artifact
     sentArtifactContentToWorkerRemote: sentArtifactContentToWorker,
     sentRawHistoryToRemote: false, // Context Boundary 确保 Manager 只有 filtered view
-    memoryWasRetrieved: userMemories !== undefined,
-    memoryWasSentToManager: false, // callManagerModel 传入 undefined
+    memoryWasRetrieved: memory.retrieved,
+    // ADR-004 阶段 C：memory 现在真的会注入 Manager（经 sensitivity 门禁过滤），
+    // 统计字段必须如实反映，否则日志会继续声称"从未发送"。
+    memoryWasSentToManager: Boolean(memory.remoteBlock),
+    // remoteBlock 已剔除 sensitive/restricted/unknown，故恒为 false；
+    // 若将来门禁被绕过，这个值就是告警信号。
     sensitiveMemoryWasSent: false,
     remoteContextBytesToManager: countTokens(gatedMessage),
     remoteContextBytesToWorker: sentArtifactContentToWorker ? countTokens(gatedMessage) : 0,
