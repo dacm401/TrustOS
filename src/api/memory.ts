@@ -202,9 +202,19 @@ memoryRouter.get("/governance", async (c) => {
   try {
     // Pull a generous slice so governance reflects the real corpus.
     const entries = await MemoryEntryRepo.list(userId, { limit: 200 });
-    const records = entries.map((e: any) =>
-      buildMemoryGovernanceRecord(mapEntryToGovernanceInput(e))
-    );
+    // ADR-004 阶段 B0：审核界面必须显示记忆正文。
+    // 治理记录刻意只带摘要（content_digest 目前还是用 id 占位），
+    // 结果用户在页面上只看得到一串编号 —— 无法判断该不该标为公开，
+    // 「可见性」形同虚设。这里额外附上 content 与展示所需的元数据。
+    // 这些都是用户自己的记忆，且响应受 X-User-Id 隔离，不存在越权。
+    const records = entries.map((e: any) => ({
+      ...buildMemoryGovernanceRecord(mapEntryToGovernanceInput(e)),
+      content: e.content ?? "",
+      category: e.category ?? "",
+      importance: e.importance ?? 3,
+      updated_at: e.updated_at ?? null,
+      tags: e.tags ?? [],
+    }));
     const summary = {
       total: records.length,
       by_status: records.reduce((acc: Record<string, number>, r: any) => {

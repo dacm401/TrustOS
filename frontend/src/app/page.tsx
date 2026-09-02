@@ -153,7 +153,20 @@ export default function HomePage() {
           className="flex-1 overflow-hidden"
           style={{ maxWidth: sidebarOpen ? undefined : "100%" }}
         >
-          {activeNav === "chat" && (
+          {/*
+            Chat 保持挂载，只用 CSS 切换可见性。
+
+            此前是 `{activeNav === "chat" && <ChatInterface .../>}` —— 条件渲染
+            会在切换到其他菜单时卸载组件，消息列表是组件内部 state，随之销毁，
+            回来时只剩空白页。
+
+            其他视图仍走条件渲染：它们都是数据展示，重新挂载等于刷新数据，
+            反而更合适。只有聊天是「未提交的编辑状态」，不能丢。
+          */}
+          <div
+            className="h-full"
+            style={{ display: activeNav === "chat" ? "block" : "none" }}
+          >
             <ChatInterface
               onTaskIdChange={setSelectedTaskId}
               userId={userId}
@@ -161,7 +174,7 @@ export default function HomePage() {
               onSessionIdChange={setSessionId}
               gatewayOnline={gatewayOnline}
             />
-          )}
+          </div>
 
           {activeNav === "tasks" && (
             <LazyView name="TasksView"><TasksView userId={userId} /></LazyView>

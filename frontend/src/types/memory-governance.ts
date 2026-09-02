@@ -115,6 +115,19 @@ export interface MemoryGovernanceRecord {
   /** Deterministic SHA-256 over the canonical governance body (stable field order). */
   governance_fingerprint: string;
   evaluated_at: string;
+
+  /**
+   * ADR-004 阶段 B0 —— 记忆正文与展示元数据。
+   *
+   * 治理核心本身只产出摘要（content_digest 目前还是用 memory_id 占位），
+   * 但审核界面必须让用户看到自己到底被记住了什么，否则无法判断该不该
+   * 标为公开。由 /v1/memory/governance 额外附带，fixture 数据可省略。
+   */
+  content?: string;
+  category?: string;
+  importance?: number;
+  updated_at?: string | null;
+  tags?: string[];
 }
 
 export interface MemoryGovernanceOptions {

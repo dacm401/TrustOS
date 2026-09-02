@@ -46,6 +46,11 @@ function toFullRecord(r: MemoryGovernanceApiRecord, userId: string): MemoryGover
   return {
     memory_id: r.memory_id,
     content_digest: r.memory_id,
+    // ADR-004 阶段 B0：带上正文，审核界面才看得到内容。
+    content: r.content ?? "",
+    category: r.category ?? "",
+    importance: r.importance ?? 3,
+    tags: r.tags ?? [],
     scope: r.scope as MemoryScope,
     source: r.source as MemorySource,
     created_at: r.created_at,

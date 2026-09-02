@@ -129,13 +129,21 @@ console.log(`\n── 4. 缺失字段按 unknown 处理（默认拒绝）──�
   });
   created.push(e.id);
 
-  const localR = await selectMemories(USER, MARK, "local");
-  check("local 下可见（条目确实创建成功）",
-    localR.memories.some((m) => m.id === e.id));
+  // 用 getById 而非 selectMemories 确认创建成功：selectMemories 受 token
+  // budget 与 maxItems 约束，候选多时不保证每条都被选中 —— 拿它来断言
+  // "条目存在"会把 budget 行为和门禁行为混在一起（embedding 修复后
+  // 前 5 条占满预算，第 6 条进不去，就会误报）。本组要验证的是门禁。
+  check("条目确实创建成功", Boolean(await MemoryEntryRepo.getById(e.id, USER)));
 
   const remoteR = await selectMemories(USER, MARK, "remote");
   check("remote 下不可见（缺失 = 未审阅 = 拒绝）",
     !remoteR.memories.some((m) => m.id === e.id));
+
+  // 门禁的方向性：local 视图的选中数应 >= remote 视图（remote 是子集）。
+  const localR = await selectMemories(USER, MARK, "local");
+  check("local 选中数 >= remote 选中数（remote 是 local 的子集）",
+    localR.memories.length >= remoteR.memories.length,
+    `local=${localR.memories.length} remote=${remoteR.memories.length}`);
 }
 
 // Cleanup — never leave test data in the user's corpus.

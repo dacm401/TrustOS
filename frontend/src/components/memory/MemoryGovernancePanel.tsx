@@ -107,6 +107,27 @@ export default function MemoryGovernancePanel({
 
       {/* Body */}
       <div className="p-5 space-y-4">
+        {/* ADR-004 阶段 B0：正文放在最显眼处 —— 审核时第一眼要看的是
+            「记住了什么」，而不是那串编号。此前只显示 memory_id，
+            用户完全无从判断该不该标为公开。 */}
+        <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+          <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">
+            记忆内容
+          </div>
+          <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+            {record.content?.trim() ? record.content : "（无正文）"}
+          </p>
+          <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px] text-gray-400">
+            {record.category && <span>分类：{record.category}</span>}
+            {typeof record.importance === "number" && (
+              <span>重要度：{record.importance}/5</span>
+            )}
+            {record.tags && record.tags.length > 0 && (
+              <span className="truncate">标签：{record.tags.join("、")}</span>
+            )}
+          </div>
+        </div>
+
         {/* Governance dimensions */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-gray-400 mr-1">Scope:</span>

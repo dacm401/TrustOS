@@ -386,6 +386,12 @@ export interface MemoryGovernanceApiRecord {
   warnings: string[];
   governance_fingerprint: string;
   evaluated_at: string;
+  /** ADR-004 阶段 B0：记忆正文 —— 看不到内容就无法审核 */
+  content?: string;
+  category?: string;
+  importance?: number;
+  updated_at?: string | null;
+  tags?: string[];
 }
 
 export interface MemoryGovernanceApiResponse {

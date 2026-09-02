@@ -172,7 +172,15 @@ async function getOpenAIEmbedding(
   text: string,
   cfg: EmbeddingConfig
 ): Promise<number[] | null> {
-  const res = await fetch("https://api.openai.com/v1/embeddings", {
+  // 与聊天补全保持一致：尊重 OPENAI_BASE_URL。
+  //
+  // 此前硬编码 https://api.openai.com，而本系统的 OPENAI_API_KEY 实际是
+  // SiliconFlow 的 key（OPENAI_BASE_URL 指向 api.siliconflow.cn）。结果是
+  // 拿 SiliconFlow 的 key 去敲 openai.com —— 每次都要等连接超时才失败
+  // （实测约 10.6 秒），memory 检索因此永远拿不到向量，只能退化为关键词
+  // 匹配，相关性恒为 0，用户标记公开的记忆也永远选不中。
+  const baseUrl = (config.openaiBaseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
+  const res = await fetch(`${baseUrl}/embeddings`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${cfg.apiKey}`,
@@ -181,11 +189,14 @@ async function getOpenAIEmbedding(
     body: JSON.stringify({
       model: cfg.model,
       input: text.slice(0, 8000),
-      dimensions: cfg.dimensions,
     }),
   });
 
   if (!res.ok) {
+    console.warn(
+      `[embedding] provider=openai HTTP ${res.status} from ${baseUrl} ` +
+      `(model=${cfg.model}) — falling back to keyword retrieval`
+    );
     return null;
   }
 
