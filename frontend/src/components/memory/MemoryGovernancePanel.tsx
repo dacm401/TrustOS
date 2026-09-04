@@ -219,10 +219,10 @@ export default function MemoryGovernancePanel({
           </div>
         )}
 
-        {/* Honesty footer */}
+        {/* 诚实性说明 */}
         <div className="text-[11px] text-gray-400 border-t border-gray-50 pt-2">
-          MWT-6 · Memory Governance (core evaluator). No enforcement, no backend
-          dependency. Status rendered honestly — untrusted states are never shown as safe.
+          本卡片仅展示治理状态，不执行任何强制策略。状态如实呈现 ——
+          未验证或不可信的状态绝不会显示为安全。
         </div>
       </div>
     </section>

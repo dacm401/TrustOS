@@ -155,15 +155,15 @@ export default function MemoryGovernanceSurface() {
       <div className="max-w-3xl mx-auto space-y-6">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: "var(--text-primary)" }}>
-            🧠 Memory Governance
+            🧠 记忆管理
           </h1>
           <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-            MWT-6 — Inspect memory scope, source, retention, sensitivity, status,
-            warnings, and Trust Spine links.{" "}
+            系统记住了什么、来自哪里、是否允许发给云端模型。
+            <strong>标记为「公开」的记忆才会被使用</strong>；未审阅的默认不上云。{" "}
             {isLive ? (
-              <span className="text-emerald-600 font-medium">Live · {records!.length} governed entries</span>
+              <span className="text-emerald-600 font-medium">实时 · 共 {records!.length} 条</span>
             ) : (
-              <span className="text-amber-600 font-medium">Fixtures (live load failed: {error})</span>
+              <span className="text-amber-600 font-medium">示例数据（加载失败：{error}）</span>
             )}
           </p>
         </div>

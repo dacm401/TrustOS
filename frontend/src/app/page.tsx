@@ -103,11 +103,26 @@ export default function HomePage() {
     return () => { if (gwTimerRef.current) clearInterval(gwTimerRef.current); };
   }, []);
 
+  // UI-IA-CONSOLIDATION 阶段 2：工作台只保留用户视角的「证据 / 轨迹」。
+  //
+  //   「健康」是全局运维视图（与其他任务级 tab 层级不符），
+  //   「调试」是纯开发者信息（路由决策、provider、latency）。
+  //   二者默认隐藏，排障时用 NEXT_PUBLIC_TRUSTOS_UI_DEBUG=1 打开 ——
+  //   保留代码而非删除，因为它们对定位问题确实有用。
+  //
+  // TODO(UI-IA 阶段 4)：把「健康」正式移入设置面板的「系统状态」，
+  //   届时不再需要环境变量开关。
+  const showOpsTabs = process.env.NEXT_PUBLIC_TRUSTOS_UI_DEBUG === "1";
+
   const tabs: { id: WorkbenchTab; icon: string; label: string }[] = [
     { id: "evidence", icon: "🔍", label: "证据" },
     { id: "trace", icon: "⚡", label: "轨迹" },
-    { id: "health", icon: "💚", label: "健康" },
-    { id: "debug", icon: "🔧", label: "调试" },
+    ...(showOpsTabs
+      ? [
+          { id: "health", icon: "💚", label: "健康" } as const,
+          { id: "debug", icon: "🔧", label: "调试" } as const,
+        ]
+      : []),
   ];
 
   // Show loading spinner while hydrating auth state

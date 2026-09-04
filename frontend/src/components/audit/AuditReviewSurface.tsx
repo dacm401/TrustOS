@@ -2,36 +2,21 @@
 
 // MWT-5R-UI-II — Audit Review entry surface.
 //
-// Pure presentation: consumes deterministic ApprovalReviewReplay fixtures and
-// renders one ApprovalReviewPanel per state. NO backend / API / DB dependency,
-// NO re-evaluation of signatures or provenance in the UI. The panel only
-// displays the artifact's honest conclusion tone.
+// Renders the REAL human-review queue (GET /v1/human-review) plus the live
+// event chain. No re-evaluation of signatures or provenance in the UI.
 //
-// This is the smallest reachable product surface for the audit review panel —
-// wired into the main sidebar as the "Audit" nav item (see app/page.tsx).
+// 原「状态示例」fixture 卡片已下线（UI-IA-CONSOLIDATION 阶段 1）：它们是
+// 硬编码假数据，与本页真实队列混排会让用户分不清真假。四种状态的含义现以
+// 文字说明呈现（见页面底部「状态含义」）。
+//
+// Wired into the main sidebar as the "Audit" nav item (see app/page.tsx).
 
 import { useEffect, useState } from "react";
-import ApprovalReviewPanel from "@/components/audit/ApprovalReviewPanel";
 import EventChainViewer from "@/components/dashboard/EventChainViewer";
 import {
   fetchHumanReviews,
   type HumanReviewRequest,
 } from "@/lib/api";
-import {
-  approvedVerified,
-  mismatch,
-  legacyUnsigned,
-  unavailable,
-} from "@/components/audit/__fixtures__/approval-reviews";
-
-// These fixtures are STATUS-TONE DEMOS only — they are NOT real records.
-// Real approvals come from GET /v1/human-review (rendered below).
-const SAMPLES = [
-  approvedVerified,
-  mismatch,
-  legacyUnsigned,
-  unavailable,
-] as const;
 
 const SEVERITY_TONE: Record<string, string> = {
   security: "var(--accent-red, #dc2626)",
@@ -87,7 +72,7 @@ export function AuditReviewSurface({ sessionId, userId }: AuditReviewSurfaceProp
             🔍 Audit Review
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-            人工审核队列（后端真实数据） + 审批签名验证状态示例。
+            人工审核队列与事件链，均为后端真实数据。
           </p>
         </div>
 
@@ -218,24 +203,17 @@ export function AuditReviewSurface({ sessionId, userId }: AuditReviewSurfaceProp
           </p>
         </div>
 
-        {/* Status-tone demos — explicitly labelled as examples, not real records */}
-        <div className="pt-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>
-          <h2
-            className="text-base font-semibold mb-1"
-            style={{ color: "var(--text-primary)" }}
-          >
-            🧪 状态示例（非真实记录）
-          </h2>
-          <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
-            以下 4 张卡片为确定性的状态示意，仅用于演示四种诚实状态色，
-            不代表系统中的真实审批。
-          </p>
-          <div className="space-y-6">
-            {SAMPLES.map((review) => (
-              <ApprovalReviewPanel key={review.review_id} review={review} />
-            ))}
-          </div>
-        </div>
+        {/*
+          原「🧪 状态示例（非真实记录）」区块已下线（UI-IA-CONSOLIDATION 阶段 1）。
+
+          它是 4 张硬编码 fixture 卡片，页面自己标注「不代表系统中的真实审批」，
+          却与下方真实的审核队列（GET /v1/human-review）混在同一页。用户很难
+          分清哪些是真数据、哪些是示意图 —— 对以「诚实」为卖点的审计视图，
+          这种混淆尤其有害。
+
+          四种状态色的说明已保留为下方「状态含义」文字说明（纯文本，非卡片），
+          既传达同样的信息，又不会被误认为真实记录。
+        */}
 
         {/* P1-B: real event chain + server-side assessment (live data, no gateway) */}
         <div className="pt-4 border-t" style={{ borderColor: "var(--border-subtle)" }}>

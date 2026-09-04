@@ -1,17 +1,14 @@
 // MWT-4A — TaskEvidenceView (frontend-only, read-only projection).
-// MWT-5 — advisory approval dry-run action (client-only, non-blocking).
+//
+// 原 MWT-5 的 advisory approval dry-run 已下线：它不发后端请求、只触发一次
+// jsonl 下载，是一个「看起来能用」的假审批，与产品可信定位冲突。
+// 详见 docs/product/UI-IA-CONSOLIDATION.md 阶段 1。
 "use client";
 
 import { useState } from "react";
 import { useTaskEvidence } from "@/hooks/useTaskEvidence";
 import { downloadEvidenceExport } from "@/lib/api";
 import { buildTaskEvidenceExport } from "@/lib/evidence-export";
-import {
-  buildApprovalRecordAsync,
-  toJsonlLine,
-  type ApprovalDecision,
-  type ApprovalRecord,
-} from "@/lib/approval-record";
 import type { GatewayEvent } from "@/lib/api";
 
 function formatCost(cost: number | null): string {
@@ -146,14 +143,18 @@ export function TaskEvidenceView({ taskId }: { taskId: string }) {
   const { loading, error, events, summary } = useTaskEvidence(taskId);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  // MWT-5 — advisory approval dry-run (client-only, non-blocking).
-  const [approverId, setApproverId] = useState("");
-  const [decision, setDecision] = useState<ApprovalDecision>("approved");
-  const [note, setNote] = useState("");
-  const [recording, setRecording] = useState(false);
-  const [approvalError, setApprovalError] = useState<string | null>(null);
-  const [lastRecord, setLastRecord] = useState<ApprovalRecord | null>(null);
+  // 任务 ID 对用户无意义，只显示前 8 位；完整值提供复制，供排查时贴给开发者。
+  async function copyTaskId() {
+    try {
+      await navigator.clipboard.writeText(taskId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
 
   async function handleExport() {
     setExporting(true);
@@ -168,38 +169,6 @@ export function TaskEvidenceView({ taskId }: { taskId: string }) {
     }
   }
 
-  // MWT-5 (D5 O1: advisory only). Builds an ApprovalRecord and downloads it as a
-  // JSONL sidecar line. Never blocks export or any downstream action. No backend call.
-  async function handleApprove() {
-    setRecording(true);
-    setApprovalError(null);
-    try {
-      const record = await buildApprovalRecordAsync({
-        approver_id: approverId.trim() || "anonymous-reviewer",
-        target_ref: taskId,
-        decision,
-        note: note.trim() || undefined,
-        ts: new Date().toISOString(),
-        prev_hash: lastRecord ? lastRecord.record_hash : "",
-        seq: lastRecord ? lastRecord.seq + 1 : 1,
-      });
-      // Append to a client-side approvals.jsonl download (sidecar, frontend-only).
-      const line = toJsonlLine(record);
-      const blob = new Blob([line + "\n"], { type: "application/x-ndjson" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `approvals-${taskId}.jsonl`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setLastRecord(record);
-    } catch (err: unknown) {
-      setApprovalError(err instanceof Error ? err.message : "审批记录失败");
-    } finally {
-      setRecording(false);
-    }
-  }
-
   return (
     <div className="flex flex-col h-full">
       <div
@@ -210,78 +179,39 @@ export function TaskEvidenceView({ taskId }: { taskId: string }) {
         <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
           任务证据
         </span>
-        <span className="text-[10px] truncate" style={{ color: "var(--text-muted)" }} title={taskId}>
-          · {taskId}
-        </span>
+        <button
+          type="button"
+          onClick={copyTaskId}
+          className="text-[10px] px-1 py-0.5 rounded"
+          style={{ color: "var(--text-muted)" }}
+          title={`点击复制完整任务 ID：${taskId}`}
+        >
+          #{taskId.slice(0, 8)}{copied ? " ✓" : ""}
+        </button>
         <button
           type="button"
           onClick={handleExport}
           disabled={exporting || events.length === 0}
           className="ml-auto text-[10px] px-2 py-0.5 rounded border disabled:opacity-40"
           style={{ borderColor: "var(--border-subtle)", color: "var(--text-secondary)" }}
-          title="导出可审计证据包（确定性 + 完整性 seal）"
+          title="导出当前已加载的证据快照（JSON，含完整性 seal）。注意：这是本页面已加载的数据，不是服务端完整副本。"
         >
-          {exporting ? "导出中…" : "导出"}
+          {exporting ? "导出中…" : "导出快照"}
         </button>
       </div>
 
-      {/* MWT-5 — advisory approval dry-run panel (non-blocking, client-only). */}
-      <div
-        className="px-3 py-2 flex-shrink-0 space-y-2"
-        style={{ borderBottom: "1px solid var(--border-subtle)", backgroundColor: "var(--bg-surface)" }}
-      >
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            建议性审批（不阻塞）
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <input
-            value={approverId}
-            onChange={(e) => setApproverId(e.target.value)}
-            placeholder="审批人 ID（可选）"
-            className="text-[10px] px-1.5 py-0.5 rounded border w-32"
-            style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-base)", color: "var(--text-primary)" }}
-          />
-          <select
-            value={decision}
-            onChange={(e) => setDecision(e.target.value as ApprovalDecision)}
-            className="text-[10px] px-1 py-0.5 rounded border"
-            style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-base)", color: "var(--text-primary)" }}
-          >
-            <option value="approved">approved</option>
-            <option value="rejected">rejected</option>
-            <option value="noted">noted</option>
-          </select>
-          <input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="备注（可选）"
-            className="text-[10px] px-1.5 py-0.5 rounded border flex-1 min-w-[80px]"
-            style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-base)", color: "var(--text-primary)" }}
-          />
-          <button
-            type="button"
-            onClick={handleApprove}
-            disabled={recording}
-            className="text-[10px] px-2 py-0.5 rounded border disabled:opacity-40"
-            style={{ borderColor: "var(--border-subtle)", color: "var(--text-secondary)" }}
-            title="记录建议性审批（下载 approvals.jsonl 侧车，不阻塞任何操作）"
-          >
-            {recording ? "记录中…" : "记录审批"}
-          </button>
-        </div>
-        {approvalError && (
-          <div className="text-[10px]" style={{ color: "var(--accent-red)" }}>
-            ⚠️ {approvalError}
-          </div>
-        )}
-        {lastRecord && (
-          <div className="text-[10px] truncate" style={{ color: "var(--text-muted)" }} title={lastRecord.record_hash}>
-            已记录 #{lastRecord.seq} · {lastRecord.decision} · {lastRecord.record_hash.slice(0, 12)}…
-          </div>
-        )}
-      </div>
+      {/*
+        原「建议性审批（不阻塞）」面板已下线（ADR: UI-IA-CONSOLIDATION 阶段 1）。
+
+        它是一个纯前端 dry-run：buildApprovalRecordAsync() 在浏览器本地算一条
+        hash 记录，然后触发一次 approvals-{taskId}.jsonl 下载 —— 不发任何后端
+        请求，服务端无记录、刷新即失。用户会以为审批已提交，实际只是下载了
+        一个文件。
+
+        对本产品这是硬伤：卖点是可追溯与诚实，界面上却有一个「看起来能用」
+        的假审批。真实审批需后端持久化 + 审批人身份 + 待处理队列，
+        超出 UI 整合范围，Boss 已决定暂不立项，故直接下线而非做真。
+      */}
       {exportError && (
         <div
           className="px-3 py-1.5 text-[10px]"

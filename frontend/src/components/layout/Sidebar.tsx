@@ -6,15 +6,25 @@ type NavItem = {
   label: string;
 };
 
+// UI-IA-CONSOLIDATION 阶段 3：统一为中文，去掉缩写。
+//
+// `manager` 由 "Manager" 改为「委托」：该视图实际展示 Manager 与 Worker 之间的
+// 委托会话与契约（fetchManagerConversations / fetchManagerContracts），
+// 叫「管理器」会让人误以为是某种控制面板。
+//
+// ⚠️ 待确认：原方案建议 manager 并入 audit，但代码层面二者并不重叠 ——
+//      manager = 委托会话与契约（任务如何被分派）
+//      audit   = 人工审核队列与审批（人工介入点）
+//    是否合并需 Boss 确认，暂保留独立入口。
 const NAV_ITEMS: NavItem[] = [
-  { id: "chat",        icon: "💬", label: "Chat" },
-  { id: "tasks",       icon: "📋", label: "Tasks" },
-  { id: "memory",      icon: "🧠", label: "Memory" },
-  { id: "archive",     icon: "📦", label: "Archive" },
-  { id: "manager",     icon: "🤖", label: "Manager" },
-  { id: "permissions", icon: "🔐", label: "Perms" },
-  { id: "dashboard",   icon: "📊", label: "Dashboard" },
-  { id: "audit",       icon: "🛡️", label: "Audit" },
+  { id: "chat",        icon: "💬", label: "对话" },
+  { id: "tasks",       icon: "📋", label: "任务" },
+  { id: "memory",      icon: "🧠", label: "记忆" },
+  { id: "archive",     icon: "📦", label: "归档" },
+  { id: "manager",     icon: "🤖", label: "委托" },
+  { id: "permissions", icon: "🔐", label: "权限" },
+  { id: "dashboard",   icon: "📊", label: "仪表盘" },
+  { id: "audit",       icon: "🛡️", label: "审计" },
 ];
 
 interface SidebarProps {
@@ -83,13 +93,13 @@ export function Sidebar({ activeNav, onNavChange, onSettingsClick, pendingPermCo
       {/* Bottom: Settings */}
       <div className="w-full px-1">
         <button
-          title="Settings"
+          title="设置"
           onClick={onSettingsClick}
           className="w-full flex flex-col items-center justify-center py-2 rounded-lg text-xs transition-all cursor-pointer hover:opacity-80"
           style={{ color: "var(--text-muted)" }}
         >
           <span className="text-sm leading-none mb-0.5">⚙️</span>
-          <span className="text-[9px] leading-none" style={{ color: "var(--text-muted)" }}>Settings</span>
+          <span className="text-[9px] leading-none" style={{ color: "var(--text-muted)" }}>设置</span>
         </button>
       </div>
     </aside>
