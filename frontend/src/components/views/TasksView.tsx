@@ -3,7 +3,10 @@ import { useState, useEffect } from "react";
 import { fetchTasks, fetchTraces, fetchEvidence, patchTask } from "@/lib/api";
 import { API_BASE } from "@/lib/api";
 import { TracePanel } from "@/components/workbench/TracePanel";
-import { EvidencePanel } from "@/components/workbench/EvidencePanel";
+import {
+  EvidenceList,
+  type EvidenceItem,
+} from "@/components/evidence/EvidenceList";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,14 +26,10 @@ interface TraceItem {
   created_at: string;
 }
 
-interface EvidenceItem {
-  evidence_id: string;
-  source: string;
-  content: string;
-  source_metadata: Record<string, unknown> | null;
-  relevance_score: number | null;
-  created_at: string;
-}
+// EvidenceItem / SOURCE_CONFIG / EvidenceList 已移至共享组件：
+//   components/evidence/EvidenceList.tsx
+// 原先在本文件各有一份拷贝，与 workbench/EvidencePanel.tsx 重复；
+// 两处展示因此会各自漂移。详见 UI-IA-CONSOLIDATION 阶段 4。
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -145,55 +144,7 @@ function TraceList({ traces, showAll, onToggle }: { traces: TraceItem[]; showAll
   );
 }
 
-// ─── Evidence rendering (inlined from EvidencePanel logic) ─────────────────
-
-const SOURCE_CONFIG: Record<string, { icon: string; label: string; bg: string; color: string }> = {
-  web_search:  { icon: "🔍", label: "搜索", bg: "rgba(59,130,246,0.1)", color: "var(--text-accent)" },
-  http_request: { icon: "🌐", label: "HTTP", bg: "rgba(139,92,246,0.1)", color: "var(--accent-purple)" },
-  manual:       { icon: "✍️", label: "手动", bg: "rgba(16,185,129,0.1)", color: "var(--accent-green)" },
-};
-
-function EvidenceList({ evidences }: { evidences: EvidenceItem[] }) {
-  if (evidences.length === 0) {
-    return <p className="text-xs" style={{ color: "var(--text-muted)" }}>暂无关联证据</p>;
-  }
-  return (
-    <div className="space-y-3">
-      {evidences.map((ev) => {
-        const cfg = SOURCE_CONFIG[ev.source] ?? SOURCE_CONFIG.manual;
-        return (
-          <div key={ev.evidence_id} className="text-xs">
-            <div className="flex items-center gap-2 mb-1">
-              <span
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
-                style={{ backgroundColor: cfg.bg, color: cfg.color }}
-              >
-                {cfg.icon} {cfg.label}
-              </span>
-              {ev.relevance_score !== null && (
-                <span style={{ color: "var(--text-muted)" }}>相关度: {(ev.relevance_score * 100).toFixed(0)}%</span>
-              )}
-            </div>
-            <p className="leading-relaxed line-clamp-4" style={{ color: "var(--text-secondary)" }}>
-              {ev.content}
-            </p>
-            {ev.source_metadata && Boolean(ev.source_metadata.url) && (
-              <a
-                href={String(ev.source_metadata.url)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block mt-1 truncate"
-                style={{ color: "var(--text-accent)" }}
-              >
-                {String(ev.source_metadata.url)}
-              </a>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+// 证据展示统一由共享组件承担（与工作台「证据」tab 完全一致）。
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 

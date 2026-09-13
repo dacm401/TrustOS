@@ -39,8 +39,13 @@ sessionEventsRouter.get("/", async (c) => {
     // First verify the session belongs to the user
     const { AgentSessionRepo } = await import("../db/repositories/agent-session.js");
     const session = await AgentSessionRepo.getById(sessionId);
+    // 会话不存在**不是错误**：调用方传的是 chat 的 sessionId，而并非每个 chat
+    // 会话都会在 agent_sessions 建记录（那是委托执行才有的）。原实现返回 404，
+    // 使审计页稳定收到 404 —— 虽被前端 catch 吞掉，但浏览器 console 会持续报
+    // "Failed to load resource"，干扰排障。「该会话暂无事件」是正常状态，
+    // 故返回空列表而非 404。
     if (!session) {
-      return c.json({ error: `Session not found: ${sessionId}` }, 404);
+      return c.json({ events: [], total: 0, limit, offset, sessionId, note: "session_not_found" });
     }
     if (session.user_id !== userId) {
       return c.json({ error: "Forbidden: session does not belong to this user" }, 403);

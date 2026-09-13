@@ -175,9 +175,21 @@ export function TaskEvidenceView({ taskId }: { taskId: string }) {
         className="px-3 py-2 flex items-center gap-1.5 flex-shrink-0"
         style={{ borderBottom: "1px solid var(--border-subtle)" }}
       >
-        <span className="text-xs">🔍</span>
+        <span className="text-xs">⚡</span>
+        {/*
+          UI-IA-CONSOLIDATION 阶段 4：原名「任务证据」已改为「调用明细」。
+
+          原因：本视图的数据源是 Gateway **事件流**（调用了哪个模型、多少 token、
+          耗时多少、是否命中缓存），而 /v1/evidence 返回的「证据」是另一回事
+          （信息来自哪个来源、相关度多少、正文是什么）。
+
+          两者完全不同，却都叫「证据」——加上主区任务详情里还有第三个同名入口，
+          用户完全无法区分。改名后：
+            · 证据       = AI 给出的信息来自哪里（/v1/evidence）
+            · 调用明细   = 系统为此做了哪些模型调用（Gateway 事件流）
+        */}
         <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-          任务证据
+          调用明细
         </span>
         <button
           type="button"
@@ -226,7 +238,7 @@ export function TaskEvidenceView({ taskId }: { taskId: string }) {
           <div className="flex flex-col items-center gap-1 py-8 text-center">
             <span className="text-base animate-pulse">⏳</span>
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-              正在加载任务证据…
+              正在加载调用明细…
             </span>
           </div>
         )}

@@ -1693,10 +1693,17 @@ export async function fetchSessionEvents(
 ): Promise<{ events: import("@/types/dashboard").SessionEvent[] }> {
   const { apiBase } = getApiConfig();
   const query = new URLSearchParams();
+  // 修正：原先请求 `/v1/agent-sessions/{id}/events`，后端**没有**这个子路由，
+  // 因此审计页稳定收到 404（虽被 EventChainViewer 的 catch 吞掉，但浏览器
+  // console 会持续报 "Failed to load resource"）。
+  // 后端实际提供的是 /v1/session-events。注意参数名是驼峰 `sessionId`
+  // （后端 session-events.ts:27 用 c.req.query("sessionId")，且缺失时返回 400），
+  // 不是下划线写法。
+  query.set("sessionId", sessionId);
   if (limit !== undefined) query.set("limit", String(limit));
   const qs = query.toString();
   const res = await fetch(
-    `${apiBase}/v1/agent-sessions/${encodeURIComponent(sessionId)}/events${qs ? `?${qs}` : ""}`,
+    `${apiBase}/v1/session-events${qs ? `?${qs}` : ""}`,
     { headers: { "X-User-Id": userId, ...buildHeaders() } }
   );
   if (!res.ok) throw new Error(`加载 Session 事件失败 (${res.status})`);

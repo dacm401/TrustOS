@@ -1,15 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
 import { fetchEvidence } from "@/lib/api";
-
-interface EvidenceItem {
-  evidence_id: string;
-  source: string;
-  content: string;
-  source_metadata: Record<string, unknown> | null;
-  relevance_score: number | null;
-  created_at: string;
-}
+// UI-IA-CONSOLIDATION 阶段 4：展示统一由共享组件承担，与任务详情页一致。
+// 本地的 EvidenceItem / SOURCE_CONFIG 定义已删除（原先 lib/constants 里还有第三份）。
+import {
+  EvidenceList,
+  type EvidenceItem,
+} from "@/components/evidence/EvidenceList";
 
 interface EvidencePanelProps {
   taskId: string | null;
@@ -17,12 +14,6 @@ interface EvidencePanelProps {
   /** MWT-1: 当前 Chat Session ID — 用于 Session Context 显示 */
   sessionId?: string;
 }
-
-const SOURCE_CONFIG: Record<string, { icon: string; label: string; bg: string; color: string }> = {
-  web_search: { icon: "🔍", label: "搜索", bg: "rgba(59,130,246,0.1)", color: "var(--text-accent)" },
-  http_request: { icon: "🌐", label: "HTTP", bg: "rgba(139,92,246,0.1)", color: "var(--accent-purple)" },
-  manual: { icon: "✍️", label: "手动", bg: "rgba(16,185,129,0.1)", color: "var(--accent-green)" },
-};
 
 export function EvidencePanel({ taskId, userId, sessionId }: EvidencePanelProps) {
   const [evidences, setEvidences] = useState<EvidenceItem[]>([]);
@@ -68,7 +59,8 @@ export function EvidencePanel({ taskId, userId, sessionId }: EvidencePanelProps)
           }}
         >
           <span className="text-[10px]">📋</span>
-          <span className="text-[10px] font-medium">Session Context Active</span>
+          {/* UI-IA-CONSOLIDATION 阶段 3：原为英文 "Session Context Active" */}
+          <span className="text-[10px] font-medium">会话上下文已启用</span>
           <span className="text-[10px] font-mono ml-auto truncate max-w-[120px]" style={{ opacity: 0.6 }}>
             {sessionId.slice(0, 8)}…
           </span>
@@ -96,50 +88,13 @@ export function EvidencePanel({ taskId, userId, sessionId }: EvidencePanelProps)
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>此任务暂无证据记录</span>
           </div>
         )}
-        {evidences.map((ev) => {
-          const cfg = SOURCE_CONFIG[ev.source] ?? SOURCE_CONFIG.manual;
-          return (
-            <div
-              key={ev.evidence_id}
-              className="px-3 py-2.5 transition-colors"
-              style={{ borderBottom: "1px solid var(--border-subtle)" }}
-            >
-              <div className="flex items-center gap-2 mb-1.5">
-                <span
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
-                  style={{ backgroundColor: cfg.bg, color: cfg.color }}
-                >
-                  {cfg.icon} {cfg.label}
-                </span>
-                {ev.relevance_score !== null && (
-                  <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                    相关度: {(ev.relevance_score * 100).toFixed(0)}%
-                  </span>
-                )}
-                <span className="text-[10px] ml-auto" style={{ color: "var(--text-muted)" }}>
-                  {new Date(ev.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              </div>
-              <p
-                className="text-xs line-clamp-4 leading-relaxed"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                {ev.content.length > 200 ? ev.content.slice(0, 200) + "…" : ev.content}
-              </p>
-              {ev.source_metadata && Boolean(ev.source_metadata.url) && (
-                <a
-                  href={String(ev.source_metadata.url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[10px] mt-1.5 block truncate"
-                  style={{ color: "var(--text-accent)" }}
-                >
-                  {String(ev.source_metadata.url)}
-                </a>
-              )}
-            </div>
-          );
-        })}
+        <EvidenceList
+          evidences={evidences}
+          showTime
+          maxChars={200}
+          divided
+          emptyText=""
+        />
       </div>
     </>
   );
