@@ -40,7 +40,7 @@ import type {
 import { DECISION_TO_LAYER, assertUnreachable } from "../types/index.js";
 import { parseAndValidate } from "./decision-validator.js";
 import { taskPlanner } from "./task-planner.js";
-import { DelegationLogRepo } from "../db/repositories.js";
+import { DelegationLogRepo, ManagerMessageRepo } from "../db/repositories.js";
 import { TaskArchiveRepo, TaskCommandRepo, TaskArchiveEventRepo } from "../db/task-archive-repo.js";
 import { gatewayTraceStore } from "../models/providers/openai.js";
 import { loadManagerPrompt, getManagerPromptVersion } from "../prompts/loader.js";
@@ -70,6 +70,9 @@ import { detectSensitiveData } from "./gating/sensitive-data-rule.js";
 import { retrieveMemoriesHybrid } from "./memory-retrieval.js";
 // RFC-001 Phase 1: rule-driven memory injection with a token budget
 import { selectMemories } from "./memory/injector.js";
+// RFC-002 Phase 3: fidelity recall — ground the worker brief in the user's own
+// past prompts so the Manager's processing can't drift from the true intent.
+import { recallGrounding, applyRecallToBrief } from "./memory/fidelity-recall.js";
 // Sprint 56: Artifact Revision Routing
 import { applyArtifactRevisionRoutingGuard } from "./context/artifact-revision-intent.js";
 import type { ActiveArtifactContext } from "./context/active-artifact.js";
@@ -2177,12 +2180,67 @@ async function writeTaskArchiveAndCommand(
         actor: workerRole,
         user_id,
       });
+
+      // RFC-002 Phase 0b: persist the Manager's processed prompt (the brief that is
+      // actually dispatched to the worker) so the user can audit, in the normal
+      // delegation path, "what the Manager turned my request into".
+      try {
+        const brief =
+          processedCommand
+            ? `目标: ${processedCommand.goal ?? ""}\n任务简报: ${processedCommand.task_brief ?? ""}\nWorker 提示: ${processedCommand.worker_hint ?? ""}`
+            : message;
+        await ManagerMessageRepo.create({
+          user_id,
+          conversation_id: session_id,
+          role: "manager",
+          content: brief,
+          related_session_id: session_id,
+        });
+      } catch (mgrErr) {
+        // Audit trail must never break a dispatch.
+        console.warn("[llm-native-router] manager-message audit write failed:", {
+          error: String(mgrErr),
+          taskId,
+        });
+      }
     }
   } catch (e: any) {
     console.error("[llm-native-router] TaskCommand create failed:", { error: e.message, taskId });
   }
 
   return { archiveRecord, commandRecord };
+}
+
+/**
+ * RFC-002 Phase 3 — fidelity recall.
+ *
+ * Enriches the dispatched brief with the user's own relevant past prompts, so
+ * the Worker executes against the user's TRUE intent rather than the Manager's
+ * drifted paraphrase.
+ *
+ * Ordering matters for safety: this runs AFTER the SD-01 sensitive guard and
+ * Phase-4 redaction (which already acted on the original brief). The recalled
+ * grounding is itself pre-filtered for red-line secrets inside recallGrounding,
+ * so it can never trip SD-01 or leak a hard secret to the cloud worker — it only
+ * adds curated context. Fails open: any error leaves the brief untouched.
+ */
+async function augmentBriefWithRecall(
+  command: CommandPayload | undefined,
+  userId: string,
+  query: string,
+  sessionId: string
+): Promise<CommandPayload | undefined> {
+  if (!command) return command;
+  const recall = await recallGrounding(userId, query, { excludeSessionId: sessionId });
+  if (!recall.block) return command;
+  const augmented = applyRecallToBrief(command.task_brief, recall.block);
+  if (augmented === command.task_brief) return command;
+  console.log(
+    `[fidelity-recall] injected ${recall.items.length} grounding turn(s) ` +
+    `(~${recall.stats.approxTokens} tok${recall.stats.truncated ? ", budget-truncated" : ""}) ` +
+    `into dispatched brief`
+  );
+  return { ...command, task_brief: augmented };
 }
 
 async function routeByDecision(
@@ -2297,7 +2355,7 @@ async function routeByDecision(
 
       // 写入 TaskArchive + TaskCommand
       const { archiveRecord, commandRecord } = await writeTaskArchiveAndCommand(
-        taskId, decision, message, phase4Result.processedCommand,
+        taskId, decision, message, await augmentBriefWithRecall(phase4Result.processedCommand, user_id, message, session_id),
         session_id, user_id, "delegate_to_slow", "slow_worker",
         traceId ?? taskId, // 用 traceId 或 taskId 作为 fallback
         ctx.verbatimUserInput, // ADR-004：审计字段用用户原话，不用 message
@@ -2355,7 +2413,7 @@ async function routeByDecision(
 
       // 写入 TaskArchive + TaskCommand
       const { archiveRecord, commandRecord } = await writeTaskArchiveAndCommand(
-        taskId, decision, message, phase4Result.processedCommand,
+        taskId, decision, message, await augmentBriefWithRecall(phase4Result.processedCommand, user_id, message, session_id),
         session_id, user_id, "execute_task", "execute_worker",
         traceId ?? taskId, // 用 traceId 或 taskId 作为 fallback
         ctx.verbatimUserInput, // ADR-004：审计字段用用户原话，不用 message

@@ -20,6 +20,8 @@ import { chatRouter } from "./api/chat.js";
 import { dashboardRouter } from "./api/dashboard.js";
 import { taskRouter } from "./api/tasks.js";
 import { memoryRouter } from "./api/memory.js";
+// RFC-001 Phase 3: user-configurable embedding (local RAG model) settings API
+import { settingsRouter } from "./api/settings.js";
 import { evidenceRouter } from "./api/evidence.js";
 import { healthRouter } from "./api/health.js";
 import { archiveRouter } from "./api/archive.js";
@@ -35,8 +37,6 @@ import { hrRouter } from "./api/human-review.js";
 import { createPermissionsRouter, createWorkspacesRouter } from "./api/permissions.js";
 // S94P: Observability API
 import { observabilityRouter } from "./api/observability.js";
-// S97P: Beta feedback stats API
-import { betaRouter } from "./api/beta.js";
 // S98P: Beta Hardening — cost cap, quota, invite, admin
 import { costCapMiddleware } from "./middleware/cost-cap.js";
 import { quotaMiddleware } from "./middleware/quota.js";
@@ -44,16 +44,15 @@ import { betaInviteMiddleware } from "./middleware/beta-invite.js";
 import { adminRouter } from "./api/admin.js";
 // S100P: Agent Session & Manager Message API
 import { agentSessionsRouter } from "./api/agent-sessions.js";
-import { managerMessagesRouter } from "./api/manager-messages.js";
 // MWT-14: ManagerConversation controller surface
 import { managerConversationsRouter } from "./api/manager-conversations.js";
 import { sessionEventsRouter } from "./api/session-events.js";
-// S100P Phase 2: Manager Routing API
-import { managerRouteRouter } from "./api/manager-route.js";
 // MWT-22: Backend Assessment API (TRST-4D)
 import { assessRouter } from "./api/assess.js";
 // Optimization: Prometheus Metrics endpoint
 import { metricsRouter } from "./api/metrics.js";
+// RFC-002 Phase 1b: unified work-history / audit query surface
+import { workHistoryRouter } from "./api/work-history.js";
 
 // S69P: export app for test access (Hono app.fetch enables in-process HTTP testing)
 export const app = new Hono();
@@ -99,16 +98,16 @@ app.route("/v1/prompt-templates", promptTemplatesRouter);
 app.route("/v1/sessions", sessionsRouter);
 app.route("/v1/human-review", hrRouter);  // S78P
 app.route("/v1/observability", observabilityRouter);  // S94P
-app.route("/v1/beta", betaRouter);  // S97P
 app.route("/v1/permissions", createPermissionsRouter());
 app.route("/v1/workspaces", createWorkspacesRouter());
 app.route("/v1/admin", adminRouter);  // S98P: Admin health/usage/errors
 // S100P: Agent Session & Manager Message API
 app.route("/v1/agent-sessions", agentSessionsRouter);
-app.route("/v1/manager-messages", managerMessagesRouter);
 app.route("/v1/manager-conversations", managerConversationsRouter); // MWT-14
 app.route("/v1/session-events", sessionEventsRouter);
-// S100P Phase 2: Manager Routing API
-app.route("/v1/manager", managerRouteRouter);
 // MWT-22: Backend Assessment API (TRST-4D)
 app.route("/v1/assess", assessRouter);
+// RFC-002 Phase 1b: unified work-history / audit query surface
+app.route("/v1/work-history", workHistoryRouter);
+// RFC-001 Phase 3: user-configurable embedding (local RAG model)
+app.route("/v1/settings", settingsRouter);

@@ -4,7 +4,7 @@
 Version: v0 (agent-PM draft, 2026-08-24)
 Owner: Boss (scope sign-off) + Agent (PM gate authority delegated 2026-08-24)
 Branch: feature/trst-3-private-beta-readiness
-Status: DRAFT_FOR_BOSS_SCOPE_SIGN-OFF
+Status: v0 SIGNED_OFF (Boss final sign-off 2026-09-22; scope unchanged; 5F1 VERIFIED_DONE; 5D docs done; 待实施 WP: 5A/5B/5E/5F2)
 Baseline spec: TRST-5-product-spec.md (v1, 产品目标+全景图+待实现)
 Discussion: TRST-5-discussion-2026-08-24.md
 Target user: 极客优先(愿跑容器); 真技术深度; Memory=粘性钩子; 先修破碎
@@ -222,7 +222,20 @@ P2（配合）：**5A 轻量登录**
 - [x] 批准首 WP：`APPROVE_TRST-5_IMPLEMENTATION`（建议从 **5D 个人 PC 一键安装** 起，它解锁"装得上"）。**已执行 (2026-08-24, commit 2106d2f)**。
 - [x] **5D 本地 SQLite 模式 scope 决策**：Boss 2026-08-26 签核 —— **不实装全量 SQLite 模式**；P0-D = standalone 构建 + docker compose 一键起（Postgres+Redis+MinIO，极客推荐路径）+ RUNBOOK §9 大白话向导。理由：后端 80+ 处 PG raw SQL 全量移植风险高、违背"最小改动"护栏，且目标用户为愿跑容器极客，docker compose 已满足"装得上、跑得起来"。
 - [x] 新依赖确认：standalone 打包经 `NEXT_PRIVATE_STANDALONE` 控制（无新依赖）；SQLite 驱动 `better-sqlite3` 已在 deps（为 TRST-4C 事件索引预留，仅事件索引用，不扩展为全量后端）。
-- [ ] 确认 5F 个人体验的优先子项（启动速度 / 工作流步数 / 本地读写性能 的权重）。**已覆盖**：5F1 构建修复 DONE、5F2 前端流畅度 DONE (React.lazy + content-visibility, commit 3f1aa70)。
+- [x] **5F1/5F2 VERIFIED_DONE（2026-09-21 复核，非重复劳动）**：`cd frontend && npx tsc --noEmit` 退出 0；全仓仅 1 处 `/v1/gateway` 引用且受 `GATEWAY_CONFIGURED` 守卫（不命中主后端、不 404）。与 commit 3f1aa70 标注的 DONE 一致。详见 `PLAN-2026-09-21-stickiness-trst5-rag.md` §2。
 
 > 注：此 charter 为 agent-PM 起草稿。Charter scope 仍由 Boss 作为 owner 签核。
 > 常规 gate/acceptance 与基线修复 agent 已获授权自主执行。
+
+---
+
+## 9. 关联交付进展（2026-09-22，RFC-001 记忆粘性 + 本地 RAG，非 charter WP）
+
+> 以下为 charter 范围之外的、同期完成的 RFC-001 特征工作，直接服务 charter 两大支柱
+> 「Memory=粘性钩子」与「本地优先数据不出本机」。记录于 `PLAN-2026-09-21-stickiness-trst5-rag.md`。
+
+- **A — Memory 粘性闭环（DONE）**：蒸馏器 `distillTurnToMemory` 现持久化低置信度 `pending` 进审阅队列，用户确认才激活；后端审阅接口与前端 `MemoryGovernanceSurface` 早已齐备，端到端闭合。
+- **D — RAG 本地模型用户可配（DONE）**：新增 `local`（OpenAI-compatible）embedding provider + 文件存储的可运行时配置（`/v1/settings/embedding` + 前端 `EmbeddingSettingsPanel`）。配置后记忆检索改用用户本地模型生成向量，数据不出本机，对齐 RFC-001 Phase 3「本地嵌入 + 向量检索」。
+- **对 charter WP 的影响**：A/D 完成后，charter 的生产化 WP（5D 一键部署 / 5B 本机数据保护闭环 / 5E 本机健康 / 5A 轻量登录）仍是使 TrustOS 达到「个人 PC OS 级可用」的最小闭环，优先级与范围不变，待另按执行顺序开 WP。
+
+**v0 签核建议**：scope 已签（2026-08-24），5F1/5F2 已验证闭环，**本 charter 可提交 Boss 正式签核**，作为 Private Beta → 生产化最小集的基线。

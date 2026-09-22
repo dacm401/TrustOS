@@ -1,17 +1,16 @@
 /**
- * Archive Replay — answer repeated questions from the delegation archive.
+ * Archive Replay — answer repeated questions from the task archive.
  *
- * WHY THIS EXISTS
- * ---------------
- * The 04-16 design (O-005) introduced `delegation_archive` with an explicit
- * goal: 「新任务开新对话、查档案库」 — an O(1) token model where a repeated or
+ * Replay answers repeated questions from `task_archives`, which holds the
+ * user's original input (`user_input`) and the worker's result
+ * (`slow_execution->>'result'`). This is the O(1) token win: a repeated or
  * highly similar question is answered from history instead of paying for a
- * fresh LLM round-trip. That was the product's original cost advantage.
+ * fresh LLM round-trip.
  *
- * Over time the retrieval side disappeared: rows were still written (via a
- * backward-compat path) but nothing ever read them — the worst possible
- * state: paying write cost for zero retrieval benefit. This module restores
- * the read path.
+ * NOTE (RFC-002 Phase 0a): the original O-005 `delegation_archive` table was a
+ * dead/empty duplicate of `task_archives` and has been removed. Replay now
+ * reads `task_archives` directly — giving it real data instead of an empty
+ * table.
  *
  * SAFETY RULES (the reason replay is gated so heavily)
  * ----------------------------------------------------
@@ -26,12 +25,23 @@
  * can tell it is not freshly generated and can ask again if it looks stale.
  */
 
-import { DelegationArchiveRepo } from "../db/repositories.js";
-import type { DelegationArchiveEntry } from "../db/repositories/delegation.js";
-import { isTimeSensitive } from "./text/similarity.js";
+import { query } from "../db/connection.js";
+import { isTimeSensitive, keywordRelevance } from "./text/similarity.js";
+
+export interface ReplayArchiveEntry {
+  id: string;
+  task_id: string;
+  user_id: string;
+  session_id: string;
+  original_message: string;
+  slow_result: string;
+  status: string;
+  completed_at: string | null;
+  score: number;
+}
 
 export interface ArchiveHit {
-  entry: DelegationArchiveEntry;
+  entry: ReplayArchiveEntry;
   score: number;
 }
 
@@ -81,10 +91,33 @@ export async function findReplayableAnswer(
   const threshold = getThreshold();
 
   try {
-    const candidates = await DelegationArchiveRepo.findSimilar(userId, message, {
-      limit: 3,
-      minScore: threshold,
-    });
+    // RFC-002 Phase 0a: source of truth is task_archives (the live, written
+    // table). delegation_archive was a dead/empty duplicate and has been removed.
+    const result = await query(
+      `SELECT id, task_id, user_id, session_id, user_input,
+              slow_execution->>'result' AS result_text, status, updated_at
+       FROM task_archives
+       WHERE user_id = $1 AND status = 'completed'
+         AND slow_execution->>'result' IS NOT NULL
+       ORDER BY created_at DESC LIMIT 20`,
+      [userId]
+    );
+
+    const candidates: ReplayArchiveEntry[] = result.rows
+      .map((r: any) => ({
+        id: r.id,
+        task_id: r.task_id,
+        user_id: r.user_id,
+        session_id: r.session_id,
+        original_message: r.user_input,
+        slow_result: r.result_text,
+        status: r.status,
+        completed_at: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+        // Coverage-based similarity (NOT Jaccard): a longer archived question
+        // that fully contains the current one must still score 1.0.
+        score: keywordRelevance(message, r.user_input),
+      }))
+      .filter((c) => c.score >= threshold);
 
     if (candidates.length === 0) {
       return { hit: null, reason: "no_similar_archive_entry" };

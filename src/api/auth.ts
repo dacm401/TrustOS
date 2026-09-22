@@ -11,6 +11,7 @@
 
 import { Hono } from "hono";
 import { SignJWT, importPKCS8 } from "jose";
+import { timingSafeEqual } from "node:crypto";
 import { config } from "../config.js";
 
 const authRouter = new Hono();
@@ -72,6 +73,32 @@ function parseUsers(): Map<string, string> {
   return users;
 }
 
+/**
+ * Constant-time string comparison to avoid leaking password length/characters
+ * via timing differences (replaces the earlier `!==` check).
+ */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
+
+// One-time startup warning if insecure default credentials are active.
+(() => {
+  try {
+    const users = parseUsers();
+    if (!process.env.AUTH_USERS || users.get("admin") === "changeme") {
+      console.warn(
+        "[AUTH-SEC] Insecure default credentials in use (admin:changeme). " +
+        "Set AUTH_USERS with a strong password before exposing this service."
+      );
+    }
+  } catch {
+    /* production without AUTH_USERS — handled at request time */
+  }
+})();
+
 const TOKEN_EXPIRY_SECONDS = 24 * 60 * 60; // 24 hours
 
 async function signToken(userId: string): Promise<string> {
@@ -106,7 +133,7 @@ authRouter.post("/token", async (c) => {
   const users = parseUsers();
   const storedPassword = users.get(username);
 
-  if (!storedPassword || storedPassword !== password) {
+  if (!storedPassword || !safeEqual(storedPassword, password)) {
     // 延迟响应：防止Timing Attack
     await new Promise((r) => setTimeout(r, 50));
     return c.json({ error: "Invalid credentials" }, 401);

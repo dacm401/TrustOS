@@ -260,6 +260,33 @@ export const archiveReplaysTotal = new Counter({
   registers: [register],
 });
 
+// Fidelity recall (RFC-002 Phase 3): recall past user prompts as worker-brief
+// grounding. Lets the recall policy be tuned from data, not guesswork.
+export const fidelityRecallsTotal = new Counter({
+  name: 'fidelity_recalls_total',
+  help: 'Dispatch turns for which fidelity recall (Phase 3 grounding) ran',
+  labelNames: ['result'] as const, // hit | empty_input | no_turns | no_match | budget_exhausted | disabled | error
+  registers: [register],
+});
+
+export const fidelityRecallTokens = new Gauge({
+  name: 'fidelity_recall_tokens',
+  help: 'Approximate tokens of recalled grounding injected into the brief (last turn)',
+  registers: [register],
+});
+
+export const fidelityRecallTruncatedTotal = new Counter({
+  name: 'fidelity_recall_truncated_total',
+  help: 'Times the fidelity recall grounding exceeded the token budget',
+  registers: [register],
+});
+
+export const fidelityRecallMemoryHits = new Counter({
+  name: 'fidelity_recall_memory_hits_total',
+  help: 'Dispatch turns for which distilled user-intent memory was added to the grounding',
+  registers: [register],
+});
+
 // 设置默认指标采集
 promClient.collectDefaultMetrics({
   register,

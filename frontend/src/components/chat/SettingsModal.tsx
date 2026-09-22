@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { getSecureApiKey, setSecureApiKey } from "@/lib/crypto-utils";
+import { EmbeddingSettingsPanel } from "@/components/settings/EmbeddingSettingsPanel";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -144,6 +145,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </code>
             </p>
           </div>
+
+          <EmbeddingSettingsPanel />
 
           <div className="pt-4 flex gap-3">
             <button

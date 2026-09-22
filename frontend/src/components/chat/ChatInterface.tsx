@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { v4 as uuid } from "uuid";
 import { MessageBubble } from "./MessageBubble";
+import { SessionSwitcher } from "@/components/layout/SessionSwitcher";
 import { ModelSwitchAnim } from "./ModelSwitchAnim";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { getApiConfig } from "@/lib/api";
@@ -593,20 +594,20 @@ export function ChatInterface({
           color: "var(--text-muted)",
         }}
       >
-        {/* Session ID */}
-        <span className="flex items-center gap-1.5">
-          <span style={{ color: "var(--text-muted)" }}>Session</span>
-          <code
-            className="px-1.5 py-0.5 rounded text-[11px]"
-            style={{
-              background: "var(--bg-tertiary, rgba(255,255,255,0.05))",
-              color: "var(--text-primary)",
-              fontFamily: "var(--font-mono, monospace)",
-            }}
-          >
-            {sessionId.slice(0, 8)}…
-          </code>
-        </span>
+        {/* Session switcher — shows last user message / topic instead of bare id */}
+        <SessionSwitcher
+          currentSessionId={sessionId}
+          userId={userId}
+          onSessionChange={(id) => {
+            setSessionId(id);
+            setMessages([]);
+          }}
+          onNewSession={() => {
+            const nid = uuid();
+            setSessionId(nid);
+            setMessages([]);
+          }}
+        />
 
         {/* Separator */}
         <span style={{ color: "var(--border-color, rgba(255,255,255,0.1))" }}>|</span>

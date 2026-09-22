@@ -58,16 +58,6 @@ export const FIELD_CLASSIFICATION: Record<FieldKey, DataClassification> = {
   "task_archive_events.event_data": "internal", // JSON，技术数据
   "task_archive_events.created_at": "internal",
 
-  // ── delegation_archives ─────────────────────────────────────────────────────
-  "delegation_archives.task_id": "public",
-  "delegation_archives.user_id": "strictly_private", // 用户 ID，最敏感
-  "delegation_archives.session_id": "internal",
-  "delegation_archives.original_message": "confidential", // 用户原始消息
-  "delegation_archives.delegation_prompt": "internal", // 发给 Worker 的 prompt
-  "delegation_archives.slow_result": "internal",
-  "delegation_archives.processing_ms": "internal",
-  "delegation_archives.created_at": "internal",
-  "delegation_archives.status": "internal",
 
   // ── memory_entries ──────────────────────────────────────────────────────────
   "memory_entries.id": "public",

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { TaskRepo, DecisionRepo, TaskArchiveRepo } from "../db/repositories.js";
+import { TaskCommandRepo, TaskWorkerResultRepo } from "../db/task-archive-repo.js";
 import { formatTraceSummaries } from "../services/trace-formatter.js";
 import { getContextUserId } from "../middleware/identity.js";
 
@@ -146,6 +147,31 @@ taskRouter.get("/:task_id/traces", async (c) => {
     console.error("Task traces error:", error);
     return c.json({ error: error.message }, 500);
   }
+});
+
+// RFC-002 Phase 1a: surface the command (brief sent to worker) and the worker
+// result so the audit view can show "what was actually dispatched / returned".
+// Ownership is enforced via the parent task_archive's user_id.
+taskRouter.get("/:task_id/commands", async (c) => {
+  const taskId = c.req.param("task_id");
+  const userId = getContextUserId(c);
+  const archive = await TaskArchiveRepo.getById(taskId);
+  if (!archive || (archive as any).user_id !== userId) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  const commands = await TaskCommandRepo.getByTask(taskId);
+  return c.json({ task_id: taskId, commands });
+});
+
+taskRouter.get("/:task_id/worker-results", async (c) => {
+  const taskId = c.req.param("task_id");
+  const userId = getContextUserId(c);
+  const archive = await TaskArchiveRepo.getById(taskId);
+  if (!archive || (archive as any).user_id !== userId) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  const results = await TaskWorkerResultRepo.listByTask(taskId);
+  return c.json({ task_id: taskId, results });
 });
 
 // GET /v1/tasks/:task_id/decision — get latest decision log for a task (before /:task_id to avoid shadowing)

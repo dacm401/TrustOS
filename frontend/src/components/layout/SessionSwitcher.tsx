@@ -8,6 +8,7 @@ interface Session {
   active_topic?: string;
   summary_text?: string;
   topic?: string;
+  last_user_message?: string | null;
   total_requests?: number;
   turn_count?: number;
   created_at: string;
@@ -69,8 +70,24 @@ export function SessionSwitcher({
   };
 
   const sessionLabel = (s: Session): string => {
-    return s.topic || s.active_topic || s.summary_text || `Session ${s.session_id.slice(0, 8)}`;
+    // 优先显示用户实际问的最后一句（最有辨识度），退化顺序：
+    // 生成摘要主题 → 活跃主题 → 摘要正文 → 新对话占位。
+    return s.last_user_message || s.topic || s.active_topic || s.summary_text || "新对话";
   };
+
+  // 相对时间：让"什么时候聊的"一眼可读，而非裸日期。
+  function formatRelative(iso: string): string {
+    const d = new Date(iso);
+    const diff = Date.now() - d.getTime();
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return "刚刚";
+    if (min < 60) return `${min} 分钟前`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr} 小时前`;
+    const day = Math.floor(hr / 24);
+    if (day < 7) return `${day} 天前`;
+    return d.toLocaleDateString("zh-CN");
+  }
 
   const handleSelect = (sessionId: string) => {
     onSessionChange(sessionId);
@@ -167,20 +184,15 @@ export function SessionSwitcher({
                       >
                         {sessionLabel(session)}
                       </p>
-                      {session.summary_text && (
+                      {session.summary_text && session.summary_text !== sessionLabel(session) && (
                         <p className="text-[10px] truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
                           {session.summary_text.slice(0, 60)}
                         </p>
                       )}
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                          {new Date(session.updated_at).toLocaleDateString('zh-CN')}
+                          {formatRelative(session.updated_at)}
                         </span>
-                        {session.turn_count != null && (
-                          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                            {session.turn_count} 轮
-                          </span>
-                        )}
                       </div>
                     </div>
                     {session.session_id === currentSessionId && (

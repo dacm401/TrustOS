@@ -20,6 +20,7 @@
 
 import { createHash } from "crypto";
 import { config } from "../config.js";
+import { resolveEffectiveEmbeddingConfig } from "./embedding-settings.js";
 
 // ── Lightweight LRU cache (no external dependency) ──────────────────────────
 
@@ -100,7 +101,7 @@ export function getEmbeddingCacheStats() {
 }
 
 export interface EmbeddingConfig {
-  provider: "openai" | "siliconflow";
+  provider: "openai" | "siliconflow" | "local";
   apiKey: string;
   model: string;
   dimensions: number;
@@ -108,6 +109,8 @@ export interface EmbeddingConfig {
   // SiliconFlow 专用配置
   siliconflowApiKey: string;
   siliconflowBaseUrl: string;
+  // "local" (OpenAI-compatible) endpoint base; also usable to override openai base.
+  baseUrl?: string;
 }
 
 /**
@@ -116,11 +119,13 @@ export interface EmbeddingConfig {
  * Sprint 76: results are cached in-memory (LRU, configurable TTL/size).
  */
 export async function getEmbedding(text: string): Promise<number[] | null> {
-  if (!config.embedding?.enabled) {
+  // Resolve effective config: user's local RAG setting (if any) overlays env.
+  const eff = resolveEffectiveEmbeddingConfig();
+  if (!eff.enabled) {
     return null;
   }
 
-  const model = config.embedding.model;
+  const model = eff.model;
 
   // ── Cache lookup ──────────────────────────────────────────────────────────
   if (CACHE_ENABLED) {
@@ -131,15 +136,7 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
     }
 
     try {
-      const provider = config.embedding.provider;
-      let result: number[] | null = null;
-
-      if (provider === "openai") {
-        result = await getOpenAIEmbedding(text, config.embedding);
-      } else if (provider === "siliconflow") {
-        result = await getSiliconFlowEmbedding(text, config.embedding);
-      }
-
+      const result = await callProvider(text, eff);
       if (result) {
         embeddingCache.set(key, result);
       }
@@ -151,21 +148,25 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
 
   // ── Cache disabled: direct call ───────────────────────────────────────────
   try {
-    const provider = config.embedding.provider;
-
-    if (provider === "openai") {
-      return await getOpenAIEmbedding(text, config.embedding);
-    }
-
-    if (provider === "siliconflow") {
-      return await getSiliconFlowEmbedding(text, config.embedding);
-    }
-
-    return null;
+    return await callProvider(text, eff);
   } catch {
     // Fail-safe: any error returns null
     return null;
   }
+}
+
+/**
+ * Dispatch to the configured provider. `eff` is already the merged config
+ * (user local setting over env) from resolveEffectiveEmbeddingConfig().
+ */
+async function callProvider(
+  text: string,
+  cfg: EmbeddingConfig
+): Promise<number[] | null> {
+  if (cfg.provider === "openai") return getOpenAIEmbedding(text, cfg);
+  if (cfg.provider === "siliconflow") return getSiliconFlowEmbedding(text, cfg);
+  if (cfg.provider === "local") return getLocalEmbedding(text, cfg);
+  return null;
 }
 
 async function getOpenAIEmbedding(
@@ -179,7 +180,7 @@ async function getOpenAIEmbedding(
   // 拿 SiliconFlow 的 key 去敲 openai.com —— 每次都要等连接超时才失败
   // （实测约 10.6 秒），memory 检索因此永远拿不到向量，只能退化为关键词
   // 匹配，相关性恒为 0，用户标记公开的记忆也永远选不中。
-  const baseUrl = (config.openaiBaseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
+  const baseUrl = (cfg.baseUrl || config.openaiBaseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
   const res = await fetch(`${baseUrl}/embeddings`, {
     method: "POST",
     headers: {
@@ -227,6 +228,49 @@ async function getSiliconFlowEmbedding(
   });
 
   if (!res.ok) {
+    return null;
+  }
+
+  const data = (await res.json()) as {
+    data: { embedding: number[] }[];
+  };
+  return data.data[0]?.embedding ?? null;
+}
+
+/**
+ * Local / OpenAI-compatible embedding endpoint (RFC-001 Phase 3 RAG).
+ * The user supplies the base URL (e.g. http://localhost:11434/v1 for Ollama,
+ * or any vLLM / LM Studio style /v1/embeddings server). apiKey is optional —
+ * most local models run unauthenticated.
+ */
+async function getLocalEmbedding(
+  text: string,
+  cfg: EmbeddingConfig
+): Promise<number[] | null> {
+  const baseUrl = (cfg.baseUrl || "").replace(/\/$/, "");
+  if (!baseUrl) {
+    console.warn(
+      "[embedding] provider=local but baseUrl is missing — falling back to keyword retrieval"
+    );
+    return null;
+  }
+  const res = await fetch(`${baseUrl}/embeddings`, {
+    method: "POST",
+    headers: {
+      ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: cfg.model,
+      input: text.slice(0, 8000),
+    }),
+  });
+
+  if (!res.ok) {
+    console.warn(
+      `[embedding] provider=local HTTP ${res.status} from ${baseUrl} ` +
+      `(model=${cfg.model}) — falling back to keyword retrieval`
+    );
     return null;
   }
 

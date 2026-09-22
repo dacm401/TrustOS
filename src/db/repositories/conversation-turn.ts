@@ -228,6 +228,44 @@ export const ConversationTurnRepo = {
     return result.rows as ConversationTurn[];
   },
 
+  /**
+   * Cross-session turns for a user, newest first.
+   *
+   * RFC-002 Phase 3 (fidelity recall): the recall source is the user's own
+   * past prompts across ALL sessions — not just the current one. The caller
+   * (fidelity-recall.ts) scores and curates them; this repo only fetches.
+   *
+   * `role` narrows to e.g. "user" (the user's original intent). `excludeSessionId`
+   * drops the in-progress session so the recall never echoes the message that
+   * triggered the dispatch.
+   */
+  async listByUser(
+    userId: string,
+    limit = 300,
+    role?: TurnRole,
+    excludeSessionId?: string
+  ): Promise<ConversationTurn[]> {
+    const clauses: string[] = ["user_id = $1"];
+    const params: unknown[] = [userId];
+    if (role) {
+      params.push(role);
+      clauses.push(`role = $${params.length}`);
+    }
+    if (excludeSessionId) {
+      params.push(excludeSessionId);
+      clauses.push(`session_id <> $${params.length}`);
+    }
+    params.push(limit);
+    const result = await query(
+      `SELECT * FROM conversation_turns
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY created_at DESC
+        LIMIT $${params.length}`,
+      params
+    );
+    return result.rows as ConversationTurn[];
+  },
+
   async getById(id: string): Promise<ConversationTurn | null> {
     const result = await query(`SELECT * FROM conversation_turns WHERE id = $1`, [id]);
     return (result.rows[0] as ConversationTurn) ?? null;

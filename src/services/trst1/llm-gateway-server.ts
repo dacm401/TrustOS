@@ -171,7 +171,7 @@ export function createGatewayApp(config: GatewayConfig): Hono {
   app.use("*", cors({
     origin: "*",
     allowMethods: ["GET", "POST", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization", "X-TrustOS-Session-Id", "X-TrustOS-Trace-Id", "X-TrustOS-Agent-Id", "X-TrustOS-Actor-Id"],
+    allowHeaders: ["Content-Type", "Authorization", "X-User-Id", "X-TrustOS-Session-Id", "X-TrustOS-Trace-Id", "X-TrustOS-Agent-Id", "X-TrustOS-Actor-Id"],
     exposeHeaders: ["X-TrustOS-Trace-Id", "X-TrustOS-Session-Id", "X-TrustOS-Gateway-Overhead-Ms"],
     maxAge: 86400,
   }));

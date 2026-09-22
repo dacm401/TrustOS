@@ -3,7 +3,7 @@
 
 export { DecisionRepo, FeedbackEventRepo } from "./decision-feedback.js";
 export { GrowthRepo, MemoryEntryRepo, MemoryRepo } from "./memory-growth.js";
-export { DelegationArchiveRepo, DelegationLogRepo } from "./delegation.js";
+export { DelegationLogRepo } from "./delegation.js";
 export { ExecutionResultRepo, EvidenceRepo } from "./execution.js";
 export { TaskArchiveRepo, TaskRepo } from "./task-archive.js";
 export {
@@ -36,7 +36,6 @@ export type {
 } from "./session-event.js";
 
 // Re-export interfaces for convenience
-export type { DelegationArchiveEntry } from "./delegation.js";
 export type { TaskArchiveEntry } from "./task-archive.js";
 export type {
   PermissionRequestInput,

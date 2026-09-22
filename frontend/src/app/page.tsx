@@ -18,11 +18,12 @@ const LazyTaskPanel = TaskPanel; // TaskPanel 常驻首屏（workbench 顶栏）
 const MemoryGovernanceSurface = lazy(() => import("@/components/memory/MemoryGovernanceSurface"));
 const DashboardView = lazy(() => import("@/components/views/DashboardView"));
 const TasksView = lazy(() => import("@/components/views/TasksView"));
-const ArchiveView = lazy(() => import("@/components/views/ArchiveView"));
 const PermissionsView = lazy(() => import("@/components/views/PermissionsView"));
-const ManagerView = lazy(() => import("@/components/views/ManagerView"));
 const AuditReviewSurface = lazy(() =>
   import("@/components/audit/AuditReviewSurface").then((m) => ({ default: m.AuditReviewSurface }))
+);
+const WorkHistoryView = lazy(() =>
+  import("@/components/views/WorkHistoryView").then((m) => ({ default: m.WorkHistoryView }))
 );
 const EvidencePanel = lazy(() =>
   import("@/components/workbench/EvidencePanel").then((m) => ({ default: m.EvidencePanel }))
@@ -48,7 +49,7 @@ function LazyView({ name, children }: { name: string; children: ReactNode }) {
   );
 }
 
-type NavView = "chat" | "tasks" | "memory" | "dashboard" | "archive" | "permissions" | "manager" | "audit";
+type NavView = "chat" | "tasks" | "memory" | "dashboard" | "permissions" | "audit" | "workhistory";
 
 type WorkbenchTab = "evidence" | "trace" | "health" | "debug";
 
@@ -203,20 +204,16 @@ export default function HomePage() {
             <LazyView name="DashboardView"><DashboardView userId={userId} onNavChange={(v) => setActiveNav(v as NavView)} /></LazyView>
           )}
 
-          {activeNav === "archive" && (
-            <LazyView name="ArchiveView"><ArchiveView sessionId={sessionId} userId={userId} /></LazyView>
-          )}
-
           {activeNav === "permissions" && (
             <LazyView name="PermissionsView"><PermissionsView userId={userId} /></LazyView>
           )}
 
-          {activeNav === "manager" && (
-            <LazyView name="ManagerView"><ManagerView userId={userId} /></LazyView>
-          )}
-
           {activeNav === "audit" && (
             <LazyView name="AuditReviewSurface"><AuditReviewSurface sessionId={sessionId} userId={userId} /></LazyView>
+          )}
+
+          {activeNav === "workhistory" && (
+            <LazyView name="WorkHistoryView"><WorkHistoryView userId={userId} /></LazyView>
           )}
         </main>
 

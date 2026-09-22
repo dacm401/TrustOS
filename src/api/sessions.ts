@@ -207,7 +207,10 @@ sessionsRouter.get("/recent", async (c) => {
   const result = await query(
     `SELECT s.id as session_id, s.active_topic, s.total_requests, s.fast_count, s.slow_count,
             s.turn_count, s.created_at, s.updated_at,
-            ss.summary_text, ss.topic, ss.key_facts
+            ss.summary_text, ss.topic, ss.key_facts,
+            (SELECT ct.content FROM conversation_turns ct
+             WHERE ct.session_id = s.id AND ct.role = 'user'
+             ORDER BY ct.turn_index DESC LIMIT 1) as last_user_message
      FROM sessions s
      LEFT JOIN session_summaries ss ON ss.session_id = s.id
      WHERE s.user_id = $1
@@ -226,9 +229,37 @@ sessionsRouter.get("/recent", async (c) => {
     summary_text: r.summary_text,
     topic: r.topic,
     key_facts: r.key_facts,
+    last_user_message: r.last_user_message ?? null,
     created_at: r.created_at,
     updated_at: r.updated_at,
   }));
 
   return c.json({ sessions });
+});
+
+// GET /v1/sessions/:id/turns — raw conversation turns for THIS user's session.
+//
+// RFC-001 Phase 1, stage 2: a LOCAL-ONLY provenance-retrieval endpoint so the
+// Memory Governance UI can jump from a distilled memory entry back to the exact
+// turn that produced it ("一键回溯原文"). This is the deliberate inverse of the
+// injection path (which only ever returns distillates, never raw content):
+//   - retrieval (this endpoint) → raw, scoped to the requesting user, local UI only
+//   - injection (selectMemories) → distillates only, never raw
+//
+// Scoped by user_id on the table itself: a turn is only returned when it belongs
+// to the caller, so the endpoint can never leak another user's sovereign data.
+sessionsRouter.get("/:id/turns", async (c) => {
+  const userId = getContextUserId(c)!;
+  const sessionId = c.req.param("id");
+
+  const { query } = await import("../db/connection.js");
+  const result = await query(
+    `SELECT id, turn_index, role, content, content_hash, sensitivity, created_at
+       FROM conversation_turns
+      WHERE session_id = $1 AND user_id = $2
+      ORDER BY turn_index ASC`,
+    [sessionId, userId]
+  );
+
+  return c.json({ session_id: sessionId, turns: result.rows });
 });

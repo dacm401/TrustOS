@@ -165,6 +165,16 @@ export const MemoryEntryRepo = {
     return entry;
   },
 
+  /** Cheap dedup probe before create — prevents the same explicit signal from
+   *  producing duplicate memory rows on every repeated utterance. */
+  async existsByContent(userId: string, content: string): Promise<boolean> {
+    const result = await query(
+      `SELECT 1 FROM memory_entries WHERE user_id = $1 AND content = $2 LIMIT 1`,
+      [userId, content]
+    );
+    return result.rows.length > 0;
+  },
+
   async boostRecentAutoLearn(userId: string, windowMs: number = 300_000): Promise<void> {
     const since = new Date(Date.now() - windowMs).toISOString();
     await query(

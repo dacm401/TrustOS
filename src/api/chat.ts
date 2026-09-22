@@ -12,10 +12,11 @@ const VALID_FEEDBACK_TYPES: readonly FeedbackType[] = [
 ] as const;
 import { logDecision } from "../logging/decision-logger.js";
 import { config } from "../config.js";
-import { ConversationTurnRepo, MemoryEntryRepo, TaskRepo, ExecutionResultRepo } from "../db/repositories.js";
-// RFC-001 Phase 1: L0 rule-based memory distillation (no LLM call)
-import { distilTurn, partitionByConfidence, toMemoryEntryInput } from "../services/memory/distiller.js";
-import { memoryDistilledEntries, archiveReplaysTotal } from "../metrics/prometheus.js";
+import { ConversationTurnRepo, TaskRepo, ExecutionResultRepo } from "../db/repositories.js";
+// RFC-001 Phase 1: L0 rule-based memory distillation → persisted on each user
+// turn (rules only, no model call). Dedup + fail-open live in the helper.
+import { distillTurnToMemory } from "../services/memory/distill-on-ingest.js";
+import { archiveReplaysTotal } from "../metrics/prometheus.js";
 // Archive replay: answer repeated questions from history (0 model calls)
 import { findReplayableAnswer, renderReplay } from "../services/archive-replay.js";
 import { formatExecutionResultsForPlanner } from "../services/execution-result-formatter.js";
@@ -187,25 +188,13 @@ chatRouter.post("/chat", async (c) => {
           userId,
         });
 
-        // ② Distil explicit memory signals (rules only — no model call)
+        // ② Distil explicit memory signals (rules only — no model call) and
+        //    persist them. Dedup + fail-open live in distillTurnToMemory.
         if (process.env.TRUSTOS_MEMORY_DISTILL !== "0") {
-          const distilled = distilTurn(userText);
-          const { active } = partitionByConfidence(distilled);
-          for (const entry of distilled) {
-            memoryDistilledEntries.inc({ rule: entry.rule });
-          }
-          for (const entry of active) {
-            void MemoryEntryRepo.create(
-              toMemoryEntryInput(entry, userId, sessionId as string)
-            ).catch((err: unknown) => {
-              // Best-effort: never surface to the user, but never silent either
-              // (a silent failure would be indistinguishable from "no signal").
-              const message = err instanceof Error ? err.message : String(err);
-              process.stderr.write(
-                `[sovereign] distill persist failed (rule=${entry.rule}): ${message}\n`
-              );
-            });
-          }
+          void distillTurnToMemory(userId, userText, sessionId as string).catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            process.stderr.write(`[sovereign] distill persist failed: ${message}\n`);
+          });
         }
       }
     } catch {

@@ -1444,6 +1444,44 @@ export async function routeManagerMessage(
   return res.json();
 }
 
+// ── RFC-002 Phase 2: unified work-history / audit feed ────────────────────────
+// Merged, full-text-searchable timeline across conversation_turns (原文),
+// manager_messages (Manager 加工), task_commands (派发 brief) and
+// task_worker_results (worker 结果). Backend: GET /v1/work-history.
+
+import type { WorkHistoryItem, WorkHistoryResponse, WorkHistoryType } from "@/types/work-history";
+
+export interface WorkHistoryQuery {
+  q?: string;
+  sessionId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function fetchWorkHistory(
+  userId: string,
+  opts: WorkHistoryQuery = {}
+): Promise<WorkHistoryResponse> {
+  const { apiBase } = getApiConfig();
+  const query = new URLSearchParams();
+  if (opts.q) query.set("q", opts.q);
+  if (opts.sessionId) query.set("session_id", opts.sessionId);
+  if (opts.from) query.set("from", opts.from);
+  if (opts.to) query.set("to", opts.to);
+  if (opts.limit !== undefined) query.set("limit", String(opts.limit));
+  if (opts.offset !== undefined) query.set("offset", String(opts.offset));
+  const qs = query.toString();
+  const res = await fetch(`${apiBase}/v1/work-history${qs ? `?${qs}` : ""}`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载工作历史失败 (${res.status})`);
+  return res.json() as Promise<WorkHistoryResponse>;
+}
+
+export type { WorkHistoryItem, WorkHistoryResponse, WorkHistoryType } from "@/types/work-history";
+
 // ── Memory / Trust Reference Bridges (MWT-15 / MWT-16) ────────────────────────
 
 export async function fetchMemoryRefs(
@@ -1760,3 +1798,86 @@ export async function downloadEvidenceExport(
 
 // Re-export types used by manager workspace / task evidence views
 export type { ManagerMessage, RouteMessageResponse, RouteMessageRequest } from "@/types/dashboard";
+
+// ── RFC-001 Phase 3: user-configurable embedding (local RAG model) ────────────
+// Mirrors the backend api/settings.ts contract exactly:
+//   GET  /v1/settings/embedding        → current setting (apiKey masked)
+//   PUT  /v1/settings/embedding        → upsert setting
+//   POST /v1/settings/embedding/validate → probe endpoint, returns ok + dims
+
+export type EmbeddingProvider = "openai" | "siliconflow" | "local";
+
+export interface EmbeddingSettingsPayload {
+  provider: EmbeddingProvider;
+  baseUrl?: string;
+  apiKey?: string;
+  model: string;
+  /** Vector dimensionality of the chosen model (must match stored vectors). */
+  dimensions: number;
+  enabled?: boolean;
+}
+
+export interface EmbeddingSettingsResponse {
+  settings: EmbeddingSettingsPayload | null;
+}
+
+export interface EmbeddingValidateResponse {
+  ok: boolean;
+  dimensions?: number;
+  dimensionsMatch?: boolean;
+  detail?: string;
+  status?: number;
+}
+
+export async function fetchEmbeddingSettings(userId: string): Promise<EmbeddingSettingsResponse> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/settings/embedding`, {
+    headers: { "X-User-Id": userId, ...buildHeaders() },
+  });
+  if (!res.ok) throw new Error(`加载嵌入设置失败 (${res.status})`);
+  return res.json();
+}
+
+export async function updateEmbeddingSettings(
+  userId: string,
+  payload: EmbeddingSettingsPayload
+): Promise<EmbeddingSettingsResponse> {
+  const { apiBase } = getApiConfig();
+  const res = await fetch(`${apiBase}/v1/settings/embedding`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `保存失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * Probe the user's embedding endpoint. A failed probe returns HTTP 200 with
+ * { ok:false, detail } (the backend never 500s on a bad address), so we return
+ * the parsed body regardless of status and let the caller show ok / detail.
+ */
+export async function validateEmbeddingSettings(
+  payload: EmbeddingSettingsPayload,
+  userId?: string
+): Promise<EmbeddingValidateResponse> {
+  const { apiBase } = getApiConfig();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...buildHeaders(),
+  };
+  if (userId) headers["X-User-Id"] = userId;
+  const res = await fetch(`${apiBase}/v1/settings/embedding/validate`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const data = (await res.json().catch(() => ({}))) as EmbeddingValidateResponse;
+  if (!res.ok) {
+    throw new Error(data.detail ?? `校验请求失败 (${res.status})`);
+  }
+  return data;
+}

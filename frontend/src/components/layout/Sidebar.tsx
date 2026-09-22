@@ -20,12 +20,14 @@ const NAV_ITEMS: NavItem[] = [
   { id: "chat",        icon: "💬", label: "对话" },
   { id: "tasks",       icon: "📋", label: "任务" },
   { id: "memory",      icon: "🧠", label: "记忆" },
-  { id: "archive",     icon: "📦", label: "归档" },
-  { id: "manager",     icon: "🤖", label: "委托" },
   { id: "permissions", icon: "🔐", label: "权限" },
+  { id: "workhistory", icon: "🕓", label: "工作历史" },
   { id: "dashboard",   icon: "📊", label: "仪表盘" },
   { id: "audit",       icon: "🛡️", label: "审计" },
 ];
+
+// RFC-002 菜单收敛（2026-09-21）：原「归档」并入「工作历史」(type=archive 子视图)，
+// 原「委托」并入「审计」(委托会话 tab)；侧栏从 9 → 7，避免重复入口。
 
 interface SidebarProps {
   activeNav: string;

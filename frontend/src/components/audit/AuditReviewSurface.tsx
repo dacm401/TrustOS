@@ -17,6 +17,9 @@ import {
   fetchHumanReviews,
   type HumanReviewRequest,
 } from "@/lib/api";
+// RFC-002 菜单收敛：原独立「委托」视图（Manager↔Worker 分派会话与契约）
+// 并入审计视图，作为第二个 tab，避免重复入口。
+import ManagerView from "@/components/views/ManagerView";
 
 const SEVERITY_TONE: Record<string, string> = {
   security: "var(--accent-red, #dc2626)",
@@ -45,6 +48,7 @@ export function AuditReviewSurface({ sessionId, userId }: AuditReviewSurfaceProp
   const [reviews, setReviews] = useState<HumanReviewRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"review" | "delegation">("review");
 
   const load = () => {
     if (!userId) return;
@@ -74,9 +78,28 @@ export function AuditReviewSurface({ sessionId, userId }: AuditReviewSurfaceProp
           <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
             人工审核队列与事件链，均为后端真实数据。
           </p>
-        </div>
+          </div>
 
-        {/* ── Real human-review queue ── */}
+          {/* RFC-002 菜单收敛：委托会话并入审计，作为第二个 tab */}
+          <div className="flex gap-2 mb-4">
+          {([["review", "📋 人工审核队列"], ["delegation", "🤖 委托会话"]] as const).map(([k, lbl]) => (
+            <button
+              key={k}
+              onClick={() => setTab(k)}
+              className="px-3 py-1 rounded-lg text-xs transition-colors"
+              style={{
+                backgroundColor: tab === k ? "var(--bg-overlay)" : "transparent",
+                color: tab === k ? "var(--text-accent)" : "var(--text-muted)",
+                border: `1px solid ${tab === k ? "var(--border-default)" : "var(--border-subtle)"}`,
+              }}
+            >
+              {lbl}
+            </button>
+          ))}
+          </div>
+
+          {tab === "review" && (
+          <>
         <div
           className="rounded-xl border p-4"
           style={{
@@ -225,6 +248,14 @@ export function AuditReviewSurface({ sessionId, userId }: AuditReviewSurfaceProp
           </h2>
           <EventChainViewer sessionId={sessionId} userId={userId} />
         </div>
+          </>
+          )}
+
+      {tab === "delegation" && (
+        <div className="h-[72vh] rounded-xl overflow-hidden" style={{ border: "1px solid var(--border-subtle)" }}>
+          <ManagerView userId={userId ?? ""} />
+        </div>
+      )}
       </div>
     </div>
   );

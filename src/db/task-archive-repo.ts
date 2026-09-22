@@ -15,6 +15,8 @@ import type {
   AuditUserInput,
 } from "../types/index.js";
 import { VALID_TASK_STATES } from "../types/task.js";
+import { appendEvent } from "../services/trst1/jsonl-event-store.js";
+import { createEventId, type TrstEventStatus } from "../services/trst1/event-envelope.js";
 
 /**
  * 写入边界校验：拦下任何不属于 TaskState 的状态值。
@@ -26,6 +28,36 @@ import { VALID_TASK_STATES } from "../types/task.js";
  * 这里做最后一道防线：非法状态一律记录显眼告警（不抛错，避免把可恢复的
  * 写入变成崩溃），让问题在日志里立刻可见而不是变成静默挂起。
  */
+// RFC-002 Phase 1c: emit task lifecycle events onto the Event Backbone hash chain
+// (tamper-evident audit trail). Best-effort: a failure here must never break a
+// task write.
+async function emitTaskBackboneEvent(
+  eventType: "task_dispatch" | "worker_result",
+  taskId: string,
+  status: TrstEventStatus
+): Promise<void> {
+  try {
+    const sess = await query("SELECT session_id FROM task_archives WHERE id=$1", [taskId]);
+    const sessionId = sess.rows[0]?.session_id ?? "unknown";
+    await appendEvent({
+      event_id: createEventId(),
+      event_type: eventType,
+      timestamp: new Date().toISOString(),
+      trace_id: "unknown",
+      session_id: sessionId,
+      run_id: "unknown",
+      project_id: "trustos-local",
+      task_id: taskId,
+      resource_type: "task",
+      latency_ms: 0,
+      privacy_flags: [],
+      status,
+    });
+  } catch {
+    // Event Backbone is audit-only.
+  }
+}
+
 function assertValidTaskState(newState: string, archiveId: string): void {
   if (!VALID_TASK_STATES.includes(newState as TaskState)) {
     console.error(
@@ -381,6 +413,8 @@ export const TaskCommandRepo = {
     );
     // ON CONFLICT 在 pg 上需要事先建 UNIQUE index
     // idempotency_key_idx 在 migration 010 中已创建
+    // RFC-002 Phase 1c: record the dispatch on the Event Backbone hash chain.
+    void emitTaskBackboneEvent("task_dispatch", input.archive_id, "success");
     return { id: result.rows[0].id, status: result.rows[0].status };
   },
 
@@ -409,6 +443,18 @@ export const TaskCommandRepo = {
     );
     if (!result.rows[0]) return null;
     return mapCommandRow(result.rows[0]);
+  },
+
+  /**
+   * RFC-002 Phase 1a: list all commands (briefs sent to worker) for a task,
+   * so the audit view can show what was actually dispatched.
+   */
+  async getByTask(taskId: string): Promise<TaskCommandRecord[]> {
+    const result = await query(
+      `SELECT * FROM task_commands WHERE archive_id = $1 ORDER BY issued_at ASC`,
+      [taskId]
+    );
+    return result.rows.map(mapCommandRow);
   },
 
   /**
@@ -486,6 +532,8 @@ export const TaskWorkerResultRepo = {
         input.started_at?.toISOString() ?? null,
       ]
     );
+    // RFC-002 Phase 1c: record the worker result on the Event Backbone hash chain.
+    void emitTaskBackboneEvent("worker_result", input.task_id, "success");
     return { id };
   },
 

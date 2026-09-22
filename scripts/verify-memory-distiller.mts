@@ -14,7 +14,9 @@ import {
   partitionByConfidence,
   toMemoryEntryInput,
   LOW_CONFIDENCE_THRESHOLD,
+  type DistilledMemory,
 } from "../src/services/memory/distiller.js";
+import { PENDING_TAG } from "../src/api/memory.js";
 
 let pass = 0;
 let fail = 0;
@@ -148,6 +150,31 @@ console.log("\n── 12. No duplicate extraction ──────────
   const r = distilTurn("记住A项目用 Redis。记住B项目也用 Redis。");
   const contents = r.map((e) => e.content);
   check("no exact duplicates", new Set(contents).size === contents.length, JSON.stringify(contents));
+}
+
+console.log("\n── 13. Low-confidence → pending review queue ──────────");
+{
+  // The whole stickiness loop depends on low-confidence signals being stamped
+  // with status:pending (held for user confirmation) rather than dropped.
+  const low: DistilledMemory = {
+    category: "preference",
+    content: "我可能比较喜欢用 pnpm",
+    confidence: 0.5,
+    tags: [],
+    rule: "preference",
+    evidence: "我可能比较喜欢用 pnpm",
+    span: { start: 0, end: 10 },
+  };
+  const input = toMemoryEntryInput(low, "admin", "turn-x");
+  check("low-confidence carries status:pending", input.tags.includes(PENDING_TAG), JSON.stringify(input.tags));
+
+  const high: DistilledMemory = { ...low, confidence: 0.95 };
+  const inputHi = toMemoryEntryInput(high, "admin", "turn-x");
+  check("high-confidence has no pending tag", !inputHi.tags.includes(PENDING_TAG), JSON.stringify(inputHi.tags));
+
+  const { pending, active } = partitionByConfidence([low, high]);
+  check("pending routes to its own partition", pending.length === 1 && active.length === 1,
+    `pending=${pending.length} active=${active.length}`);
 }
 
 console.log(`\n${fail === 0 ? "✅ ALL PASS" : "❌ FAILURES"}: ${pass} passed, ${fail} failed\n`);

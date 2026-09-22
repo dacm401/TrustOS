@@ -21,7 +21,10 @@ export type TrstEventType =
   | "mcp_proxy"
   | "mcp_tool_proxy"
   | "mcp_resource_proxy"
-  | "mcp_prompt_proxy";
+  | "mcp_prompt_proxy"
+  // RFC-002 Phase 1c: task lifecycle events on the Event Backbone hash chain
+  | "task_dispatch"
+  | "worker_result";
 
 export type TrstEventStatus = "success" | "failure";
 
@@ -71,7 +74,7 @@ export interface TrstEventEnvelope {
   // ── Source / Destination ──
   source?: string;
   destination?: string;
-  resource_type: "model" | "tool";
+  resource_type: "model" | "tool" | "task";
   resource_ref?: string;
 
   // ── Model-specific ──

@@ -4,7 +4,7 @@
 > 详细历史见 `TRST-execution-log.md`（3828+ 行，按时间追加）。
 > **维护约定**：每完成一批重要工作，必须更新本文件（见文末「维护约定」）。
 
-*最后更新：2026-08-29*
+*最后更新：2026-09-22*
 
 ---
 
@@ -304,13 +304,216 @@ A. 本地模型做 Manager ⭐（Boss 已明确，建议**影子模式**先行�
 **诚实接受的局限**：本地泄露的浓缩性风险、"机器被控"应用层无解、
 加密与检索的矛盾（采用索引明文+内容加密，无法消除只能管理）、本地模型能力有限
 
+### 3.11 功能审计清理（2026-09-18，agent-PM 执行）
+
+按竞争力审计结论（"数据主权 + 可验证信任 + 架构隔离 + Memory 粘性"四条锚点之外皆为商品/过度建设）执行三优先级清理：
+
+**① 修复"对话菜单看不出价值"**：`SessionSwitcher.tsx`（完整会话下拉，显示最后一句问题）此前是死代码、未挂接任何导航；已接入 `ChatInterface` 顶部，替换裸 `Session {id}…`。后端 `/v1/sessions/recent` 已返回 `last_user_message`，故下拉现在显示有意义预览，可切换/新建会话。
+
+**② 清理死代码与重复后端（零功能损失）**：
+- 删前端：`manager-workspace/*`（4 文件）、`lib/api_trst4x.ts`、`dashboard/GatewayStatusCard.tsx`、`dashboard/EvidenceReportPanel.tsx`、`app/dashboard/layout.tsx`
+- 删后端路由：`/v1/beta`（后 Beta 废弃）、`/v1/manager-messages`、`/v1/manager`（与 manager-conversations 双轨重复）
+- `app.ts` 同步移除挂载与导入
+- **保留**（运维/功能价值，非"不必要"）：`admin` / `observability`（极客自部署可读）、`sessions`（现被 SessionSwitcher 使用）、`prompt-templates`（真实 CRUD，留待补 UI）
+
+**③ 加固 auth（不锁登录）**：
+- `/auth/token` 明文 `!==` 比较改为恒定时间比较（`crypto.timingSafeEqual`），防时序攻击
+- 启动时若检测到 `admin:changeme` 默认弱口令，打印 `[AUTH-SEC]` 告警
+- `beta-invite` 中间件为按需启用（`TRUSTOS_BETA_INVITE_REQUIRED=true` 才拦截），当前未启用、不阻断，保持不变
+
+**验证**：前后端 `npx tsc --noEmit` 均 exit 0（无报错）。
+
+**待办**：本次改动全部未提交（github.com:443 网络仍阻断），待网络恢复后一并提交。
+
+### 3.12 极客友好部署 Quickstart（2026-09-18，agent-PM 自主）
+
+补 Boss P0「5D 极客友好部署」缺口（此前 README 仅愿景、无极客跑起来指引）：
+- 新增 `docs/geek-quickstart.md`：5 分钟从零到登录，含必改 `.env` 项、服务端口表、改码后重建命令、运维/局限。
+- `.env.example` 模型默认值 `Qwen/Qwen2.5-72B-Instruct` → `deepseek-ai/DeepSeek-V4-Flash`（与后端/compose 一致，消除首跑模型不匹配坑），并补注释。
+- `README.md` 顶部加一句指向 quickstart。
+- 核查 `docker-compose.yml`：模型覆盖 bug 已修（模型经 `env_file:.env` 注入，未硬写）；`.env.example` / `.env.private-beta.example` 模板齐备；`docker/prometheus` 配置存在。
+- 孤儿 `/v1/gateway/*` 端点：前端仅 1 处注释提及，已由前序 P0-P2 修复（Gateway 部署 + 纯 JS 索引）解决，非现存 bug。
+
+**下一步 gate（需 Boss 拍板，超出自主权）**：**Memory 真实化（粘性钩子，RFC-001 待签核）** —— 这是当前最大差异化缺口，但落地需 charter 签核，未擅自实现。
+
+### 3.13 RFC-001 Phase 1 核签与验证（2026-09-18，agent-PM）
+
+Boss 签核「按建议全部通过」。实施时重大发现：**Phase 1 已在先前工作中完整实现，但未被记入本卡片**（文档纪律缺口，本次补录）。
+
+已实现并接线（逐阶段核对）：
+- **阶段0 主权层 `conversation_turns`**：迁移 `032_sovereign_conversation_turns.sql` + `src/db/repositories/conversation-turn.ts`（异步 `recordAsync`/`recordAssistantAsync`、`containsSecret`/`hashContent`、归档支持）；`src/db/schema.sql:757` 已含建表。
+- **阶段1 L0 蒸馏**：`src/services/memory/distiller.ts`（记住/以后都/我喜欢/我们决定/不要/我叫 等规则 + 置信度分级 + 重叠抑制）+ `src/api/chat.ts:182-212` 已接线（`recordAsync` + `distilTurn`）。
+- **阶段2 检索边界**：`src/services/memory/injector.ts` 只回蒸馏物、跳过 pending、`filterBySensitivity` 拦截非 public 出境；`src/services/llm-native-router.ts:443-444` 闭环注入（local/remote 双路径）。
+- **阶段3 治理**：`/v1/memory` 的 `/governance`、`/:id/confirm`、`/injections`；前端 `MemoryGovernanceSurface` 接真实数据（非 fixture）。
+
+**验证套件（全绿，含实时 DB 实测）**：
+- `npm run verify:distill`（L0 蒸馏，纯逻辑）→ 39/0 ✅
+- `npm run verify:inject`（注入引擎，纯逻辑）→ 37/0 ✅
+- `npm run verify:memgate`（出境敏感度门，实时 DB）→ 13/0 ✅
+- `npm run verify:assistant`（助手落库+去重，实时 DB）→ 21/0 ✅
+- `npm run verify:sovereign`（归档：原文保留/冷层加密，实时 DB）→ 18/0 ✅
+- `npm run verify:backup`（加密快照/防篡改，实时 DB）→ 23/0 ✅
+- `npm run verify:replay`（归档重放/时效门，实时 DB）→ 34/0 ✅
+- **合计 185 项断言全绿**。关键实证：`memgate` 实测 `remote blocked 4/5 by sensitivity`；`sovereign` 实测 `turns still exist after archive (marked, not deleted)` 且 `distilled memory NOT archived away`；`assistant` 实测 `identical second write is skipped (duplicate)`。
+
+**本轮新增**：`GET /v1/sessions/:id/turns`（RFC 阶段2 本地原文回溯端点，`user_id` 隔离防越权），供治理 UI 从记忆跳回原始对话；后端 `tsc --noEmit` 通过（该端点本身无自动化 verify 脚本，前端跳转为后续小项）。
+
+**环境说明**：本次为跑验证仅 `docker compose up -d postgres` 起数据库（不构建后端/前端）。要真正在对话里体验粘性记忆，需 `docker compose up -d` 起全栈。
+
+### 3.14 Memory 价值模型纠偏 + 审计链核查 + RFC-002 起草（2026-09-20，agent-PM）
+
+Boss 纠偏：Memory 真实主价值**不只是"粘性钩子"**，而是三重：
+- **A. 保真（架构主价值）**：跨 Manager→Worker 加工边界——派活时召回历史 prompt 作 grounding，防 Manager 加工信息损耗。
+- **B. 粘性/画像**：RFC-001 蒸馏层（`memory_entries`/`identity_memories`）的次要产出。
+- **C. 用户可审计（Boss 2026-09-20 加）**：用户可查工作历史、审计 Manager 的 prompt 与派发的任务。
+
+**代码核查（只读，`src/db/schema.sql` + 运行时调用点）**：审计链数据**大多已在写**，真正缺"露+串+查"：
+| 表 | 运行时写入 | 读 API | 说明 |
+|---|---|---|---|
+| `conversation_turns` | ✅ `chat.ts:182/700/1044`（受 `TRUSTOS_SOVEREIGN_STORE` 门控） | ✅ `/sessions/:id/turns` | → A 召回源已就绪 |
+| `task_commands` | ✅ `llm-native-router.ts:2163`（`payload_json`=派发 brief） | ❌ 无 | 写但不可查 |
+| `task_worker_results` | ✅ `slow-worker-loop.ts:465,1031` + `execute-worker-loop.ts:144` | ❌ 无 | 写但不可查 |
+| `task_archives` | ✅ | ✅ | 含 original/delegation_prompt/task_brief/manager_decision |
+| `manager_messages` | ⚠️ 仅专用"Manager 对话"功能写（`conversation-service.ts:166`）；普通委托流不写 | ✅ | 普通流缺 Manager 留痕 |
+| `delegation_archive` | ❌ **死表**（repo 有但运行时从未调用） | ❌ | 与 task_archives 重复，待清理 |
+
+**缺口 = "露 + 串 + 查"**：`task_commands`/`task_worker_results` 无读 API；无统一审计时间线；普通流 Manager prompt 不留痕；`delegation_archive` 死表。
+
+**交付**：`docs/strategy/RFC-002-memory-audit-work-history.md`（**ACCEPTED**，2026-09-20，五决策按建议拍板）。四阶段：
+- **Phase 0**（✅ 完成）清死表 `delegation_archive`（DROP + 迁移 036 + `archive-replay` 重定向到 `task_archives`）+ 普通流 Manager 加工 prompt 留痕（`llm-native-router.ts`）。
+- **Phase 1**（✅ 完成）读 API：`/v1/tasks/:id/commands`、`/v1/tasks/:id/worker-results`（user_id 归属校验）；统一 `GET /v1/work-history`（跨 4 表聚合 + `ILIKE` 全文）；`task_commands`/`task_worker_results` 落库接 Event Backbone 哈希链（`task_dispatch`/`worker_result`）。
+- **Phase 2**（✅ 完成）前端统一审计视图：`WorkHistoryView`（时间线+全文搜索+按 type 着色）+ 侧栏「工作历史」入口；`fetchWorkHistory` 接入。
+- **Phase 3**（后置，决策通过）A 保真召回——派活时从历史 prompt 召回 grounding，待单独立项。
+
+**菜单收敛（2026-09-21，Boss 拍板「两者都合并」）**：原 9 个侧栏项收敛到 7 个，消除重复入口：
+- **归档 → 工作历史**：`task_archives` 作为第 5 个源 `type="archive"` 并入统一 `GET /v1/work-history`（真超集，归档数据不丢）；`WorkHistoryView` 增加「任务归档」筛选 chip 与渲染。`ArchiveView.tsx` 删除（无引用）。
+- **委托 → 审计**：`AuditReviewSurface` 增加「🤖 委托会话」tab，内嵌原 `ManagerView`（Manager↔Worker 分派会话/契约），保留人工审核队列 + 事件链。`ManagerView` 不再作为独立菜单，仅被审计视图引用。
+- 侧栏 `NAV_ITEMS` 现为 7 项：对话 / 任务 / 记忆 / 权限 / 工作历史 / 仪表盘 / 审计。
+
+验证：前后端 `tsc --noEmit` 全绿；`verify:workhistory` 19/0（断言已更新为五表超集）；运行态后端 `/v1/work-history` 实测 179 条（含 archive）。
+
+**验证脚本（DB 行为级，2026-09-20 新增，全绿）**：
+- `npm run verify:workhistory`（18 断言）：四表合并出全部 4 type、ILIKE 全文、session 过滤、user_id 隔离、limit/offset 分页。
+- `npm run verify:auditapi`（20 断言）：app.ts 挂载 + 响应信封契约 {total,limit,offset,items} + 无 identity 返回空 + limit 上限 200。
+- `npm run verify:managerprompt`（13 断言）：Phase 0b 留痕路径接线（源码）+ manager_messages 真实出现在审计流为 manager_prompt。
+- 已并入 `verify:trust` 聚合。
+
+**修复：verify 脚本当场抓出 3 个后端真实 bug（work-history.ts）**：
+1. `manager_messages` 查询写死 `session_id` 列，但该表无此列（仅 `related_session_id`）→ 改为按 `related_session_id` 作用域 + SELECT 别名。
+2. `whereJoined` 把表别名写死成 `t`，但 `task_worker_results` 查询用别名 `twr` → `t.user_id` / `t.payload_json` 无 FROM 入口 → 参数化 `tableAlias`。
+3. `whereJoined` 全文检索回退列写死 `payload_json`，但 `task_worker_results` 没有该列（是 `result_json`）→ 参数化 `jsonCol`。
+
+**排查结论（2026-09-21，已澄清，非 bug）**：
+- 之前 verify 脚本跑 seed 时冒 `EVENT_WRITE_FAILED: primary store write failed`，原以为是 Phase 1c 哈希链静默失败。经一次性探针确认：**这是测试脚手架假象，不是生产缺陷**。根因：Event Backbone 的 `storePath` 只在完整应用启动 `src/index.ts` 的 `initEventStore(config.trustosEventLogPath)` 时初始化；verify 脚本直接 import repo 模块调用 `TaskCommandRepo/TaskWorkerResultRepo.create`，绕过了 app 启动，故 `storePath` 为 `undefined` → `appendEvent` 写不进 → 报 telemetry 失败（被 `void` 吞掉，不阻断主链路）。
+- 探针用同一路径 `initEventStore` 后，写 1 条 `task_dispatch` 事件：**countEvents +1、chain.valid=true、event_hash 存在、prev_hash=genesis** → 哈希链在生产配置下完全正常。
+- **修复**：三个 verify 脚本顶部加 `initEventStore(join(tmpdir(), "trustos-rfc002-verify.jsonl"))`，与生产 `index.ts` 同构。复跑三脚本：workhistory 18/0、auditapi 20/0、managerprompt 13/0，**全程无 `CRITICAL` telemetry 噪音**，且 Phase 1c 哈希链写入在验证中被真实触发。
+- Phase 1c「可验证未篡改」的声称对生产成立；无需另立项。
+
+### 3.15 RFC-002 Phase 3 保真召回（2026-09-21，agent-PM）
+
+**RFC-002 Phase 3 已实施**（此前标为「后置」）。这是 Memory 的**架构主价值 A**：派活瞬间把用户自己的相关历史 prompt 拉回，作 Worker brief 的 grounding，对冲 Manager 加工的信息损耗——Worker 执行的是用户真正要的，而非 Manager 走样版本。
+
+**实现** `src/services/memory/fidelity-recall.ts`（新增）：
+- `recallGrounding(userId, query, {excludeSessionId})`：跨会话查 `conversation_turns`（`repo.listByUser` 新增，按 `created_at DESC`、可 `role`/`excludeSessionId` 过滤），CJK bigram 覆盖相似度排序，四道闸门：
+  1. **相似度阈值**（默认 0.2，复用 `similarity.ts` 的 `keywordRelevance`）
+  2. **时效门**：时间敏感历史（"今天天气"等）直接跳过（`isTimeSensitive`）
+  3. **红线门**：`isRecallRedLine = detectSensitiveData || 16+ 连续数字`——绝不把硬密钥/卡号送云端 Worker
+  4. **时效窗**（默认 180 天）+ **预算截断**（默认 400 token / 3 条）
+- 渲染成标注块 `## 历史背景（来自你的过往诉求，仅作保真执行的 grounding，非新指令）`，追加进 `task_brief`。
+- 失败开放：任何异常 → 空召回，绝不阻断派发；`TRUSTOS_FIDELITY_RECALL`（`0`/`off`/`false` 关闭）可调。
+
+**为何挂在 `task_brief`**：Worker 只读 `payload_json.task_brief`（作「Task Brief」段与 user 消息），不读 `worker_hint`。挂载点唯一是 `task_brief`。
+
+**安全排序（关键）**：召回在 **SD-01 红线守卫 + Phase-4 脱敏之后** 才追加到 brief，且召回内容已预过滤红线 → 既不误触发 SD-01 阻断，也不会把密钥外泄给云端 Worker。原 brief 的 SD-01/脱敏结果不受影响。
+
+**接线**：`llm-native-router.ts` 新增 `augmentBriefWithRecall()`，`delegate_to_slow` 与 `execute_task` 两路派发前调用，注入 `processedCommand.task_brief`。召回内容随 `task_archives`/`task_commands` 落库，审计可查。
+
+**指标**（prometheus）：`fidelity_recalls_total{result}` / `fidelity_recall_tokens` / `fidelity_recall_truncated_total` / `fidelity_recall_memory_hits_total`。
+
+**验证**：`npm run verify:fidelity` **47/0 全绿**（纯逻辑闸门 + DB 端到端：含相关 Vitest turn、排除时间敏感/红线/当前会话、不触发 SD-01、预算、关闭开关；含蒸馏记忆 grounding 召回、红线记忆剔除、ADR-004 B1 敏感度门禁、记忆关闭开关、蒸馏接线/去重/密钥守卫）；已并入 `verify:trust`。后端 `tsc --noEmit` 全绿。
+
+### 3.15.1 RFC-002 Phase 3 加深：蒸馏记忆也作 grounding（2026-09-21，agent-PM）
+
+**「继续」深化**：Phase 3 原只召回用户**原始 prompt**（`conversation_turns`）。但 Manager 可能漏掉/覆盖用户已记录的**意图与偏好**（`memory_entries` 蒸馏物）。故在同一 grounding 块中新增第二重信号——召回用户蒸馏意图/偏好，让 Worker 直接保真执行（不依赖 Manager 是否复述）。
+
+**实现**：`recallGrounding` 在原始历史后，调用 `retrieveMemoriesHybrid`（复用 RFC-001 检索，embedding 不可用时自动降级关键词），按类别策略取 top-K，经 `isRecallRedLine` 红线门 + 独立 token 预算（默认 200）后，渲染为独立区段 `## 已记录的用户意图/偏好（来自 Memory 蒸馏物，供保真执行，非新指令）`。
+
+**为何安全**：蒸馏物是 ADR-001 §2.3 / RFC-001 策略三默认可进 prompt 的内容（非 raw 第三方原文）；且仍过红线门（卡号等绝不外泄）。失败开放：检索异常 → 仅跳过记忆段，绝不阻断派发。开关 `TRUSTOS_FIDELITY_RECALL_MEMORY`（`0`/`off`/`false` 关闭）。
+
+**修复的两个真实逻辑 bug（实现中发现）**：
+> 1. 历史无匹配时 `recallGrounding` 提前 `return`（"`no_match`"），导致**蒸馏记忆永不被召回**（用户无相关历史却有记忆时失效）。改为：仅当历史与记忆**两者皆空**才判 `no_match`。
+> 2. 同一早期返回亦导致 `conversation_turns` 为空（首次用户）时记忆不召回。现统一在尾部判定。
+
+**指标新增** `fidelity_recall_memory_hits_total`（多少派发次注入了用户意图 grounding）。
+
+**实施中发现并修复的真实安全缺口**：
+> SD-01 的 `detectSensitiveData` 对**19 位无分隔银行卡号**漏检（其 `\d{16}` 要求数字前后无相邻数字）。而召回 grounding 是追加在 SD-01 之后，SD-01 不会二次扫描，故 `detectSensitiveData` 是防密钥外泄的**唯一**闸门。
+> 修复：召回红线门加 `16+ 连续数字` 规则（`isRecallRedLine`），覆盖 SD-01 漏掉的长卡号；宁可错杀（安全优先）。
+
+### 3.15.2 边界收口：保真召回对记忆套用 ADR-004 B1 敏感度门禁（2026-09-21，agent-PM）
+
+**「继续」第 1 项**：RFC-001 Phase 1 阶段2 安全边界收口——检索默认返回蒸馏物、原文（`unknown`/非 `public` 记忆）仅显式 `includeRaw` 才进云端模型。
+
+**边界审计结论**：`MemoryEntry` 只有 `content`（蒸馏物）、**无 `raw_content` 字段**，故 `selectMemories`/`retrieveMemoriesHybrid` 天然只取蒸馏物，ADR-001 §2.3「检索默认返回蒸馏物」在存储模型层已满足。但发现**真实缺口**：刚落地的 Phase 3 保真召回把 `memory_entries.content` 注入云端 Worker brief 时，**只过了模式级红线门，没走 ADR-004 B1 的 remote 敏感度门禁**——而 `selectMemories`（Manager 路径）已强制 `remote` 仅放行 `public`。这意味着 `unknown`/`restricted` 记忆会被默认送进云端 Worker，违反 ADR-001 §2.3 与 ADR-004 B1。
+
+**修复**：
+- 导出 `injector.ts` 的 `REMOTE_ALLOWED_SENSITIVITIES`（`public`）作为单一事实源；
+- `recallGrounding` 记忆回路新增 **门禁 5（敏感度）**：默认只放行 `public` 蒸馏记忆，`unknown/sensitive/restricted/internal` 一律拦截（observability：`stats.memoryBlockedBySensitivity`）；
+- 新增 `includeRaw` 选项——显式 `true` 即视为用户确认，放行非 `public`（对应 ADR-001 §2.3「确需引用进 prompt 时须用户显式确认」）。
+
+**验证（verify:fidelity 新增 2 条，现 41/0）**：
+> - 非 `public` 记忆默认被拦截（`memoryBlockedBySensitivity > 0`、内容不进 block）；
+> - `includeRaw: true` 时非 `public` 记忆被注入。
+
+> 注：`conversation_turns`（用户自有 L1 原话）仍只过红线门——其送云端 Worker 与当前 prompt 同一信任模型（Worker 本就处理用户原话），红线门覆盖密钥/卡号等；记忆面则按 ADR-004 严格分级。
+
+### 3.15.3 让 Memory 随使用真实积累：蒸馏接线 + 去重（2026-09-21，agent-PM）
+
+**「继续」第 2 项**：L0 蒸馏器（`distilTurn`，零 LLM 调用、只认显式信号）其实**早已在 `api/chat.ts` 接线**（用户说"记住/以后都/我喜欢"即写 `memory_entries`）。所以"Memory 空"主要是设计使然（高精准、只认显式指令），而非完全没接线。审计发现的**真实缺口是去重**：同一指令重复说会创建重复记忆行，导致记忆膨胀/检索噪声。
+
+**修复**：
+- 抽出可单测的 `src/services/memory/distill-on-ingest.ts`（`distillTurnToMemory`）：蒸馏 → `partitionByConfidence` 取 active → **`MemoryEntryRepo.existsByContent` 去重** → `create`；失败开放、默认开（开关 `TRUSTOS_MEMORY_DISTILL`）。
+- `MemoryEntryRepo` 新增 `existsByContent(userId, content)` 廉价去重探针。
+- `chat.ts` 内联蒸馏块改为 `void distillTurnToMemory(userId, userText, sessionId).catch(...)`，非阻塞、逻辑集中、可测。
+
+**验证（verify:fidelity 新增 6 条，现 47/0）**：显式信号落库（fact/auto_learn）；重复信号去重（仍为 1 行）；含密钥原话**绝不蒸馏**（distiller 的 `SENSITIVE_RE` 守卫）。蒸馏条目默认 `unknown` 敏感度，按 ADR-004 B1 仅进本地/Manager、不进云端 Worker，安全。
+
+> 已知局限（**已解决 2026-09-22，计划 A**）：`distillTurnToMemory` 现同时持久化 `active` + `pending`，pending 进 `MemoryGovernanceSurface` 审阅队列，用户「✓ 确认」才激活并能被检索命中；审阅 UI 与接口早已齐备。
+
+### 3.16 Memory 粘性闭环 A + RAG 本地模型 D（2026-09-22，agent-PM，按计划 PLAN-2026-09-21 执行）
+
+按用户审批顺序 **A → B（验证） → D → C** 推进，B 项用户已采信既有核实（前端 tsc 0 / 无孤儿端点）标记 VERIFIED_DONE，不重复劳动。
+
+**A — Pending 记忆审阅队列闭环**：
+- 唯一真缺口：`distillTurnToMemory`（`src/services/memory/distill-on-ingest.ts`）原只持久化 `active`，低置信度 `pending` 被丢弃。改为 `partitionByConfidence` 同时取 `active`+`pending`，均经 `existsByContent` 去重后 `create`；pending 带 `PENDING_TAG`，`injector` 自然拦截（不进 prompt），待用户在 `MemoryGovernanceSurface` 确认/删除。
+- 前端审阅 UI 与后端 list/confirm/delete/改敏感度接口**早已齐备**，无需改动。
+- 验证：扩 `verify-memory-distiller.mts`（现 42/0）新增 §13 断言「低置信度→status:pending 且入 pending 分区」；`verify-memory-inject.mts` 37/0。
+
+**D — RAG 本地模型用户可配**：
+- 新增 `local`（OpenAI-compatible）provider：`EmbeddingConfig` 加 `baseUrl`；`getLocalEmbedding` 走 `${baseUrl}/embeddings`，`apiKey` 可选。
+- 可运行时配置：**文件存储** `.trustos/embedding-settings.json`（`TRUSTOS_EMBEDDING_SETTINGS_PATH` 可覆盖；单用户本地 OS，零 schema 变更，与事件主干一致）。`resolveEffectiveEmbeddingConfig()` 单用户全局解析第一个 `enabled` 设置覆盖 env——保证记忆存储(memory-growth)与查询(memory-retrieval)用同一模型，向量维度天然一致。
+- API：`GET/PUT /v1/settings/embedding`（身份中间件保护）+ `POST /v1/settings/embedding/validate` 探活（发 `input:"ping"`，返回向量维度并比对 `dimensions`）。`getEmbedding` 内部改调 resolver，retrieval 调用点无需改动。
+- 前端：`EmbeddingSettingsPanel` 挂 `SettingsModal`，输入 provider/baseUrl/model/可选 key/维度，带「测试连接」「保存」；`api.ts` 新增 3 函数。
+- 验证：后端 `tsc` 0；前端 `tsc` 0；`scripts/verify-embedding-settings.mts` **8/8 PASS**（无设置回退 env / local 覆盖 / disabled 回退 / store round-trip）。端到端待用户给本地地址实跑。
+- 设计偏差（已决策）：原计划 DB 表 + migration，实现改文件存储——理由见上（单用户、零变更、additive）。
+
+**C — TRST-5 Charter v0 收尾（文档，无代码）**：
+- `TRST-5-charter-draft.md` 的 5F1/5F2 经 2026-09-21 验证为 VERIFIED_DONE（前端 tsc 0；全仓仅 1 处 `/v1/gateway` 引用且受 `GATEWAY_CONFIGURED` 守卫，不命中主后端、不 404），与 commit 3f1aa70 标注一致。charter 范围/优先级不变，可提交 v0 供 Boss 正式签核。
+- 生产化 WP（5D 一键部署 / 5B 本机数据保护闭环 / 5E 本机健康 / 5A 轻量登录）仍待实施，不在 A/D 四项范围内。
+
+详见 `docs/strategy/PLAN-2026-09-21-stickiness-trst5-rag.md`。
+
 ## 4. 当前待办
 
 | 状态 | 事项 |
 |---|---|
-| 🔴 **待 Boss 拍板** | **RFC-001 Phase 1 实施**（5 项：加密方案 / L2 是否做 / 保留期 / 低置信度处理 / 是否回溯历史）。Phase 2-3 仅确认方向，现只需拍板 Phase 1 |
+| 🟢 已签核实施 | **RFC-002 Memory 审计/工作历史面**（ACCEPTED 2026-09-20；**Phase 0–3 完成**，前端 tsc 全绿；保真召回 2026-09-21 落地） |
+| 🟢 已签核待实施 | RFC-001 Phase 1（5 项按建议全通过，2026-09-18；185 断言全绿已验证） |
 | 🟡 待网络恢复 | push 全部本地 commit（github.com:443 阻断） |
-| 🟢 可随时做 | 同步 `TRST-0` 文档中的旧护栏表述（已被 ADR-001/002 变更，原文未同步） |
+| 🟢 已完成（2026-09-22） | **TRST-0 护栏同步** — 顶部变更提示 + §7 invariant 11/12 已为 ADR-001/002 新护栏（本地优先留存 + 外发强制加工），经核查无需改动 |
+| 🟢 已完成（2026-09-22） | **Memory 粘性闭环 A** — 蒸馏器持久化 pending 进审阅队列，端到端闭合（前端审阅 UI 早已齐备） |
+| 🟢 已完成（2026-09-22） | **RAG 本地模型 D** — 用户可配本地/OpenAI 兼容 embedding 端点（`/v1/settings/embedding` + 前端面板），记忆检索可本地化、数据不出本机 |
+| 🟢 已签核（2026-09-22） | **TRST-5 Charter v0 收尾（C）** — Boss 正式签核；5F1 已 VERIFIED_DONE、5D docs 已做；生产化 WP **5A/5B/5E/5F2 待实施**（按 5A→5B→5D→5E 顺序；后端 JWT 骨架 Sprint 48 已落，剩前端接线 + AC 验证） |
 
 ## 5. 验证入口
 
@@ -326,7 +529,9 @@ npm run verify:trust
 | `verify:bundle` | 26 | Evidence Bundle 隐私 + 签名 |
 | `verify:assess` | 11 | Assessment 新信号 |
 | `verify:egress-fp` | 6 | 零误伤 |
-| **合计** | **135** | |
+| `verify:fidelity` | 47 | RFC-002 Phase 3 保真召回（闸门纯逻辑 + DB 端到端，含蒸馏记忆 grounding + ADR-004 B1 敏感度门禁 + 蒸馏接线/去重） |
+| **合计** | **168** | |
+| *注* | *§5 仅列代表性分组；完整 20 组见 `package.json` 的 `verify:trust`* | |
 
 ## 6. 关键文档索引
 
@@ -336,7 +541,8 @@ npm run verify:trust
 | `TRST-execution-log.md` | 完整时间线（3828+ 行） |
 | `ADR-001-local-first-egress-processing.md` | 护栏重述决策（本地存 + 外发加工） |
 | `ADR-002-data-sovereignty-principle.md` | **数据主权原则**（为什么必须本地留存；分层主权模型 L1-L4） |
-| `RFC-001-local-memory-distillation.md` | 主权数据战略 + Memory 蒸馏 + 四阶段演进路线（待拍板 Phase 1） |
+| `RFC-001-local-memory-distillation.md` | 主权数据战略 + Memory 蒸馏 + 四阶段演进路线（Phase 1 已签核实施并验证） |
+| `RFC-002-memory-audit-work-history.md` | Memory 审计/工作历史面：原文→Manager prompt→派发任务→结果 可查可审计（ACCEPTED；Phase 0–2 完成，前端视图已接） |
 | `trst-system-review-and-competitive-analysis-2026-08-28.md` | 系统全景 + 竞品对比 + 诚实评估 |
 | `TRST-0-trustos-architecture-thesis.md` | 战略基线（⚠️ 护栏表述已被 ADR-001 变更，待同步） |
 | `TRST-5-charter-draft.md` | TRST-5 章程 |

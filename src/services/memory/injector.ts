@@ -285,7 +285,16 @@ type SelectMemoriesOptions = {
  * `unknown` 不是「系统判断不了」，而是「用户还没审阅」（阶段 B0 赋予的
  * 语义），所以它和 sensitive/restricted 一样拒绝，但用户可以主动解锁。
  */
-const REMOTE_ALLOWED_SENSITIVITIES = new Set<MemorySensitivityTier>(["public"]);
+/**
+ * ADR-004 阶段 B1 —— 哪些敏感度的 memory 允许发给云端模型（remote 接收方）。
+ *
+ * 仅 `public`。`internal` 暂不放行（需阶段 D 转译后才开放），`unknown` 是
+ * "用户未审阅"而非"系统判断不了"，与 sensitive/restricted 同样拒绝。
+ *
+ * 导出给 fidelity-recall 复用：保真召回把 memory 注入云端 Worker brief 时，
+ * 必须套用同一道 remote 门禁，避免"检索默认返回蒸馏物"被绕过。
+ */
+export const REMOTE_ALLOWED_SENSITIVITIES = new Set<MemorySensitivityTier>(["public"]);
 
 /**
  * 按接收方过滤 memory 敏感度。
