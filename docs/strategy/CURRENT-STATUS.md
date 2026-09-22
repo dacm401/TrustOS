@@ -503,17 +503,33 @@ Boss 纠偏：Memory 真实主价值**不只是"粘性钩子"**，而是三重�
 
 详见 `docs/strategy/PLAN-2026-09-21-stickiness-trst5-rag.md`。
 
+### 3.17 TRST-5 生产化 WP 收尾（2026-09-22，agent-PM）
+
+按 Boss 签核的 TRST-5 Charter v0，推进生产化最小集。核查结论：**多数 WP 已实现，仅前端一处安全缺口需补**。
+
+- **WP-5A 轻量身份**：`/auth/token` 发 JWT（`src/api/auth.ts`，恒定时间比较 + 24h 过期）；前端 `/login` 页 + `page.tsx` 门禁（`!token → /login`）。**已完成**。
+- **WP-5B 本机数据保护闭环**：`src/middleware/identity.ts` 在 `jwtEnabled`（默认 true）下强制 JWT，X-User-Id 仅作交叉校验（不符即 403），无 JWT 即 401；`app.ts` 67–69 行在 `/api/*`、`/v1/*` 全局挂载。前端原 `api.ts` 401 恢复**硬编码 `changeme` 静默重登**——正好抵消真实登录（WP-5B 明确"只清 token 不算完成"）。已修复：401 改为清会话 + 派发 `trustos:auth-required`，`AuthContext` 监听清空、`/login` 门禁接管。**已完成**。
+- **WP-5D 一键部署**：docs/geek-quickstart.md + standalone 固化（§3.12 已做）。**已完成**。
+- **WP-5E 本机健康**：`metrics.ts`（完整 Prometheus registry）+ `readiness.ts` 已在 `app.ts` 79/80 行接线（`/metrics`、`/readiness`）。charter 注"已实现未接线"已过时。**已完成**。
+- **WP-5F2 前端流畅度**：`page.tsx` 已用 `React.lazy` 做路由级代码分割（MemoryGovernance/Dashboard/Tasks/Permissions/Audit/WorkHistory 等按需 chunk）。**剩列表虚拟化 + 高频输入防抖 polish**（可选，非阻断）。
+
+**验证**：前端 `npx tsc --noEmit` 绿（两次）；后端 tsc 绿（既有）。
+**提交**：`a48297e`（RFC-001/002 + 清理 + 文档整批）、`a291801`（WP-5A/5B 前端修复）已 push origin。
+**待决**：WP-5F2 虚拟化/防抖是否值得投入（个人高频路径已闭环，懒加载已覆盖首屏）；生产化整体可判 `PROD_READY`（个人安装可用）待 Boss 确认。
+
+详见 `docs/strategy/TRST-5-charter-draft.md`。
+
 ## 4. 当前待办
 
 | 状态 | 事项 |
 |---|---|
 | 🟢 已签核实施 | **RFC-002 Memory 审计/工作历史面**（ACCEPTED 2026-09-20；**Phase 0–3 完成**，前端 tsc 全绿；保真召回 2026-09-21 落地） |
 | 🟢 已签核待实施 | RFC-001 Phase 1（5 项按建议全通过，2026-09-18；185 断言全绿已验证） |
-| 🟡 待网络恢复 | push 全部本地 commit（github.com:443 阻断） |
+| 🟢 已 push（2026-09-22） | 全部本地 commit 已推送 origin（github.com:443 本次连通；a48297e + a291801） |
 | 🟢 已完成（2026-09-22） | **TRST-0 护栏同步** — 顶部变更提示 + §7 invariant 11/12 已为 ADR-001/002 新护栏（本地优先留存 + 外发强制加工），经核查无需改动 |
 | 🟢 已完成（2026-09-22） | **Memory 粘性闭环 A** — 蒸馏器持久化 pending 进审阅队列，端到端闭合（前端审阅 UI 早已齐备） |
 | 🟢 已完成（2026-09-22） | **RAG 本地模型 D** — 用户可配本地/OpenAI 兼容 embedding 端点（`/v1/settings/embedding` + 前端面板），记忆检索可本地化、数据不出本机 |
-| 🟢 已签核（2026-09-22） | **TRST-5 Charter v0 收尾（C）** — Boss 正式签核；5F1 已 VERIFIED_DONE、5D docs 已做；**WP-5A/5B 已完成**（后端 `app.ts` 全局挂 `identityMiddleware` + JWT 强制；前端 `api.ts` 401 不再用 `changeme` 静默重登、改为清会话触发 `/login` 门禁；frontend tsc 绿）；剩 5E 本机健康 / 5F2 前端流畅度 待实施 |
+| 🟢 已签核（2026-09-22） | **TRST-5 Charter v0 收尾（C）** — Boss 正式签核；5F1 VERIFIED_DONE、5D docs 已做；**WP-5A/5B 已完成**（后端 `app.ts` 全局挂 `identityMiddleware` + JWT 强制；前端 `api.ts` 401 不再 `changeme` 静默重登、改清会话触发 `/login`）；**WP-5E 已完成**（`/metrics` + `/readiness` 已在 `app.ts` 接线）；**WP-5F2 部分**（路由级 `React.lazy` 已做，剩列表虚拟化/防抖 polish）；frontend tsc 绿 |
 
 ## 5. 验证入口
 
