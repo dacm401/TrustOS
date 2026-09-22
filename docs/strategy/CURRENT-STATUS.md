@@ -513,7 +513,7 @@ Boss 纠偏：Memory 真实主价值**不只是"粘性钩子"**，而是三重�
 | 🟢 已完成（2026-09-22） | **TRST-0 护栏同步** — 顶部变更提示 + §7 invariant 11/12 已为 ADR-001/002 新护栏（本地优先留存 + 外发强制加工），经核查无需改动 |
 | 🟢 已完成（2026-09-22） | **Memory 粘性闭环 A** — 蒸馏器持久化 pending 进审阅队列，端到端闭合（前端审阅 UI 早已齐备） |
 | 🟢 已完成（2026-09-22） | **RAG 本地模型 D** — 用户可配本地/OpenAI 兼容 embedding 端点（`/v1/settings/embedding` + 前端面板），记忆检索可本地化、数据不出本机 |
-| 🟢 已签核（2026-09-22） | **TRST-5 Charter v0 收尾（C）** — Boss 正式签核；5F1 已 VERIFIED_DONE、5D docs 已做；生产化 WP **5A/5B/5E/5F2 待实施**（按 5A→5B→5D→5E 顺序；后端 JWT 骨架 Sprint 48 已落，剩前端接线 + AC 验证） |
+| 🟢 已签核（2026-09-22） | **TRST-5 Charter v0 收尾（C）** — Boss 正式签核；5F1 已 VERIFIED_DONE、5D docs 已做；**WP-5A/5B 已完成**（后端 `app.ts` 全局挂 `identityMiddleware` + JWT 强制；前端 `api.ts` 401 不再用 `changeme` 静默重登、改为清会话触发 `/login` 门禁；frontend tsc 绿）；剩 5E 本机健康 / 5F2 前端流畅度 待实施 |
 
 ## 5. 验证入口
 

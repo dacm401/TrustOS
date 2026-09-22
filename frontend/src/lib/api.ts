@@ -1,18 +1,29 @@
-import { getToken as _getToken, setToken as _setToken } from "./auth";
+import { getToken as _getToken, setToken as _setToken, clearToken } from "./auth";
 const getToken = _getToken;
 const setToken = _setToken;
+
+/**
+ * Signal that the current session is no longer authenticated (missing/expired
+ * token, or a 401 from the backend). Clears the stored token and notifies the
+ * app so the /login guard can take over. We deliberately do NOT silently
+ * re-authenticate — that would bypass the real login and defeat WP-5A/5B.
+ */
+function signalAuthRequired(): void {
+  if (typeof window === "undefined") return;
+  clearToken();
+  window.dispatchEvent(new Event("trustos:auth-required"));
+}
 
 const RAW_API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").trim();
 const getApiBase = (): string => (RAW_API_BASE || "http://localhost:3001").replace(/\/$/, "");
 export { getApiBase };
 
 /**
- * Install a one-shot patch on window.fetch that transparently recovers from
- * 401 by obtaining a fresh token with the same X-User-Id and retrying.
- *
- * The same root cause (token written to localStorage AFTER the page fired its
- * first batch of useQueries calls) hits many endpoints at once, so the fix
- * belongs at the fetch layer, not at any individual call site.
+ * Install a one-shot patch on window.fetch that surfaces a 401 as a session
+ * expiry (rather than silently recovering). On 401 we clear the stored token
+ * and dispatch `trustos:auth-required`; AuthContext listens and the /login
+ * guard in page.tsx takes over. We intentionally do NOT auto-re-authenticate
+ * with a hardcoded password — that would bypass the real login (WP-5A/5B).
  *
  * Idempotent: re-invocation is a no-op.
  */
@@ -26,28 +37,8 @@ export function installFetchAuthRecovery(): void {
   const original: F = w.fetch.bind(window);
   w.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const res = await original(input, init);
-    if (res.status !== 401) return res;
-
-    // Discover the user id from the request itself (callers all send X-User-Id).
-    const headers = (init?.headers as Record<string, string> | undefined) ?? {};
-    const xuid = headers["X-User-Id"] ?? "admin";
-
-    try {
-      const tokenRes = await original(`${getApiBase()}/auth/token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: xuid, password: "changeme" }),
-      });
-      if (!tokenRes.ok) return res;
-      const data = (await tokenRes.json()) as { token?: string };
-      if (!data?.token) return res;
-      setToken(data.token);
-      // Patch the retry's Authorization header in place rather than rebuild the body.
-      const retryHeaders: Record<string, string> = { ...headers, Authorization: `Bearer ${data.token}` };
-      return original(input, { ...init, headers: retryHeaders });
-    } catch {
-      return res;
-    }
+    if (res.status === 401) signalAuthRequired();
+    return res;
   }) as F;
 }
 const DEFAULT_API_BASE = RAW_API_BASE || "http://localhost:3001";
@@ -92,18 +83,9 @@ function buildHeaders(extra?: Record<string, string>): Record<string, string> {
 }
 
 /**
- * fetch wrapper that survives the "token written to localStorage but the page
- * fired its first batch of requests before React state caught up" race —
- * and more generally any 401 from a missing/stale token.
- *
- * Strategy: on 401, synchronously call /auth/token with the same X-User-Id
- * (the only thing we can be sure we have) and retry the original request
- * exactly once with the fresh token. If that also fails, return the original
- * 401 so the caller can show the real error.
- *
- * The same `X-User-Id` is what `/api/chat` and `/v1/...` endpoints accept;
- * the upstream `/auth/token` is intentionally credentialless (admin/changeme
- * is the only user in this single-tenant system).
+ * fetch wrapper: attaches the stored JWT and returns the response. On 401 it
+ * signals session expiry (clears the token, prompts re-login) instead of
+ * silently re-authenticating. Real login always goes through the /login page.
  */
 async function authedFetch(input: string, init: RequestInit = {}): Promise<Response> {
   const doFetch = (token: string | null): RequestInit => {
@@ -115,22 +97,11 @@ async function authedFetch(input: string, init: RequestInit = {}): Promise<Respo
   const first = await fetch(input, doFetch(getToken()));
   if (first.status !== 401) return first;
 
-  // 401 → try to obtain a fresh token using the same X-User-Id we already sent.
-  const xuid = (init.headers as Record<string, string> | undefined)?.["X-User-Id"] ?? "admin";
-  try {
-    const tokenRes = await fetch(`${getApiBase()}/auth/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: xuid, password: "changeme" }),
-    });
-    if (!tokenRes.ok) return first;
-    const data = (await tokenRes.json()) as { token?: string };
-    if (!data?.token) return first;
-    setToken(data.token);
-    return fetch(input, doFetch(data.token));
-  } catch {
-    return first;
-  }
+  // 401 → token missing/expired. Do NOT silently re-authenticate with a
+  // hardcoded password (that would bypass real login). Signal re-login;
+  // AuthContext clears the session and the /login guard takes over.
+  signalAuthRequired();
+  return first;
 }
 
 export async function sendMessage(message: string, history: any[], userId: string, sessionId: string) {
