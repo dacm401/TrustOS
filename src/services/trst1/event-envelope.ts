@@ -24,7 +24,10 @@ export type TrstEventType =
   | "mcp_prompt_proxy"
   // RFC-002 Phase 1c: task lifecycle events on the Event Backbone hash chain
   | "task_dispatch"
-  | "worker_result";
+  | "worker_result"
+  // Sprint 48 / WP-5A: auth audit events on the Event Backbone hash chain
+  | "auth.token_issued"
+  | "auth.login_failed";
 
 export type TrstEventStatus = "success" | "failure";
 
@@ -74,7 +77,7 @@ export interface TrstEventEnvelope {
   // ── Source / Destination ──
   source?: string;
   destination?: string;
-  resource_type: "model" | "tool" | "task";
+  resource_type: "model" | "tool" | "task" | "auth";
   resource_ref?: string;
 
   // ── Model-specific ──
