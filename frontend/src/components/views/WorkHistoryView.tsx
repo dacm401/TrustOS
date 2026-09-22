@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { fetchWorkHistory, type WorkHistoryItem, type WorkHistoryResponse } from "@/lib/api";
+import { useDebounce } from "@/lib/useDebounce";
 
 const TYPE_LABEL: Record<string, string> = {
   message: "对话原文",
@@ -45,12 +46,15 @@ export function WorkHistoryView({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 5F2 前端流畅度: 搜索输入防抖，避免每次按键都整页 refetch。
+  const debouncedQ = useDebounce(q, 300);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res: WorkHistoryResponse = await fetchWorkHistory(userId, {
-        q: q || undefined,
+        q: debouncedQ || undefined,
         limit: 100,
         offset: 0,
       });
@@ -61,11 +65,10 @@ export function WorkHistoryView({ userId }: { userId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [userId, q]);
+  }, [userId, debouncedQ]);
 
   useEffect(() => {
-    const t = setTimeout(load, 250);
-    return () => clearTimeout(t);
+    load();
   }, [load]);
 
   const filtered = typeFilter === "all" ? items : items.filter((it) => it.type === typeFilter);
@@ -121,7 +124,7 @@ export function WorkHistoryView({ userId }: { userId: string }) {
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
+      <div className="vlist flex flex-col gap-2">
         {filtered.map((it) => (
           <div
             key={`${it.type}-${it.id}`}

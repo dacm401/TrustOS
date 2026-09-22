@@ -201,7 +201,7 @@ export default function MemoryGovernanceSurface() {
               暂无待确认条目。低置信度的自动提取会先进入这里，经你确认后才会参与注入。
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="vlist space-y-2">
               {pending.map((m) => {
                 const prov = provenanceOf(m.tags ?? []);
                 return (
@@ -240,7 +240,7 @@ export default function MemoryGovernanceSurface() {
           )}
         </div>
 
-        <div className="space-y-4">
+        <div className="vlist space-y-4">
           {shown.map((record) => (
             <MemoryGovernancePanel
               key={record.memory_id}

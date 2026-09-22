@@ -515,7 +515,8 @@ Boss 纠偏：Memory 真实主价值**不只是"粘性钩子"**，而是三重�
 
 **验证**：前端 `npx tsc --noEmit` 绿（两次）；后端 tsc 绿（既有）。
 **提交**：`a48297e`（RFC-001/002 + 清理 + 文档整批）、`a291801`（WP-5A/5B 前端修复）已 push origin。
-**待决**：WP-5F2 虚拟化/防抖是否值得投入（个人高频路径已闭环，懒加载已覆盖首屏）；生产化整体可判 `PROD_READY`（个人安装可用）待 Boss 确认。
+**WP-5F2 尾巴（2026-09-22）**：列表原生虚拟化 `.vlist`（`content-visibility: auto` + `contain-intrinsic-size`）应用到 WorkHistory / Tasks / MemoryGovernance / AuditReview / EvidenceList 长列表（事件链 EventChainViewer 此前已做）；工作历史搜索框改用显式 `useDebounce` hook（300ms）替换原 effect 内隐式 `setTimeout`；新增 `frontend/src/lib/useDebounce.ts` 与 `.vlist` 工具类（globals.css）。frontend tsc 绿，零依赖、零行为变更。
+**待决**：生产化整体可判 `PROD_READY`（个人安装可用）待 Boss 确认。
 
 详见 `docs/strategy/TRST-5-charter-draft.md`。
 
@@ -529,7 +530,7 @@ Boss 纠偏：Memory 真实主价值**不只是"粘性钩子"**，而是三重�
 | 🟢 已完成（2026-09-22） | **TRST-0 护栏同步** — 顶部变更提示 + §7 invariant 11/12 已为 ADR-001/002 新护栏（本地优先留存 + 外发强制加工），经核查无需改动 |
 | 🟢 已完成（2026-09-22） | **Memory 粘性闭环 A** — 蒸馏器持久化 pending 进审阅队列，端到端闭合（前端审阅 UI 早已齐备） |
 | 🟢 已完成（2026-09-22） | **RAG 本地模型 D** — 用户可配本地/OpenAI 兼容 embedding 端点（`/v1/settings/embedding` + 前端面板），记忆检索可本地化、数据不出本机 |
-| 🟢 已签核（2026-09-22） | **TRST-5 Charter v0 收尾（C）** — Boss 正式签核；5F1 VERIFIED_DONE、5D docs 已做；**WP-5A/5B 已完成**（后端 `app.ts` 全局挂 `identityMiddleware` + JWT 强制；前端 `api.ts` 401 不再 `changeme` 静默重登、改清会话触发 `/login`）；**WP-5E 已完成**（`/metrics` + `/readiness` 已在 `app.ts` 接线）；**WP-5F2 部分**（路由级 `React.lazy` 已做，剩列表虚拟化/防抖 polish）；frontend tsc 绿 |
+| 🟢 已签核（2026-09-22） | **TRST-5 Charter v0 收尾（C）** — Boss 正式签核；5F1 VERIFIED_DONE、5D docs 已做；**WP-5A/5B 已完成**（后端 `app.ts` 全局挂 `identityMiddleware` + JWT 强制；前端 `api.ts` 401 不再 `changeme` 静默重登、改清会话触发 `/login`）；**WP-5E 已完成**（`/metrics` + `/readiness` 已在 `app.ts` 接线）；**WP-5F2 已完成**（路由级 `React.lazy` + 列表原生虚拟化 `content-visibility` `.vlist` + 搜索防抖 `useDebounce`）；frontend tsc 绿 |
 
 ## 5. 验证入口
 

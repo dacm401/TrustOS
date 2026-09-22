@@ -288,3 +288,15 @@ body {
     background: linear-gradient(90deg, var(--accent-green), var(--accent-amber) 60%, var(--accent-red));
   }
 }
+
+/* ============================================================
+   5F2 前端流畅度 — 长列表原生渲染虚拟化
+   ============================================================
+   .vlist 的直接子元素启用 content-visibility: auto：屏外行跳过
+   布局/绘制（含长 JSON <pre> 块），大幅降低长列表渲染成本，零依赖。
+   contain-intrinsic-size 提供未渲染项的回退高度；浏览器记忆真实高度后
+   滚动条稳定。适用于可变高列表（工作历史 / 记忆治理 / 审核队列等）。 */
+.vlist > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}

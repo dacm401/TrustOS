@@ -146,7 +146,7 @@ export function AuditReviewSurface({ sessionId, userId }: AuditReviewSurfaceProp
           )}
 
           {reviews.length > 0 && (
-            <div className="space-y-2">
+            <div className="vlist space-y-2">
               {reviews.map((r) => (
                 <div
                   key={r.id}

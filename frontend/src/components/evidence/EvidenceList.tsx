@@ -53,7 +53,7 @@ export function EvidenceList({
   }
 
   return (
-    <div className={divided ? "" : "space-y-3"}>
+    <div className={divided ? "vlist" : "vlist space-y-3"}>
       {evidences.map((ev) => {
         const cfg = SOURCE_CONFIG[ev.source] ?? SOURCE_CONFIG.manual;
         const body =

@@ -275,7 +275,7 @@ export default function TasksView({ userId }: TasksViewProps) {
         </div>
 
         {/* Task list */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="vlist flex-1 overflow-y-auto">
           {listLoading && (
             <div className="p-4 space-y-3">
               {[0, 1, 2].map(i => (
