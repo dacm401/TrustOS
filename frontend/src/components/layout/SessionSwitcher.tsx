@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { API_BASE } from '@/lib/api';
+import { API_BASE, buildHeaders } from '@/lib/api';
 
 interface Session {
   session_id: string;
@@ -55,7 +55,7 @@ export function SessionSwitcher({
     try {
       const res = await fetch(
         `${API_BASE}/v1/sessions/recent?limit=20`,
-        { headers: { 'X-User-Id': userId }, signal }
+        { headers: { 'X-User-Id': userId, ...buildHeaders() }, signal }
       );
       if (res.ok) {
         const data = await res.json();

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { fetchTasks, fetchTraces, fetchEvidence, patchTask } from "@/lib/api";
+import { fetchTasks, fetchTraces, fetchEvidence, patchTask, buildHeaders } from "@/lib/api";
 import { API_BASE } from "@/lib/api";
 import { TracePanel } from "@/components/workbench/TracePanel";
 import {
@@ -190,7 +190,7 @@ export default function TasksView({ userId }: TasksViewProps) {
     const loadAll = async () => {
       const [summaryRes, tracesRes, evidenceRes] = await Promise.allSettled([
         fetch(`${API_BASE}/v1/tasks/${encodeURIComponent(selectedTaskId)}/summary`, {
-          headers: { "X-User-Id": userId },
+          headers: { "X-User-Id": userId, ...buildHeaders() },
         }).then(r => r.ok ? r.json() : Promise.reject(r)),
         fetchTraces(selectedTaskId, userId),
         fetchEvidence(selectedTaskId, userId),

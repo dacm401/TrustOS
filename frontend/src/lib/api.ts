@@ -73,7 +73,7 @@ export const API_BASE = DEFAULT_API_BASE;
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 
-function buildHeaders(extra?: Record<string, string>): Record<string, string> {
+export function buildHeaders(extra?: Record<string, string>): Record<string, string> {
   const token = getToken();
   const headers: Record<string, string> = extra ?? {};
   if (token) {

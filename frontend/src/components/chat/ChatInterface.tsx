@@ -5,7 +5,7 @@ import { MessageBubble } from "./MessageBubble";
 import { SessionSwitcher } from "@/components/layout/SessionSwitcher";
 import { ModelSwitchAnim } from "./ModelSwitchAnim";
 import { ThinkingIndicator } from "./ThinkingIndicator";
-import { getApiConfig } from "@/lib/api";
+import { getApiConfig, buildHeaders } from "@/lib/api";
 import { useGatewayHealth, useGatewayEvents } from "@/hooks/useQueries";
 import type { Decision, StreamEvent, ProvenanceMeta, UsageInfo, ExecutionProgress } from "@/types/dashboard";
 
@@ -394,7 +394,7 @@ export function ChatInterface({
     try {
       const res = await fetch(`${apiBase}/v1/tasks/${encodeURIComponent(activeTaskId)}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "X-User-Id": userId },
+        headers: { "Content-Type": "application/json", "X-User-Id": userId, ...buildHeaders() },
         body: JSON.stringify({ action: "cancel" }),
       });
       if (res.ok) {
@@ -459,7 +459,9 @@ export function ChatInterface({
       pollCount++;
 
       try {
-        const res = await fetch(`${apiBase}/api/chat-result/${taskId}`);
+        const res = await fetch(`${apiBase}/api/chat-result/${taskId}`, {
+          headers: { "X-User-Id": userId, ...buildHeaders() },
+        });
         if (!res.ok) {
           setTimeout(poll, POLL_INTERVAL);
           return;
