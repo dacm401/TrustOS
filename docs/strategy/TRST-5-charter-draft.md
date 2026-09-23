@@ -4,7 +4,7 @@
 Version: v0 (agent-PM draft, 2026-08-24)
 Owner: Boss (scope sign-off) + Agent (PM gate authority delegated 2026-08-24)
 Branch: feature/trst-3-private-beta-readiness
-Status: v0 SIGNED_OFF (Boss final sign-off 2026-09-22; scope unchanged; 5F1 VERIFIED_DONE; 5D docs done; 待实施 WP: 5A/5B/5E/5F2)
+Status: v0 PROD_READY (Boss final sign-off 2026-09-22; PROD_READY verdict confirmed by Boss 2026-09-23; 5F1 VERIFIED_DONE; 5D docs done; WP-5A/5B/5E/5F2 all DONE; personal-install usable)
 Baseline spec: TRST-5-product-spec.md (v1, 产品目标+全景图+待实现)
 Discussion: TRST-5-discussion-2026-08-24.md
 Target user: 极客优先(愿跑容器); 真技术深度; Memory=粘性钩子; 先修破碎
