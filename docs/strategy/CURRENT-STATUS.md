@@ -4,7 +4,7 @@
 > 详细历史见 `TRST-execution-log.md`（3828+ 行，按时间追加）。
 > **维护约定**：每完成一批重要工作，必须更新本文件（见文末「维护约定」）。
 
-*最后更新：2026-09-22*
+*最后更新：2026-09-24*
 
 ---
 
@@ -22,17 +22,16 @@
 
 | Commit | 内容 |
 |---|---|
-| `2a88f0d` | docs: RFC-001 本地优先存储 + Memory 增量蒸馏设计（待拍板） |
-| `9320976` | feat(egress): **ADR-001 护栏重述** — 本地优先存储 + 外发强制加工 |
-| `b1380d2` | docs: 系统回顾文档更新（第二轮 P1-P2 完成） |
-| `945ca73` | feat: 第二轮 P1-P2（Assessment 增强 / Bundle 签名 / 索引去 native） |
-| `d339fa1` | fix(trust): P0-P2 架构断链修复（Event Backbone / 哈希链 / Gateway / Control / Audit） |
-| `7e6a0cd` | docs: 系统全景回顾与主流 Agent 对比分析 |
-| `a7929b7` | chore: 前端防御改进（EvidencePanel 重试 + 网关离线守卫） |
-| `1e01a83` | fix: 聊天 401（补 Authorization 头）+ API fallback 端口 3002→3001 |
-| `1cbcc44` | fix: 首页 client-side exception（补 QueryClientProvider） |
+| `8ab633a` | **fix(TRST-5): 修复裸 fetch 缺 Authorization 导致 401 弹回登录**（SessionSwitcher / ChatInterface cancelTask·pollDelegation / TasksView summary；见 §3.18） |
+| `2175249` | fix(TRST-5): 前端同源反代 API（消除跨端口/CORS，预览可用） |
+| `f4a03a8` | docs(TRST-5): charter verdict=PROD_READY（Boss 确认 2026-09-23），收口 CURRENT-STATUS |
+| `8a698b1` | feat(WP-5A): `/auth/token` 签发/失败写审计事件（含 actor_id），加性扩展事件类型 |
+| `6c03f7d` | perf(5F2): 列表原生虚拟化（`.vlist` content-visibility）+ 搜索防抖（useDebounce），零依赖零行为变更 |
+| `96e6b5d` | docs: TRST-5 Charter 签核 + 生产化 WP-5A/5B/5E 收尾记录（CURRENT-STATUS §3.17） |
+| `a291801` | fix(frontend): WP-5A/5B 关闭 401 静默 changeme 重登 — 改清会话触发 `/login` 门禁 |
+| `a48297e` | feat: RFC-001 Phase3 本地 RAG 嵌入可配 + RFC-002 记忆审计/工作历史 + 清理与文档同步 |
 
-⚠️ **全部未 push**（github.com:443 网络阻断），待网络恢复后一并推送。
+⚠️ **以下本地提交待 push**（github.com:443 本次已连通，待执行 `git push origin feature/trst-3-private-beta-readiness`）：`8ab633a` `2175249` `f4a03a8` `8a698b1` `6c03f7d` `96e6b5d`（`a291801`+`a48297e` 已于 2026-09-22 推送）。
 
 ## 3. 已完成的关键工作（2026-08-26 ~ 08-29）
 
@@ -521,13 +520,29 @@ Boss 纠偏：Memory 真实主价值**不只是"粘性钩子"**，而是三重�
 
 详见 `docs/strategy/TRST-5-charter-draft.md`。
 
+### 3.18 登录 401 弹回修复（2026-09-24，agent-PM）
+
+用户在预览登录后页面"一闪即回登录页"。用真实无头浏览器（Playwright/Chromium）驱动 `http://localhost:3000` 登录，抓到根因：
+- `POST /auth/token` 成功（200 + JWT），但登录后首屏自动请求 `GET /v1/sessions/recent?limit=20` 返回 **401**；
+- 该 401 触发前端全局 `installFetchAuthRecovery` → 清空 token → `router.push("/login")`（`FINAL_URL` 回 `/login`）。
+- 其他 `/v1/*`（tasks/all、permissions/pending、memory…）均 200，唯独此请求 401。
+
+**根因**：`SessionSwitcher.tsx` 用裸 `fetch` 打 `/v1/sessions/recent`，只带 `X-User-Id`、**未带 `Authorization`**。`jwtEnabled=true`（PROD_READY 默认）下 `identityMiddleware` 强制 JWT，无 JWT 即 401。§3.17 的 WP-5B 修复只覆盖了 `api.ts` helper 的 **401 恢复逻辑**（清会话触发 `/login` 门禁），**未覆盖三处裸 `fetch` 调用点**——它们本就缺头，与恢复逻辑无关，是独立缺口。
+
+**同类缺口**（交互时同样会 401 弹回）：`ChatInterface.cancelTask`（PATCH `/v1/tasks/:id`，无 token）、`ChatInterface.pollDelegation`（`/api/chat-result/:taskId`，完全无头）、`TasksView` 任务详情 `summary`（只带 `X-User-Id`）。
+
+**修复**：导出 `api.ts` 的 `buildHeaders`（自动带 `Bearer` token）并补到上述四处（`SessionSwitcher` / `ChatInterface` 两处 / `TasksView`）。
+
+**验证**：真实浏览器重跑 → 登录后 `FINAL_URL = http://localhost:3000/`（停在应用内，不再回 `/login`），`/v1/sessions/recent` 变 200；前后端 `npx tsc --noEmit` 均 0 报错。提交 `8ab633a`（本地，待 push）。
+
 ## 4. 当前待办
 
 | 状态 | 事项 |
 |---|---|
 | 🟢 已签核实施 | **RFC-002 Memory 审计/工作历史面**（ACCEPTED 2026-09-20；**Phase 0–3 完成**，前端 tsc 全绿；保真召回 2026-09-21 落地） |
 | 🟢 已签核待实施 | RFC-001 Phase 1（5 项按建议全通过，2026-09-18；185 断言全绿已验证） |
-| 🟢 已 push（2026-09-22） | 全部本地 commit 已推送 origin（github.com:443 本次连通；a48297e + a291801） |
+| 🟢 已 push（2026-09-22） | `a48297e` + `a291801` 已推送 origin（github.com:443 本次连通） |
+| 🟡 本地待 push（2026-09-24） | `8ab633a` `2175249` `f4a03a8` `8a698b1` `6c03f7d` `96e6b5d` 共 6 个本地提交，待 `git push origin feature/trst-3-private-beta-readiness` |
 | 🟢 已完成（2026-09-22） | **TRST-0 护栏同步** — 顶部变更提示 + §7 invariant 11/12 已为 ADR-001/002 新护栏（本地优先留存 + 外发强制加工），经核查无需改动 |
 | 🟢 已完成（2026-09-22） | **Memory 粘性闭环 A** — 蒸馏器持久化 pending 进审阅队列，端到端闭合（前端审阅 UI 早已齐备） |
 | 🟢 已完成（2026-09-22） | **RAG 本地模型 D** — 用户可配本地/OpenAI 兼容 embedding 端点（`/v1/settings/embedding` + 前端面板），记忆检索可本地化、数据不出本机 |
