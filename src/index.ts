@@ -104,6 +104,8 @@ const FAST_MODEL = config.fastModel || "Qwen/Qwen2.5-72B-Instruct";
 const BASE_URL = config.openaiBaseUrl || "https://api.siliconflow.cn/v1";
 const API_KEY = config.openaiApiKey || "";
 
+console.log(`  → LLM provider: ${config.llmProvider} (baseURL=${config.openaiBaseUrl || "https://api.siliconflow.cn/v1"}, model=${FAST_MODEL})`);
+
 if (API_KEY && API_KEY !== "dummy") {
   try {
     const controller = new AbortController();
@@ -130,6 +132,9 @@ if (API_KEY && API_KEY !== "dummy") {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`  ⚠️  LLM API unreachable: ${msg} — delegation will fail\n`);
+    if (config.llmProvider === "local") {
+      console.warn(`     → local 模式：确认 Ollama 已启动且已 pull 模型（ollama pull ${config.fastModel}），参考 README「本地模型接入（Ollama）」。\n`);
+    }
   }
 } else {
   console.warn(`  ⚠️  OPENAI_API_KEY not set — LLM routing disabled\n`);

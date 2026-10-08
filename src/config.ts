@@ -20,15 +20,26 @@ try {
   }
 } catch { /* .env not found, skip */ }
 
+// ── TRST-6: 可插拔 LLM provider（cloud / local 一键切换）──────────────
+// 默认 cloud（SiliconFlow，延续现状）；local 走 Ollama / llama.cpp / vLLM 的
+// OpenAI 兼容端点，零代码改动切换。本地模型经既有 OpenAI 兼容路径，不引新依赖。
+const llmProvider = (process.env.LLM_PROVIDER || "cloud") as "cloud" | "local";
+const localLlmBaseUrl = process.env.LOCAL_LLM_BASE_URL || "http://localhost:11434/v1";
+const localLlmApiKey = process.env.LOCAL_LLM_API_KEY || "ollama";
+const localLlmModel = process.env.LOCAL_LLM_MODEL || "qwen2.5:7b";
+
 export const config = {
   port: parseInt(process.env.BACKEND_PORT || "3001"),
   // Sprint 59: fastModel 改为 Qwen2.5-72B-Instruct
   // Benchmark 结论：72B LLM 路由 80.0% > 离线规则 63.3%，明确优于规则
-  fastModel: process.env.FAST_MODEL || "Qwen/Qwen2.5-72B-Instruct",
-  slowModel: process.env.SLOW_MODEL || "gpt-4o",
-  compressorModel: process.env.COMPRESSOR_MODEL || "gpt-4o-mini",
-  openaiApiKey: process.env.OPENAI_API_KEY || "",
-  openaiBaseUrl: process.env.OPENAI_BASE_URL || "",
+  // TRST-6: provider 派生（local 模式全部走 LOCAL_LLM_*，零代码改动切换）
+  fastModel: llmProvider === "local" ? localLlmModel : (process.env.FAST_MODEL || "Qwen/Qwen2.5-72B-Instruct"),
+  slowModel: llmProvider === "local" ? localLlmModel : (process.env.SLOW_MODEL || "gpt-4o"),
+  compressorModel: llmProvider === "local" ? localLlmModel : (process.env.COMPRESSOR_MODEL || "gpt-4o-mini"),
+  openaiApiKey: llmProvider === "local" ? localLlmApiKey : (process.env.OPENAI_API_KEY || ""),
+  openaiBaseUrl: llmProvider === "local" ? localLlmBaseUrl : (process.env.OPENAI_BASE_URL || ""),
+  // TRST-6: 当前生效的 LLM provider（cloud | local），供启动 banner / 诊断使用
+  llmProvider,
   // TRST-2: Gateway URL for real caller correlation (feature-flagged, unset = direct upstream)
   trustosGatewayUrl: process.env.TRUSTOS_GATEWAY_URL || "",
   /**

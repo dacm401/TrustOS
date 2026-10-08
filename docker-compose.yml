@@ -168,6 +168,23 @@ services:
     depends_on:
       - backend
 
+  # ── TRST-6: 可选本地 LLM（默认关；启用：docker compose --profile local-llm up -d）──
+  # 启用后需在 .env 设 LLM_PROVIDER=local 与 LOCAL_LLM_BASE_URL=http://ollama:11434/v1
+  # （compose 网络内用服务名 ollama 互通；本机原生 Ollama 则用 http://localhost:11434/v1）
+  # 资源可控：默认不随 `docker compose up` 启动，避免低配机器被拖垮。
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["local-llm"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || true"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
   minio_data:
@@ -175,3 +192,5 @@ volumes:
   prometheus_data:
   # Event Backbone (append-only, hash-chained) — must survive restarts
   trustos_events:
+  # TRST-6: 本地 Ollama 模型持久化（仅 --profile local-llm 时创建）
+  ollama_data:

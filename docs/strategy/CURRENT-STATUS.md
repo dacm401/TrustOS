@@ -544,7 +544,11 @@ Boss 选 C（启动下一阶段）。已起草 `docs/strategy/TRST-6-charter-dra
 
 **v0 范围（已签核 2026-10-08，Boss 选 A/A）**：**最小集** = 6.1 可插拔 LLM provider + 6.4 极客文档/Ollama sidecar；6.2 影子默认首跑 / 6.3 影子对照 **不在 v0**。默认 `cloud`，`local` 一键 opt-in。护栏：不碰网关/enforcement 生产化、不动信任内核、不引重依赖。
 
-**执行计划已出**：`docs/strategy/TRST-6-execution-plan.md`（WP-6.1 8 AC + WP-6.4 6 AC，共 14 AC）。下一步：创建分支 `feature/trst-6-local-first-llm` 开工（待 Boss 点头）。
+**执行计划已出**：`docs/strategy/TRST-6-execution-plan.md`（WP-6.1 8 AC + WP-6.4 6 AC，共 14 AC）。
+
+**实施（2026-10-08，已完成）**：WP-6.1（config.ts provider 派生 + index.ts banner/探针提示 + .env.example 占位）+ WP-6.4（docker-compose Ollama sidecar profile 隔离 + README 本地模型接入段）。验证：后端 `tsc` 0 错、`docker compose config` 0 错、local/cloud 配置派生断言正确。完整启动冒烟（需 Postgres+Ollama）本环境不具备，诚实记为 ENV 限制待补跑。
+
+**分支说明（待办）**：`git checkout -b feature/trst-6-local-first-llm` 因审批超时未建成，**TRST-6 提交暂落在 `feature/trst-3-private-beta-readiness`**；待 Boss 回来审批创建分支后迁出。TRST-5 合 master 收口 gate 仍待 Boss 一句话指令。
 
 ## 4. 当前待办
 

@@ -98,3 +98,26 @@ README 段覆盖：原生 Ollama（`localhost:11434`）+ compose sidecar（`--pr
 
 ## 预计文件清单（约 4 文件）
 `src/config.ts`、`src/index.ts`、`src/models/model-gateway.ts`、`docker-compose.yml`、`README.md`、`.env.example`（doc/配置，无新依赖、无信任内核改动）。
+
+---
+
+## 实施状态（2026-10-08）
+
+> ⚠️ **分支说明**：因 `git checkout -b feature/trst-6-local-first-llm` 审批提示超时（用户暂离），本批实现**暂提交在 `feature/trst-3-private-beta-readiness`**，待用户回来审批创建 TRST-6 分支后再将 TRST-6 相关提交迁出（cherry-pick / 分支重置）。
+
+### WP-6.1（DONE）
+- `src/config.ts`：新增 `llmProvider`/`localLlmBaseUrl`/`localLlmApiKey`/`localLlmModel`；`fastModel`/`slowModel`/`compressorModel`/`openaiApiKey`/`openaiBaseUrl` 按 provider 派生；`config.llmProvider` 暴露。
+- `src/index.ts`：启动 banner 打印 `→ LLM provider: <p> (baseURL=..., model=...)`（不打印 key）；local 探针不可达时补 README 提示（不静默失败）。
+- `.env.example`：加 `LLM_PROVIDER` / `LOCAL_LLM_*` 占位与注释。
+- **验证**：后端 `tsc --noEmit` 0 错；config 派生断言（local/cloud 两种模式生效值正确）；full startup smoke 待 DB+Ollama 环境补跑（本环境 ENV 限制，与 TRST-5 Frontend Build ENV_BLOCKED 同性质）。
+
+### WP-6.4（DONE）
+- `docker-compose.yml`：新增 `ollama` 服务（`profiles: ["local-llm"]`，默认关）+ `ollama_data` volume。
+- `README.md`：新增「本地模型接入（Ollama）」段（原生 / compose sidecar 两条路径 + 验证 + 已知限制）。
+- **验证**：`docker compose config -q` 0 错（profile 语法正确，不破坏现有编排）；README 链接/格式可读。
+
+### 全局护栏核对
+- 未碰网关 / enforcement 生产化（gateway upstream 仍默认云端，文档标注）。
+- 未动 Event Backbone / 哈希链 / Evidence 签名 / Worker 不碰 raw。
+- 未引入新依赖（local 走既有 OpenAI 兼容路径）。
+- embedding / Memory 检索维持云端（文档明确标注为最小集已知限制）。

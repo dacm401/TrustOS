@@ -200,6 +200,51 @@ npm run validate       # 完整验证（deterministic + live）
 
 ---
 
+## 本地模型接入（Ollama，TRST-6）
+
+默认 TrustOS 走云端 SiliconFlow 推理。极客可一键切换到**本机 Ollama**，让 chat 推理完全留在本地（数据不出本机）。
+
+### 方式 A：本机原生 Ollama
+
+```bash
+# 1. 安装并启动 Ollama（https://ollama.com），默认监听 http://localhost:11434
+ollama pull qwen2.5:7b          # 与下方 LOCAL_LLM_MODEL 保持一致
+# 2. 在 .env 中切换 provider
+LLM_PROVIDER=local
+LOCAL_LLM_BASE_URL=http://localhost:11434/v1
+LOCAL_LLM_API_KEY=ollama        # Ollama 忽略 key，占位即可
+LOCAL_LLM_MODEL=qwen2.5:7b      # 必须与已 pull 的模型名一致
+# 3. 重启 backend
+```
+
+### 方式 B：Docker Compose sidecar（默认关）
+
+```bash
+# 1. 启动 Ollama sidecar（profile 隔离，默认不随 docker compose up 启动）
+docker compose --profile local-llm up -d
+# 2. 在 .env 中切换 provider，compose 网络内用服务名 ollama 互通
+LLM_PROVIDER=local
+LOCAL_LLM_BASE_URL=http://ollama:11434/v1
+LOCAL_LLM_API_KEY=ollama
+LOCAL_LLM_MODEL=qwen2.5:7b
+# 3. 重启 backend（docker compose up -d backend）
+#    首次需进入容器 pull 模型：docker compose exec ollama ollama pull qwen2.5:7b
+```
+
+### 验证
+
+- 启动日志会打印：`→ LLM provider: local (baseURL=http://localhost:11434/v1, model=qwen2.5:7b)`。
+- 若本地端点不可达，日志给出明确 ⚠️ 警告并提示 `ollama pull`，**不会静默回退云端**。
+- `cloud` 模式（默认）行为与之前完全一致；`local` 为纯 opt-in。
+
+### 已知限制（最小集）
+
+- **embedding / Memory 检索仍走云端 siliconflow**（独立配置，未随 provider 切换）；仅 chat 推理本地化。
+- **Gateway（可选观测层）upstream 仍默认云端**；如需本地，手动改 `TRUSTOS_UPSTREAM_BASE_URL`。
+- 本地小模型的能力 / 延迟可能弱于云端，属预期权衡。
+
+---
+
 ## 目录结构
 
 ```
