@@ -4,7 +4,7 @@
 > 详细历史见 `TRST-execution-log.md`（3828+ 行，按时间追加）。
 > **维护约定**：每完成一批重要工作，必须更新本文件（见文末「维护约定」）。
 
-*最后更新：2026-09-24*
+*最后更新：2026-10-08*
 
 ---
 
@@ -22,6 +22,7 @@
 
 | Commit | 内容 |
 |---|---|
+| `ee8bb06` | docs(TRST-5): 补录 CURRENT-STATUS §3.18 登录401修复 + 校准提交/推送状态 |
 | `8ab633a` | **fix(TRST-5): 修复裸 fetch 缺 Authorization 导致 401 弹回登录**（SessionSwitcher / ChatInterface cancelTask·pollDelegation / TasksView summary；见 §3.18） |
 | `2175249` | fix(TRST-5): 前端同源反代 API（消除跨端口/CORS，预览可用） |
 | `f4a03a8` | docs(TRST-5): charter verdict=PROD_READY（Boss 确认 2026-09-23），收口 CURRENT-STATUS |
@@ -31,7 +32,7 @@
 | `a291801` | fix(frontend): WP-5A/5B 关闭 401 静默 changeme 重登 — 改清会话触发 `/login` 门禁 |
 | `a48297e` | feat: RFC-001 Phase3 本地 RAG 嵌入可配 + RFC-002 记忆审计/工作历史 + 清理与文档同步 |
 
-⚠️ **以下本地提交待 push**（github.com:443 本次已连通，待执行 `git push origin feature/trst-3-private-beta-readiness`）：`8ab633a` `2175249` `f4a03a8` `8a698b1` `6c03f7d` `96e6b5d`（`a291801`+`a48297e` 已于 2026-09-22 推送）。
+✅ **全部已推送 origin**（`2175249..ee8bb06` 于 2026-10-08 推送；`a291801`+`a48297e` 已于 2026-09-22 推送）。
 
 ## 3. 已完成的关键工作（2026-08-26 ~ 08-29）
 
@@ -533,7 +534,22 @@ Boss 纠偏：Memory 真实主价值**不只是"粘性钩子"**，而是三重�
 
 **修复**：导出 `api.ts` 的 `buildHeaders`（自动带 `Bearer` token）并补到上述四处（`SessionSwitcher` / `ChatInterface` 两处 / `TasksView`）。
 
-**验证**：真实浏览器重跑 → 登录后 `FINAL_URL = http://localhost:3000/`（停在应用内，不再回 `/login`），`/v1/sessions/recent` 变 200；前后端 `npx tsc --noEmit` 均 0 报错。提交 `8ab633a`（本地，待 push）。
+**验证**：真实浏览器重跑 → 登录后 `FINAL_URL = http://localhost:3000/`（停在应用内，不再回 `/login`），`/v1/sessions/recent` 变 200；前后端 `npx tsc --noEmit` 均 0 报错。提交 `8ab633a`（已随 `ee8bb06` 推送 origin）。
+
+### 3.19 TRST-6 启动：本地优先 LLM 与影子模式（2026-10-08，agent-PM 起草）
+
+Boss 选 C（启动下一阶段）。已起草 `docs/strategy/TRST-6-charter-draft.md`（DRAFT v0），方向：**本地优先 LLM（可插拔 local provider）+ 兑现冻结的 "Shadow Mode 默认首跑"**。
+
+理由：TRST-5 让产品"能跑/安全/可观测"，但推理仍强依赖 SiliconFlow 云端，与"本地 OS / 数据不出本机"价值主张矛盾；且 TRST-0.3 冻结的 "Shadow Mode as default first-run" 当前未兑现（默认 real）。成熟度评估探索 A = 本地模型影子模式。
+
+**v0 提案 scope**：6.1 可插拔 LLM provider（必做）+ 6.4 极客文档/Ollama sidecar（必做）；6.2 影子默认首跑（建议）；6.3 影子对照（可选）。护栏：不碰网关/enforcement 生产化、不动信任内核、不引重依赖。
+
+**当前 Gate（待 Boss 签核）**：
+1. scope 取舍（是否含 6.2 / 6.3）。
+2. 默认 provider（`cloud` 易用 vs `local` 主权；提案默认 `cloud`，local 一键 opt-in）。
+3. 签核后 agent-PM 出 TRST-6 执行计划（WP+AC）再开工，未签核前不写实现代码。
+
+建议分支：`feature/trst-6-local-first-llm`（尚未创建，待签核后开）。
 
 ## 4. 当前待办
 
@@ -542,7 +558,7 @@ Boss 纠偏：Memory 真实主价值**不只是"粘性钩子"**，而是三重�
 | 🟢 已签核实施 | **RFC-002 Memory 审计/工作历史面**（ACCEPTED 2026-09-20；**Phase 0–3 完成**，前端 tsc 全绿；保真召回 2026-09-21 落地） |
 | 🟢 已签核待实施 | RFC-001 Phase 1（5 项按建议全通过，2026-09-18；185 断言全绿已验证） |
 | 🟢 已 push（2026-09-22） | `a48297e` + `a291801` 已推送 origin（github.com:443 本次连通） |
-| 🟡 本地待 push（2026-09-24） | `8ab633a` `2175249` `f4a03a8` `8a698b1` `6c03f7d` `96e6b5d` 共 6 个本地提交，待 `git push origin feature/trst-3-private-beta-readiness` |
+| 🟢 已 push（2026-10-08） | `8ab633a` `2175249` `f4a03a8` `8a698b1` `6c03f7d` `96e6b5d` `ee8bb06` 共 7 个提交已推送 origin（`2175249..ee8bb06`） |
 | 🟢 已完成（2026-09-22） | **TRST-0 护栏同步** — 顶部变更提示 + §7 invariant 11/12 已为 ADR-001/002 新护栏（本地优先留存 + 外发强制加工），经核查无需改动 |
 | 🟢 已完成（2026-09-22） | **Memory 粘性闭环 A** — 蒸馏器持久化 pending 进审阅队列，端到端闭合（前端审阅 UI 早已齐备） |
 | 🟢 已完成（2026-09-22） | **RAG 本地模型 D** — 用户可配本地/OpenAI 兼容 embedding 端点（`/v1/settings/embedding` + 前端面板），记忆检索可本地化、数据不出本机 |
