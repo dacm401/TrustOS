@@ -42,6 +42,7 @@
 
 import { randomUUID, createHash } from "node:crypto";
 import { query } from "../../db/connection.js";
+import { resolveExecutionMode } from "../shadow/first-run-mode.js";
 
 export type AttemptStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 export type ExecutionMode = "deterministic_local" | "dry_run" | "manual_placeholder" | "real";
@@ -374,10 +375,17 @@ export class WorkerExecutionHarnessService {
       );
     }
 
-    const mode: ExecutionMode =
-      input.execution_mode && EXECUTION_MODES.includes(input.execution_mode)
-        ? input.execution_mode
-        : "deterministic_local";
+    // TRST-6.2: Shadow Mode 默认首跑 —— 解析生效模式。
+    // shadow 默认下，显式 requested="real" 会被 hold 降级为 deterministic_local（观察态），
+    // 不实际外发执行，除非已 opt-in real。这是"首次即安全"的硬保证。
+    const resolved = resolveExecutionMode(input.execution_mode);
+    const mode: ExecutionMode = resolved.effective === "real" ? "real" : "deterministic_local";
+    if (resolved.held) {
+      console.warn(
+        `[execution-attempt] ⚠️ real held by shadow-default — effective=${mode} ` +
+          `(requested=${input.execution_mode ?? "undefined"}; opt-in required for real execution)`
+      );
+    }
 
     // Record attempt as queued first (bounded, auditable).
     // Use a real UUID: worker_execution_attempts.attempt_id is UUID-typed in

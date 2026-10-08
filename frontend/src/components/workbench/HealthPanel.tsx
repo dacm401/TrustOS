@@ -145,6 +145,46 @@ export function HealthPanel() {
               </div>
             </div>
 
+            {/* Execution Mode (TRST-6.2: Shadow default first-run) */}
+            {health.execution_mode && (
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>
+                  执行模式
+                </div>
+                <div
+                  className="rounded-xl px-3 py-2 flex items-center justify-between"
+                  style={{ backgroundColor: "var(--bg-elevated)" }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="status-dot"
+                      style={{
+                        backgroundColor:
+                          health.execution_mode.mode === "real"
+                            ? "var(--accent-green)"
+                            : "var(--accent-amber)",
+                      }}
+                    />
+                    <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+                      {health.execution_mode.mode === "real" ? "REAL（实际执行）" : "SHADOW（观察态）"}
+                    </span>
+                  </div>
+                  <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                    provider: {health.execution_mode.provider}
+                    {health.execution_mode.first_run ? " · 首次运行" : ""}
+                  </span>
+                </div>
+                <div
+                  className="text-[10px] mt-1 px-2 py-1 rounded"
+                  style={{ backgroundColor: "var(--bg-overlay)", color: "var(--text-muted)" }}
+                >
+                  {health.execution_mode.mode === "shadow"
+                    ? "默认首跑=观察态，不实际外发执行。opt-in real：.env 设 TRUSTOS_DEFAULT_EXECUTION_MODE=real"
+                    : "已 opt-in 实际执行。"}
+                </div>
+              </div>
+            )}
+
             {/* Stats */}
             {health.stats && (
               <div>

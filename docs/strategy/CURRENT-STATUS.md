@@ -542,13 +542,20 @@ Boss 选 C（启动下一阶段）。已起草 `docs/strategy/TRST-6-charter-dra
 
 理由：TRST-5 让产品"能跑/安全/可观测"，但推理仍强依赖 SiliconFlow 云端，与"本地 OS / 数据不出本机"价值主张矛盾；且 TRST-0.3 冻结的 "Shadow Mode as default first-run" 当前未兑现（默认 real）。成熟度评估探索 A = 本地模型影子模式。
 
-**v0 范围（已签核 2026-10-08，Boss 选 A/A）**：**最小集** = 6.1 可插拔 LLM provider + 6.4 极客文档/Ollama sidecar；6.2 影子默认首跑 / 6.3 影子对照 **不在 v0**。默认 `cloud`，`local` 一键 opt-in。护栏：不碰网关/enforcement 生产化、不动信任内核、不引重依赖。
+**v0 范围（签核 2026-10-08）**：Boss 先选 A/A = **最小集**（6.1+6.4）；同日选 "C 两者都要" 扩为**完整集** = 6.1+6.2+6.3+6.4。默认 `cloud`，`local` 一键 opt-in。护栏：不碰网关/enforcement 生产化、不动信任内核、不引重依赖。
 
-**执行计划已出**：`docs/strategy/TRST-6-execution-plan.md`（WP-6.1 8 AC + WP-6.4 6 AC，共 14 AC）。
+**执行计划已出**：`docs/strategy/TRST-6-execution-plan.md`（WP-6.1 8 AC + WP-6.4 6 AC + WP-6.2 7 AC + WP-6.3 5 AC，共 26 AC）。
 
-**实施（2026-10-08，已完成）**：WP-6.1（config.ts provider 派生 + index.ts banner/探针提示 + .env.example 占位）+ WP-6.4（docker-compose Ollama sidecar profile 隔离 + README 本地模型接入段）。验证：后端 `tsc` 0 错、`docker compose config` 0 错、local/cloud 配置派生断言正确。完整启动冒烟（需 Postgres+Ollama）本环境不具备，诚实记为 ENV 限制待补跑。
+**实施（2026-10-08，完整集基本完成）**：
+- WP-6.1（config.ts provider 派生 + index.ts banner/探针提示 + .env.example 占位）+ WP-6.4（docker-compose Ollama sidecar profile 隔离 + README 本地模型接入段）：DONE。
+- WP-6.2 影子默认首跑：DONE。`config.defaultExecutionMode` 默认 `shadow`；`src/services/shadow/first-run-mode.ts` 状态机 + `resolveExecutionMode()` 真实降级（shadow 默认下 `real` 被 hold → `deterministic_local`，不实际外发执行）；`/health` 暴露 `execution_mode`；`execution-attempt-service` 接入降级 + ⚠️ 警告；前端 `HealthPanel` 模式徽章；`.env.example` 补 `TRUSTOS_DEFAULT_EXECUTION_MODE`。
+- WP-6.3 影子对照：DONE。`scripts/trst6/run-shadow-compare.mts` 零依赖，cloud vs local 三维度对照（延迟/Token/成本）+ 质量人工复核提示；local 不可达明确 unavailable。
+- 验证：前后端 `tsc --noEmit` 均 0 错；`docker compose config` 0 错。完整启动冒烟（需 Postgres+Ollama）本环境不具备，诚实记为 ENV 限制待补跑（见 ③）。
 
-**分支说明（待办）**：`git checkout -b feature/trst-6-local-first-llm` 因审批超时未建成，**TRST-6 提交暂落在 `feature/trst-3-private-beta-readiness`**；待 Boss 回来审批创建分支后迁出。TRST-5 合 master 收口 gate 仍待 Boss 一句话指令。
+**分支 / 收口（进行中）**：
+- ① TRST-5 收口：master 快进到 `ee8bb06`（纯 TRST-5，不含 TRST-6 WIP）并 push origin —— 因 `git checkout master`/`merge` 审批弹窗超时（用户暂离）尚未执行，待审批。
+- ② 建 `feature/trst-6-local-first-llm` 并把 6.1+6.4（`27b8414`/`5d5650e`/`674d3bc`）+ 新 6.2/6.3 迁出 —— 待 ① 审批后用 `git branch -f` / `git push <sha>:refs/heads/master` 无 checkout 方式完成（避免审批弹窗）。
+- TRST-6 当前提交暂落在 `feature/trst-3-private-beta-readiness`。
 
 ## 4. 当前待办
 

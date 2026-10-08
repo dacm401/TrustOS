@@ -21,6 +21,7 @@ import {
   verifyStoredChain,
 } from "../services/trst1/jsonl-event-store.js";
 import { currentEnforcementMode } from "../trust/policy-enforcement.js";
+import { getFirstRunState } from "../services/shadow/first-run-mode.js";
 
 export const healthRouter = new Hono();
 
@@ -124,6 +125,8 @@ healthRouter.get("/", async (c) => {
   const overallStatus: "ok" | "degraded" | "error" =
     dbStatus === "error" ? "degraded" : "ok";
 
+  const firstRun = getFirstRunState();
+
   return c.json({
     status: overallStatus,
     timestamp: new Date().toISOString(),
@@ -145,6 +148,18 @@ healthRouter.get("/", async (c) => {
       event_backbone: getEventBackboneStatus(),
       // ── Policy / Control ──
       policy_enforcement: getPolicyStatus(),
+      // ── TRST-6.2: Execution Mode (Shadow default first-run) ──
+      execution_mode: {
+        mode: firstRun.mode, // "shadow" (default, observe) | "real" (opt-in)
+        first_run: firstRun.firstRun,
+        opted_into_real: firstRun.optedIntoReal,
+        provider: config.llmProvider, // cloud | local
+        reason: firstRun.reason,
+        note:
+          firstRun.mode === "shadow"
+            ? "default first-run = shadow (observe only, no real external execution). opt-in real via TRUSTOS_DEFAULT_EXECUTION_MODE=real or UI."
+            : "real execution enabled (opted-in).",
+      },
     },
     stats: stats,
   });

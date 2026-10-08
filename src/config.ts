@@ -40,6 +40,9 @@ export const config = {
   openaiBaseUrl: llmProvider === "local" ? localLlmBaseUrl : (process.env.OPENAI_BASE_URL || ""),
   // TRST-6: 当前生效的 LLM provider（cloud | local），供启动 banner / 诊断使用
   llmProvider,
+  // TRST-6.2: Shadow Mode 默认首跑 —— 默认 shadow（观察态，不实际外发执行）；
+  // real 需显式 opt-in（env TRUSTOS_DEFAULT_EXECUTION_MODE=real 或用户选择后持久化）。
+  defaultExecutionMode: ((process.env.TRUSTOS_DEFAULT_EXECUTION_MODE as "shadow" | "real") || "shadow"),
   // TRST-2: Gateway URL for real caller correlation (feature-flagged, unset = direct upstream)
   trustosGatewayUrl: process.env.TRUSTOS_GATEWAY_URL || "",
   /**

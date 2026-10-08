@@ -106,6 +106,18 @@ const API_KEY = config.openaiApiKey || "";
 
 console.log(`  → LLM provider: ${config.llmProvider} (baseURL=${config.openaiBaseUrl || "https://api.siliconflow.cn/v1"}, model=${FAST_MODEL})`);
 
+// TRST-6.2: Shadow Mode 默认首跑 —— 启动即打印当前生效模式 + opt-in 提示
+try {
+  const { getFirstRunState } = await import("./services/shadow/first-run-mode.js");
+  const fr = getFirstRunState();
+  if (fr.mode === "shadow") {
+    console.log(`  🛡️  Execution mode: SHADOW (default first-run — observe only, no real external execution)`);
+    console.log(`     → opt-in real: set TRUSTOS_DEFAULT_EXECUTION_MODE=real in .env`);
+  } else {
+    console.log(`  ⚡ Execution mode: REAL (opted-in — actual execution enabled)`);
+  }
+} catch { /* 首跑状态解析失败不阻断启动 */ }
+
 if (API_KEY && API_KEY !== "dummy") {
   try {
     const controller = new AbortController();

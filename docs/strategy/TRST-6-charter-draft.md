@@ -1,6 +1,6 @@
 # TRST-6 Charter (Draft v0) — 本地优先 LLM 与影子模式
 
-> 状态：DRAFT v0，**scope 已签核 2026-10-08（最小集 6.1+6.4，默认 cloud / local opt-in）**。
+> 状态：DRAFT v0，**scope 已签核 2026-10-08 为最小集（6.1+6.4），同日扩为完整集（6.1+6.2+6.3+6.4）**（Boss 选 "C 两者都要"）。
 > 起草时间：2026-10-08。前置：TRST-5（Private Beta Readiness，verdict=PROD_READY，已 push origin，合 master 待 Boss 指令）。
 > 建议分支：`feature/trst-6-local-first-llm`。
 
@@ -22,11 +22,11 @@
 | # | 项 | 说明 | 是否纳入 v0 |
 |---|---|---|---|
 | 6.1 | **可插拔 LLM provider** | 在既有 OpenAI 兼容接口上，增加 `local` provider（Ollama / llama.cpp / vLLM 的本地 OpenAI 兼容端点），通过 env 切换，**零代码改动切换**（仅 config 读取不同 baseURL/apiKey）。 | 必做 |
-| 6.2 | **影子模式默认首跑** | 首次运行 / 可配置默认 `execution_mode=shadow`（观察、不强制 external 动作、生成 shadow report）；`real` 需显式 opt-in。复用既有 shadow report 机制。 | 建议纳入 |
-| 6.3 | **影子对照** | 可选让本地模型与云端模型对同一 brief 并行跑，输出差异对照（延迟 / 质量 / 成本），帮助极客判断是否切本地。 | 可选 / 看签核 |
+| 6.2 | **影子模式默认首跑** | 首次运行 / 可配置默认 `execution_mode=shadow`（观察、不强制 external 动作、生成 shadow report）；`real` 需显式 opt-in。复用既有 shadow report 机制。 | **纳入（完整集）** |
+| 6.3 | **影子对照** | 让本地模型与云端模型对同一 brief 并行跑，输出差异对照（延迟 / 质量 / 成本），帮助极客判断是否切本地。 | **纳入（完整集）** |
 | 6.4 | **极客友好文档** | 部署文档补"本地模型接入"一节；`docker-compose` 提供可选的 Ollama sidecar（默认关，资源可控）。 | 随 6.1 必做 |
 
-**建议的 v0 取交集**：6.1 + 6.4 必做（本地主权的基础）；6.2 强烈建议（兑现冻结架构、首次即安全）；6.3 作为可选的"信任建立"增强。
+**v0 最终范围（完整集）**：6.1 + 6.2 + 6.3 + 6.4 全做（Boss 2026-10-08 选 "C 两者都要"，由最小集扩为完整集）。6.2 兑现冻结架构、首次即安全；6.3 建立本地 vs 云端信任对照。
 
 ---
 
@@ -70,11 +70,11 @@
 
 ## 7. Next Decision（需 Boss 拍板）
 
-> **✅ SIGNED-OFF 2026-10-08（Boss 选 A/A）**：范围 = **最小集（6.1 + 6.4）**；默认 `cloud`，`local` 一键 opt-in。6.2 / 6.3 不在 v0。执行计划见 `TRST-6-execution-plan.md`。
+> **✅ SIGNED-OFF 2026-10-08（Boss 先选 A/A = 最小集 6.1+6.4；同日选 "C 两者都要" 扩为完整集 6.1+6.2+6.3+6.4）**：默认 `cloud`，`local` 一键 opt-in。执行计划见 `TRST-6-execution-plan.md`。
 
-1. ~~**scope 取舍**~~ → 已定：**最小集**（仅 6.1 可插拔 provider + 6.4 极客文档/Ollama sidecar）。
+1. ~~**scope 取舍**~~ → 已定：**完整集**（6.1 可插拔 provider + 6.2 影子默认首跑 + 6.3 影子对照 + 6.4 极客文档/Ollama sidecar）。
 2. ~~**默认 provider**~~ → 已定：**默认 `cloud`**（SiliconFlow 一键易用，延续现状）；`local` 经 `LLM_PROVIDER=local` 一键 opt-in。
-3. **签核后**：agent-PM 已出 TRST-6 执行计划（WP-6.1 + WP-6.4，共 14 AC），下一步创建分支 `feature/trst-6-local-first-llm` 开工。
+3. **签核后**：agent-PM 已出 TRST-6 执行计划（WP-6.1 ~ WP-6.4），下一步创建分支 `feature/trst-6-local-first-llm` 开工。
 
 ---
 

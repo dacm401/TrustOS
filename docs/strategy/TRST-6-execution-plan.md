@@ -1,7 +1,7 @@
 # TRST-6 执行计划（WP + AC）
 
-> 前置：TRST-6 Charter v0 DRAFT → **scope 已签核 2026-10-08**（Boss 选 A/A）。
-> 签核结论：**最小集（6.1 + 6.4）+ 默认 `cloud`、local 一键 opt-in**。
+> 前置：TRST-6 Charter v0 DRAFT → **scope 已签核 2026-10-08 最小集，同日扩为完整集**（Boss 选 "C 两者都要"）。
+> 签核结论：**完整集（6.1 + 6.2 + 6.3 + 6.4）+ 默认 `cloud`、local 一键 opt-in**。
 > 分支：`feature/trst-6-local-first-llm`（待创建）。执行顺序：WP-6.1 → WP-6.4。
 
 ---
@@ -89,6 +89,60 @@ README 段覆盖：原生 Ollama（`localhost:11434`）+ compose sidecar（`--pr
 6. `docker compose config` 校验通过（profile 语法正确，不破坏现有编排）；README 链接可达。
 
 ---
+
+## WP-6.2：影子模式默认首跑（Shadow Mode default first-run）
+
+### 落点文件
+- `src/config.ts`：新增 `defaultExecutionMode`（默认 `shadow`），env `TRUSTOS_DEFAULT_EXECUTION_MODE`。
+- `src/services/shadow/first-run-mode.ts`（新）：首跑 / opt-in 状态机 + `resolveExecutionMode()` 真实降级保证。
+- `src/api/health.ts`：`/health` 暴露 `execution_mode`（mode / first_run / opted_into_real / provider / reason / note）。
+- `src/services/manager/execution-attempt-service.ts`：`createAttemptFromContract` 用 `resolveExecutionMode` 解析，shadow 默认下 `real` 被 hold 降级为 `deterministic_local`（观察态），不实际外发执行。
+- `src/index.ts`：启动 banner 打印当前模式（SHADOW/REAL）+ opt-in 提示。
+- `frontend/src/lib/api.ts` + `HealthPanel.tsx`：健康面板渲染执行模式徽章（SHADOW/REAL + provider + 首次运行）。
+- `.env.example`：补 `TRUSTOS_DEFAULT_EXECUTION_MODE` 注释示例。
+
+### 实现要点（兑现 TRST-0.3 "Shadow Mode default first-run"）
+- 默认 `shadow`：首跑 / 未 opt-in 时，系统处于观察态，受控执行 seam 不实际外发 `real` 执行（`real` 请求被 hold 并降级为 `deterministic_local`）。
+- `real` 需显式 opt-in：env `TRUSTOS_DEFAULT_EXECUTION_MODE=real`（配置即 opt-in）或用户经 UI 选择后持久化到 `.trustos/first-run.json`。
+- 全程生成完整审计 trail（Event Backbone），观察态无信息损失。
+
+### AC（7 条）
+1. 新增 `TRUSTOS_DEFAULT_EXECUTION_MODE` env，默认 `shadow`；`real` 时系统进入实际执行模式。
+2. 首跑 / 未 opt-in 时，`resolveExecutionMode("real")` 返回 `held=true` + `effective=shadow`；调用方据此降级为 `deterministic_local`。
+3. `real` 请求被 hold 时，后端打印明确 ⚠️ 警告（含 requested + effective + opt-in 提示），不静默放行。
+4. `/health` 返回 `execution_mode`：含 `mode` / `first_run` / `opted_into_real` / `provider` / `reason` / `note`。
+5. 启动 banner 打印当前模式（SHADOW/REAL）+ opt-in 提示，不打印 key。
+6. 前端健康面板渲染执行模式徽章（SHADOW 琥珀 / REAL 绿）+ provider + 首次运行标记。
+7. 前后端 `tsc --noEmit` 0 报错；一次启动冒烟确认 banner 与 `/health` 的 `execution_mode.mode=shadow`（默认）。
+
+---
+
+## WP-6.3：影子对照（Shadow Comparison）
+
+### 落点文件
+- `scripts/trst6/run-shadow-compare.mts`（新，零依赖，复用既有 `openai` SDK + 环境变量）。
+
+### 实现要点
+- 给定同一 brief，分别用 cloud（默认 SiliconFlow）与 local（Ollama/本地 OpenAI 兼容端点）各跑一次。
+- 输出三维度对照：延迟（latency_ms）/ Token 量 / 成本估算（基于已知价格表，未知模型标 unknown）。
+- **质量维度诚实标注为人工复核项**，不给虚假自动评分；local 不可达时明确标 unavailable，不静默失败。
+- 不碰信任内核 / 网关 / enforcement；不改后端代码。
+
+### AC（5 条）
+1. 脚本可经 `npx tsx scripts/trst6/run-shadow-compare.mts [--brief "..."]` 运行，零新依赖。
+2. 同时产出 cloud 与 local 的延迟 / Token / 成本估算（任一方不可达时明确标 unavailable，不崩溃）。
+3. 质量维度仅作人工复核提示（展示双方回答长度/摘要），不输出自动打分。
+4. 报告含差异小结（local/cloud 延迟比、成本对比），并附诚实说明（quality 需人工）。
+5. 不修改后端源码、不引入新推理框架 / 重依赖。
+
+---
+
+### 实施状态（2026-10-08，完整集）
+
+> ⚠️ **分支说明**：因 `git checkout -b feature/trst-6-local-first-llm` 审批提示超时（用户暂离），本批实现（含 6.2/6.3）暂提交在 `feature/trst-3-private-beta-readiness`，待用户回来审批创建 TRST-6 分支后再迁出（cherry-pick / 分支重置）。
+
+- **WP-6.2（DONE）**：`config.defaultExecutionMode` 默认 `shadow`；`src/services/shadow/first-run-mode.ts` 状态机 + `resolveExecutionMode()` 真实降级（shadow 默认下 `real` 被 hold → `deterministic_local`，不实际外发执行）；`/health` 暴露 `execution_mode`；`execution-attempt-service.createAttemptFromContract` 接入降级 + ⚠️ 警告；`index.ts` 启动 banner；前端 `HealthPanel` 模式徽章；`.env.example` 补 env。验证：前后端 `tsc --noEmit` 均 0 错。
+- **WP-6.3（DONE）**：`scripts/trst6/run-shadow-compare.mts` 零依赖，cloud vs local 三维度对照（延迟 / Token / 成本估算）+ 质量维度诚实标注为人工复核项；local 不可达明确标 unavailable，不静默失败。验证：脚本经 `tsc` 类型校验；实跑待本环境 Ollama（见 ③，ENV 限制，与 TRST-5 Frontend Build 同性质，诚实记为 ENV_BLOCKED）。
 
 ## 验证汇总（开工后回归）
 - 前后端 `npx tsc --noEmit` 均 0 报错。

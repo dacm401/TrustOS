@@ -259,6 +259,14 @@ export interface HealthStatus {
     model_router: { status: "ok" | "error"; providers: string[] };
     web_search: { status: "configured" | "not_configured" };
   };
+  execution_mode?: {
+    mode: "shadow" | "real";
+    first_run: boolean;
+    opted_into_real: boolean;
+    provider: string;
+    reason: string;
+    note: string;
+  };
   stats: {
     tasks_total: number;
     tasks_active: number;
