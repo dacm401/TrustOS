@@ -1,6 +1,6 @@
 # TRST-6 Charter (Draft v0) — 本地优先 LLM 与影子模式
 
-> 状态：DRAFT v0，待 Boss scope 签核（agent-PM 起草 → Boss 拍板范围）。
+> 状态：DRAFT v0，**scope 已签核 2026-10-08（最小集 6.1+6.4，默认 cloud / local opt-in）**。
 > 起草时间：2026-10-08。前置：TRST-5（Private Beta Readiness，verdict=PROD_READY，已 push origin，合 master 待 Boss 指令）。
 > 建议分支：`feature/trst-6-local-first-llm`。
 
@@ -70,9 +70,11 @@
 
 ## 7. Next Decision（需 Boss 拍板）
 
-1. **scope 取舍**：v0 是否纳入 6.2（影子默认首跑）与 6.3（影子对照）？还是只做最小集 6.1+6.4（仅 provider 可插拔）？
-2. **默认 provider**：v0 默认 `cloud`（一键易用，延续现状）还是默认 `local`（最强主权，但需极客自备 Ollama）？提案：默认 `cloud`，local 一键 opt-in。
-3. **签核后**：agent-PM 出 TRST-6 执行计划（WP 拆分 + AC），再开工，不在未签核前写实现代码。
+> **✅ SIGNED-OFF 2026-10-08（Boss 选 A/A）**：范围 = **最小集（6.1 + 6.4）**；默认 `cloud`，`local` 一键 opt-in。6.2 / 6.3 不在 v0。执行计划见 `TRST-6-execution-plan.md`。
+
+1. ~~**scope 取舍**~~ → 已定：**最小集**（仅 6.1 可插拔 provider + 6.4 极客文档/Ollama sidecar）。
+2. ~~**默认 provider**~~ → 已定：**默认 `cloud`**（SiliconFlow 一键易用，延续现状）；`local` 经 `LLM_PROVIDER=local` 一键 opt-in。
+3. **签核后**：agent-PM 已出 TRST-6 执行计划（WP-6.1 + WP-6.4，共 14 AC），下一步创建分支 `feature/trst-6-local-first-llm` 开工。
 
 ---
 

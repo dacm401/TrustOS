@@ -542,14 +542,9 @@ Boss 选 C（启动下一阶段）。已起草 `docs/strategy/TRST-6-charter-dra
 
 理由：TRST-5 让产品"能跑/安全/可观测"，但推理仍强依赖 SiliconFlow 云端，与"本地 OS / 数据不出本机"价值主张矛盾；且 TRST-0.3 冻结的 "Shadow Mode as default first-run" 当前未兑现（默认 real）。成熟度评估探索 A = 本地模型影子模式。
 
-**v0 提案 scope**：6.1 可插拔 LLM provider（必做）+ 6.4 极客文档/Ollama sidecar（必做）；6.2 影子默认首跑（建议）；6.3 影子对照（可选）。护栏：不碰网关/enforcement 生产化、不动信任内核、不引重依赖。
+**v0 范围（已签核 2026-10-08，Boss 选 A/A）**：**最小集** = 6.1 可插拔 LLM provider + 6.4 极客文档/Ollama sidecar；6.2 影子默认首跑 / 6.3 影子对照 **不在 v0**。默认 `cloud`，`local` 一键 opt-in。护栏：不碰网关/enforcement 生产化、不动信任内核、不引重依赖。
 
-**当前 Gate（待 Boss 签核）**：
-1. scope 取舍（是否含 6.2 / 6.3）。
-2. 默认 provider（`cloud` 易用 vs `local` 主权；提案默认 `cloud`，local 一键 opt-in）。
-3. 签核后 agent-PM 出 TRST-6 执行计划（WP+AC）再开工，未签核前不写实现代码。
-
-建议分支：`feature/trst-6-local-first-llm`（尚未创建，待签核后开）。
+**执行计划已出**：`docs/strategy/TRST-6-execution-plan.md`（WP-6.1 8 AC + WP-6.4 6 AC，共 14 AC）。下一步：创建分支 `feature/trst-6-local-first-llm` 开工（待 Boss 点头）。
 
 ## 4. 当前待办
 
