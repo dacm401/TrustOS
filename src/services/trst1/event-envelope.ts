@@ -22,6 +22,9 @@ export type TrstEventType =
   | "mcp_tool_proxy"
   | "mcp_resource_proxy"
   | "mcp_prompt_proxy"
+  // Continuity Engine: decision-node extraction (the "decision graph" spine).
+  // Replaces the deprecated audit/evidence layer as the user-facing value.
+  | "decision"
   // RFC-002 Phase 1c: task lifecycle events on the Event Backbone hash chain
   | "task_dispatch"
   | "worker_result"
@@ -112,6 +115,16 @@ export interface TrstEventEnvelope {
   status: TrstEventStatus;
   error_code?: string;
   error_message?: string;
+
+  // ── Continuity Engine: decision-node payload (decision events only) ──
+  // Carried on `decision` events; NOT in the /events whitelist viewer (privacy-friendly),
+  // consumed directly from the JSONL store by the decision-graph UI.
+  decision_keyword?: string;
+  decision_prompt?: string;
+  decision_reply?: string;
+  decision_parent?: string | null;
+  decision_links?: string[];
+  decision_seq?: number;
 
   // ── Evidence Integrity ──
   /**

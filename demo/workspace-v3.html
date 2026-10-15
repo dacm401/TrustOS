@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TrustOS · 连续性工作台（图为主轴 · Path 2 原型）</title>
+<style>
+  :root{ --bg:#0d1117;--panel:#161b22;--panel2:#1c2230;--line:#30363d;--accent:#58a6ff;--accent2:#7ee787;--txt:#c9d1d9;--muted:#8b949e;
+        --river:linear-gradient(180deg,#58a6ff,#7ee787); }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{font-family:-apple-system,"Segoe UI","PingFang SC",sans-serif;background:var(--bg);color:var(--txt);overflow:hidden;}
+
+  /* 顶栏：无缝切脑 + 续接 */
+  header{display:flex;align-items:center;gap:16px;padding:10px 18px;border-bottom:1px solid var(--line);background:var(--panel);}
+  header .logo{font-weight:700;font-size:15px;background:var(--river);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  header .sub{font-size:11px;color:var(--muted);}
+  header .spacer{flex:1;}
+  .ctl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);}
+  select,button{font-family:inherit;}
+  select{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:6px 9px;font-size:13px;}
+  .btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:6px 12px;font-size:13px;cursor:pointer;}
+  .btn:hover{border-color:var(--accent);}
+  .btn.primary{background:var(--accent);color:#04101f;border:none;font-weight:600;}
+  #toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--accent2);
+         color:var(--accent2);padding:8px 16px;border-radius:20px;font-size:13px;opacity:0;transition:.3s;z-index:50;pointer-events:none;}
+  #toast.on{opacity:1;}
+
+  /* 主区：左图(主轴) 右聊(边) */
+  main{display:grid;grid-template-columns:56% 44%;height:calc(100vh - 53px);}
+  #graphPane{overflow:auto;padding:22px 26px;border-right:1px solid var(--line);position:relative;}
+  #graphPane .gtitle{font-size:12px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;margin-bottom:14px;}
+  #graphPane .gtitle b{color:var(--accent2);}
+  .tree,.tree ul{list-style:none;margin:0;padding:0;}
+  .tree ul{margin-left:24px;}
+  .tree li{position:relative;padding:7px 0 7px 20px;}
+  .tree ul li::before{content:"";position:absolute;left:0;top:-7px;bottom:50%;width:2px;background:var(--river);opacity:.55;}
+  .tree ul li::after{content:"";position:absolute;left:0;top:50%;width:18px;height:2px;background:var(--river);opacity:.55;}
+  .node{display:inline-flex;flex-direction:column;gap:2px;cursor:pointer;padding:9px 13px;border:1px solid var(--line);
+        border-radius:11px;background:var(--panel);transition:.15s;max-width:300px;}
+  .node:hover{border-color:var(--accent);transform:translateX(2px);}
+  .node.active{border-color:var(--accent2);box-shadow:0 0 0 1px var(--accent2);}
+  .node .kw{font-weight:600;font-size:14px;}
+  .node .tm{font-size:11px;color:var(--muted);}
+  .node .badge{font-size:10px;color:var(--accent);margin-top:2px;}
+
+  /* 右侧聊天边 */
+  #chatPane{display:flex;flex-direction:column;background:var(--panel);}
+  #chatHead{padding:14px 18px;border-bottom:1px solid var(--line);font-size:13px;}
+  #chatHead .ctx{color:var(--muted);font-size:12px;margin-top:4px;}
+  #chatHead .ctx b{color:var(--accent);}
+  #chatBody{flex:1;overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:12px;}
+  .msg{max-width:86%;padding:9px 13px;border-radius:12px;font-size:14px;line-height:1.55;}
+  .msg.user{align-self:flex-end;background:var(--accent);color:#04101f;border-bottom-right-radius:3px;}
+  .msg.assistant{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:3px;}
+  #chatEmpty{align-self:center;margin:auto;color:var(--muted);font-size:13px;text-align:center;line-height:1.7;}
+  #chatFoot{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);}
+  #chatInput{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--txt);
+            padding:10px 12px;font-size:14px;resize:none;height:42px;}
+  #chatFoot .btn.primary{padding:0 18px;}
+  .extracting{font-size:11px;color:var(--muted);padding:0 18px 8px;}
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="logo">TrustOS · 连续性工作台</div>
+      <div class="sub">决策图是主轴 · 聊天是节点的一条边 · 脑随便换，连续性是你的</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="ctl">大脑
+      <select id="modelSel">
+        <option value="hermes">Hermes</option>
+        <option value="claude">Claude</option>
+        <option value="gpt">GPT</option>
+        <option value="local">本地模型</option>
+      </select>
+    </div>
+    <div class="ctl">会话
+      <select id="sessSel">
+        <option value="seed">本场对话（种子）</option>
+        <option value="new">＋ 新建会话</option>
+      </select>
+    </div>
+    <button class="btn" id="extractBtn">⟳ 抽取决策</button>
+  </header>
+
+  <main>
+    <div id="graphPane">
+      <div class="gtitle">决策图 · <b>主轴</b>（点节点 → 从它继续对话）</div>
+      <ul class="tree" id="tree"></ul>
+    </div>
+    <div id="chatPane">
+      <div id="chatHead"><div>对话边</div><div class="ctx" id="chatCtx">未选择节点 — 选左侧一个决策，或新建会话后直接开聊。</div></div>
+      <div id="chatBody"><div id="chatEmpty">← 选择一个节点，从这里继续<br>或点「新建会话」直接开始<br><br>聊完会自动把新决策抽进左侧图。</div></div>
+      <div class="extracting" id="extracting" style="display:none">正在抽取新决策节点…</div>
+      <div id="chatFoot" style="display:none">
+        <textarea id="chatInput" placeholder="继续这个决策…"></textarea>
+        <button class="btn primary" id="sendBtn">发送</button>
+      </div>
+    </div>
+  </main>
+  <div id="toast"></div>
+
+<script>
+/* ============ 配置：真实网关接线（不可达时优雅回退） ============ */
+const GATEWAY_BASE = "http://localhost:8787"; // 改成你的网关端口；不可达则用本地回退
+let currentModel = "hermes";
+
+/* ============ 种子数据（本场真实对话，作首屏图） ============ */
+const SEED = {
+  n1:{kw:"审计=伪需求？",tm:"起点",parent:null,prompt:"我认为是伪需求。",reply:"接受。可验证审计面向第三方证明，单用户本机威胁模型不成立；Event Backbone 改叙事为连续性。",links:["n2","n3"]},
+  n2:{kw:"保留可观测",tm:"分支",parent:"n1",prompt:"个人可观测/AI行为回放我认可——多轮后自己记不住。",reply:"一致：人的记忆兜底。Event Backbone 换成连续性账本解此痛。",links:["n3"]},
+  n3:{kw:"继续不重来",tm:"分支",parent:"n1",prompt:"从头还是捡起来？改认的沉默成本就认了。",reply:"查代码：Event Backbone 写路径干净→复用改连续性引擎；审计层认栽冻结。",links:["n4"]},
+  n4:{kw:"UX=主战场",tm:"分支",parent:"n3",prompt:"要有更好的UX，agent太相似。",reply:"结构性UX才是楔子；护城河=架构原生连续性。",links:["n5"]},
+  n5:{kw:"Hermes太浅？",tm:"分支",parent:"n4",prompt:"桌面UI+后接Hermes是不是太浅？",reply:"浅=UI后黑盒；深=主干内当worker，动作流经网关被记录。",links:["n6"]},
+  n6:{kw:"选A（深）",tm:"分支",parent:"n5",prompt:"我选A，但叙事不清晰。",reply:"A：保留核心，Hermes-as-worker进主干（借脑不借壳）。",links:["n7"]},
+  n7:{kw:"定位文档",tm:"分支",parent:"n6",prompt:"帮我做清晰描述。",reply:"写定位文档：连续性基底，引擎在其上运行、动作原生记录。",links:["n8"]},
+  n8:{kw:"用户视角说明",tm:"分支",parent:"n7",prompt:"按用户体验出说明，看竞争力。",reply:"写user-facing；竞争力=引擎无关可携带连续性=反锁定楔子。",links:["n9"]},
+  n9:{kw:"决策树回放构想",tm:"分支",parent:"n8",prompt:"记忆回放：决策树/河流，按需非实时，节点=关键词+时间。",reply:"优于时间线；按需化解firehose；跨链定位最锋利。",links:["n10"]},
+  n10:{kw:"单层撑得起？",tm:"分支",parent:"n9",prompt:"只这一层+对接agent，谁会用？",reply:"不能standalone；二选一路1 embedded / 路2 图主轴+垂直。",links:["n11"]},
+  n11:{kw:"选路2",tm:"分支",parent:"n10",prompt:"我想做路2，机会在哪？",reply:"白空格+顺风+反锁定；致死：抽取质量/只瞥不遍历。",links:["n12","n13"]},
+  n12:{kw:"胜机分析",tm:"分支",parent:"n11",prompt:"机会具体在哪？",reply:"incumbents不占decision-first白空格；autonomous失忆加剧；图可携带难抄。",links:["n13"]},
+  n13:{kw:"用数据做demo",tm:"当前",parent:"n11",prompt:"聊天记录你都看到吗？用我们的数据做demo。",reply:"可见本次对话；dogfooding；抽成决策图自证。",links:[]},
+};
+
+/* ============ 状态 ============ */
+let nodes = [];          // 当前图的节点
+let byKw = new Map();    // keyword -> node
+let byId = new Map();    // id -> node
+let selectedNode = null;
+let thread = { nodeId:null, messages:[] };
+
+function loadSeed(){
+  nodes = Object.entries(SEED).map(([id,v])=>({id, ...v, links:v.links||[]}));
+  rebuildIndexes();
+}
+function rebuildIndexes(){
+  byId = new Map(nodes.map(n=>[n.id,n]));
+  byKw = new Map();
+  nodes.forEach(n=>{ if(n.kw) byKw.set(n.kw,n); });
+}
+function resolveParentId(parentKw, fallbackId){
+  if(!parentKw) return fallbackId;
+  const p = byKw.get(parentKw);
+  return p ? p.id : fallbackId;
+}
+
+/* ============ 渲染图（主轴） ============ */
+const treeEl = document.getElementById('tree');
+function renderGraph(){
+  treeEl.innerHTML = "";
+  const roots = nodes.filter(n=>!n.parent || !byId.has(n.parent));
+  roots.forEach(r=>buildTree(r.id, treeEl));
+  if(!roots.length) treeEl.innerHTML = '<li style="color:var(--muted)">暂无决策节点 — 开始聊天后会自动抽取。</li>';
+}
+function buildTree(id, container){
+  const n = byId.get(id); if(!n) return;
+  const li = document.createElement('li');
+  const d = document.createElement('div');
+  d.className = 'node' + (selectedNode===id?' active':'');
+  d.dataset.id = id;
+  d.innerHTML = `<span class="kw">${esc(n.kw)}</span><span class="tm">${esc(n.tm||'')}</span>` +
+                (n._new?'<span class="badge">＋新</span>':'');
+  d.onclick = ()=>selectNode(id);
+  li.appendChild(d);
+  const ch = nodes.filter(x=>x.parent===id);
+  if(ch.length){ const ul=document.createElement('ul'); ch.forEach(c=>buildTree(c.id,ul)); li.appendChild(ul); }
+  container.appendChild(li);
+}
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+function selectNode(id){
+  selectedNode = id;
+  renderGraph();
+  const n = byId.get(id);
+  document.getElementById('chatCtx').innerHTML = `从决策 <b>${esc(n.kw)}</b> 继续 — ${esc(n.reply||'')}`;
+  openChat(id);
+}
+
+/* ============ 聊天边 ============ */
+const chatBody = document.getElementById('chatBody');
+const chatFoot = document.getElementById('chatFoot');
+function openChat(nodeId){
+  thread = { nodeId, messages: thread.nodeId===nodeId ? thread.messages : [] };
+  chatFoot.style.display = 'flex';
+  if(thread.messages.length===0){
+    chatBody.innerHTML = `<div id="chatEmpty">从「${esc(byId.get(nodeId)?.kw||'新会话')}」继续。<br>聊完会自动把新决策抽进左侧图。</div>`;
+  } else { renderThread(); }
+}
+function renderThread(){
+  chatBody.innerHTML = thread.messages.map(m=>
+    `<div class="msg ${m.role}">${esc(m.content)}</div>`).join('');
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+function pushMsg(role, content){
+  thread.messages.push({role, content});
+  if(document.getElementById('chatEmpty')) chatBody.innerHTML='';
+  renderThread();
+}
+
+/* ============ 真实网关 / 本地回退 ============ */
+async function chatApi(messages){
+  const payload = { model:currentModel, messages:messages.map(m=>({role:m.role, content:m.content})), stream:false };
+  try{
+    const r = await fetch(`${GATEWAY_BASE}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(!r.ok) throw 0;
+    const j = await r.json();
+    return j?.choices?.[0]?.message?.content || "(空响应)";
+  }catch{
+    // 本地回退：让原型在无网关时也能演示
+    await new Promise(r=>setTimeout(r,400));
+    return `(本地模拟·未连网关) 已就「${messages[messages.length-1].content.slice(0,18)}…」给出回复。接入真实网关后这里会是 ${currentModel} 的回答。`;
+  }
+}
+async function extractApi(messages){
+  try{
+    const r = await fetch(`${GATEWAY_BASE}/trst1/extract-decisions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:currentModel, messages:messages.map(m=>({role:m.role,content:m.content}))})});
+    if(!r.ok) throw 0;
+    const j = await r.json();
+    return Array.isArray(j.decisions) ? j.decisions : [];
+  }catch{
+    return heuristicExtract(messages); // 本地 v0 回退
+  }
+}
+// v0 启发式（与 v2 一致），保证无网关也能看到抽取效果
+const DEC_RE=/(接受|改(叙事|名)|复用|冻结|认栽|结构性|深|保留|反锁定|白空格|致死|砍|停投|不重来|主战场|借脑|可携带)/;
+const Q_RE=/[?？]|还是|怎么|能否|该不该|选[AB]/;
+function heuristicExtract(msgs){
+  const out=[]; let pending=null;
+  msgs.forEach((m,i)=>{
+    if(m.role==='user'){ if(Q_RE.test(m.content)) pending=m.content.slice(0,40); }
+    else{ const hit=DEC_RE.test(m.content);
+      if(hit||pending){ const kw=m.content.match(DEC_RE); out.push({keyword:(kw?kw[0]:m.content.slice(0,8)),prompt:pending||'(推进)',reply:m.content.slice(0,60),parent_keyword:null,links:[],seq:i}); pending=null; } }
+  });
+  return out;
+}
+
+/* ============ 合并新抽取节点 ============ */
+function mergeDecisions(decisions, fallbackParentId){
+  let added=0;
+  decisions.forEach(d=>{
+    if(!d.keyword || byKw.has(d.keyword)) return; // 去重
+    const id = 'x'+Date.now()+Math.floor(Math.random()*1000)+added;
+    const parentId = resolveParentId(d.parent_keyword, fallbackParentId);
+    const node = { id, kw:d.keyword, tm:'刚刚', prompt:d.prompt||'', reply:d.reply||'',
+                   parent:parentId, links:(d.links||[]).map(k=>byKw.get(k)?.id).filter(Boolean), seq:d.seq||0, _new:true };
+    nodes.push(node); byKw.set(d.keyword, node); byId.set(id, node); added++;
+  });
+  if(added){ renderGraph(); toast(`＋ ${added} 个新决策已抽进图`); }
+}
+
+/* ============ 交互 ============ */
+document.getElementById('sendBtn').onclick = async ()=>{
+  const ta = document.getElementById('chatInput');
+  const text = ta.value.trim(); if(!text) return;
+  ta.value='';
+  pushMsg('user', text);
+  const reply = await chatApi(thread.messages);
+  pushMsg('assistant', reply);
+  // 自动抽取并合并（增量：以当前线程节点为父）
+  document.getElementById('extracting').style.display='block';
+  const decisions = await extractApi(thread.messages);
+  document.getElementById('extracting').style.display='none';
+  mergeDecisions(decisions, thread.nodeId);
+  thread.nodeId = selectedNode; // 新节点挂到当前选中节点下
+};
+document.getElementById('chatInput').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.getElementById('sendBtn').click();} });
+
+document.getElementById('modelSel').onchange = e=>{
+  currentModel = e.target.value;
+  toast(`已切换大脑：${currentModel}（决策图与连续性不变）`); // 反锁定演示
+};
+document.getElementById('sessSel').onchange = e=>{
+  if(e.target.value==='new'){ nodes=[]; rebuildIndexes(); renderGraph(); thread={nodeId:null,messages:[]}; chatFoot.style.display='flex'; chatBody.innerHTML='<div id="chatEmpty">新会话已建。直接开聊，决策会自动成图。</div>'; document.getElementById('chatCtx').textContent='新会话 — 直接开始。'; selectedNode=null; toast('新会话（连续性从空图开始）'); }
+  else { loadSeed(); renderGraph(); selectedNode=null; thread={nodeId:null,messages:[]}; chatFoot.style.display='none'; chatBody.innerHTML='<div id="chatEmpty">← 选择一个节点，从这里继续</div>'; document.getElementById('chatCtx').textContent='未选择节点。'; toast('已续接：本场对话种子图'); }
+};
+document.getElementById('extractBtn').onclick = async ()=>{
+  if(thread.messages.length===0){ toast('先聊几句再抽取'); return; }
+  document.getElementById('extracting').style.display='block';
+  const d = await extractApi(thread.messages);
+  document.getElementById('extracting').style.display='none';
+  mergeDecisions(d, selectedNode);
+};
+
+let toastT;
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),2200); }
+
+/* ============ 启动 ============ */
+loadSeed();
+renderGraph();
+</script>
+</body>
+</html>

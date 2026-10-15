@@ -334,6 +334,81 @@ export async function fetchGatewayHealth(): Promise<GatewayHealth> {
   return res.json();
 }
 
+// ── Continuity Engine: decision-graph helpers (Path 2 主轴 UI) ──────────────
+// 这些调用走独立网关（8787），使所有 model 调用都被我们的网关中介、
+// 抽取决策节点落 Event Backbone。网关不可达时返回空，由 UI 回退到种子/本地启发式。
+
+export interface DecisionNode {
+  id: string;
+  keyword: string;
+  tm: string;
+  prompt: string;
+  reply: string;
+  parent: string | null;
+  links: string[];
+  seq: number;
+}
+
+export async function fetchDecisions(sessionId?: string): Promise<DecisionNode[]> {
+  try {
+    const url = `${GATEWAY_URL}/trst1/decisions${
+      sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ""
+    }`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) throw new Error(`decisions ${res.status}`);
+    const j = await res.json();
+    return Array.isArray(j.nodes) ? (j.nodes as DecisionNode[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function gatewayChat(
+  model: string,
+  messages: { role: string; content: string }[],
+  sessionId: string,
+): Promise<string> {
+  try {
+    const res = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-TrustOS-Session-Id": sessionId,
+      },
+      body: JSON.stringify({ model, messages, stream: false }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) throw new Error(`chat ${res.status}`);
+    const j = await res.json();
+    return j?.choices?.[0]?.message?.content || "";
+  } catch {
+    return "";
+  }
+}
+
+export async function gatewayExtract(
+  model: string,
+  messages: { role: string; content: string }[],
+  sessionId: string,
+): Promise<DecisionNode[]> {
+  try {
+    const res = await fetch(`${GATEWAY_URL}/trst1/extract-decisions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-TrustOS-Session-Id": sessionId,
+      },
+      body: JSON.stringify({ model, messages }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) throw new Error(`extract ${res.status}`);
+    const j = await res.json();
+    return Array.isArray(j.decisions) ? (j.decisions as DecisionNode[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 // Memory API helpers
 export interface MemoryEntry {
   id: string;

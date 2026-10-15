@@ -24,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "workhistory", icon: "🕓", label: "工作历史" },
   { id: "dashboard",   icon: "📊", label: "仪表盘" },
   { id: "audit",       icon: "🛡️", label: "审计" },
+  { id: "continuity",  icon: "🌊", label: "连续" },
 ];
 
 // RFC-002 菜单收敛（2026-09-21）：原「归档」并入「工作历史」(type=archive 子视图)，

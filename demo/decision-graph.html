@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TrustOS · 决策图回放 Demo（自证数据：本场对话）</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --line: #30363d;
+    --accent: #58a6ff; --accent2: #7ee787; --txt: #c9d1d9; --muted: #8b949e;
+    --river: linear-gradient(180deg, #58a6ff 0%, #7ee787 100%);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif;
+         background: var(--bg); color: var(--txt); height: 100vh; overflow: hidden; }
+  /* 主工作区（占位：聊天/agent 在此，本 demo 仅演示记忆回放层） */
+  #workspace { height: 100%; display: flex; align-items: center; justify-content: center;
+               flex-direction: column; gap: 12px; color: var(--muted); }
+  #workspace .hint { font-size: 14px; }
+  #openBtn { position: fixed; top: 18px; right: 18px; z-index: 20;
+             background: var(--accent); color: #04101f; border: none; padding: 10px 16px;
+             border-radius: 8px; font-weight: 600; cursor: pointer; }
+  /* 回放层：按需出现，非实时 */
+  #replay { position: fixed; inset: 0; z-index: 30; display: none;
+            background: rgba(13,17,23,.97); backdrop-filter: blur(4px); }
+  #replay.on { display: grid; grid-template-columns: 42% 58%; }
+  #replay header { position: absolute; top: 14px; left: 20px; font-size: 13px; color: var(--muted); }
+  #closeBtn { position: absolute; top: 12px; right: 16px; z-index: 5; background: transparent;
+              color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
+              padding: 6px 12px; cursor: pointer; }
+  /* 树 / 河流 */
+  #treePane { overflow: auto; padding: 56px 24px 24px; border-right: 1px solid var(--line); }
+  .tree, .tree ul { list-style: none; margin: 0; padding: 0; }
+  .tree ul { margin-left: 22px; position: relative; }
+  .tree li { position: relative; padding: 6px 0 6px 18px; }
+  /* 连接器：河流渐变 */
+  .tree ul li::before { content: ""; position: absolute; left: 0; top: -6px; bottom: 50%;
+    width: 2px; background: var(--river); opacity: .5; }
+  .tree ul li::after { content: ""; position: absolute; left: 0; top: 50%; width: 16px; height: 2px;
+    background: var(--river); opacity: .5; }
+  .tree ul { border-left: 0; }
+  .node { display: inline-flex; flex-direction: column; gap: 2px; cursor: pointer;
+          padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px;
+          background: var(--panel); transition: .15s; max-width: 280px; }
+  .node:hover { border-color: var(--accent); transform: translateX(2px); }
+  .node.active { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2); }
+  .node .kw { font-weight: 600; font-size: 14px; }
+  .node .tm { font-size: 11px; color: var(--muted); }
+  /* 详情 */
+  #detailPane { overflow: auto; padding: 56px 32px 32px; }
+  #detailPane h2 { margin: 0 0 4px; font-size: 20px; }
+  #detailPane .meta { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+  .block { border-left: 3px solid var(--line); padding: 4px 0 4px 14px; margin: 14px 0; }
+  .block.prompt { border-color: var(--accent); }
+  .block.reply { border-color: var(--accent2); }
+  .block h3 { margin: 0 0 4px; font-size: 12px; letter-spacing: .05em; color: var(--muted);
+              text-transform: uppercase; }
+  .block p { margin: 0; line-height: 1.6; font-size: 14px; }
+  .links { margin-top: 18px; }
+  .links .lbl { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .chip { display: inline-block; margin: 3px 6px 3px 0; padding: 5px 11px; border-radius: 14px;
+          background: var(--panel); border: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+  .empty { color: var(--muted); font-size: 14px; margin-top: 40px; }
+</style>
+</head>
+<body>
+  <div id="workspace">
+    <div style="font-size:42px">💬</div>
+    <div class="hint">主工作区（聊天 / agent 在此运行）</div>
+    <div class="hint">「记忆回放」是按需出现的独立层 →</div>
+  </div>
+  <button id="openBtn">🧠 记忆回放 · 决策图</button>
+
+  <div id="replay">
+    <header>TrustOS 决策图 · 自证种子数据 = 本场对话（solo / 长程 / 多分支）</header>
+    <button id="closeBtn">关闭</button>
+    <div id="treePane"><ul class="tree" id="tree"></ul></div>
+    <div id="detailPane"><div class="empty">← 点击左侧任意节点，查看该决策的 prompt / 回复 / 关联定位</div></div>
+  </div>
+
+<script>
+// 种子数据：本场真实对话抽成的决策节点
+const NODES = {
+  n1:  { kw:"审计=伪需求？", tm:"会话起点", parent:null,
+    prompt:"我认为是伪需求。",
+    reply:"接受。可验证审计面向「向第三方证明」，单用户本机威胁模型不成立；差异化塌，但 Event Backbone 可改叙事为「连续性」。",
+    links:["n2","n3"] },
+  n2:  { kw:"保留可观测", tm:"分支", parent:"n1",
+    prompt:"个人可观测 / AI 行为回放我认可——多轮后自己都记不住，常错误指挥、思路断线。",
+    reply:"一致，且比你说的更底层：这是「人的记忆兜底」。Event Backbone 换成连续性账本正好解此痛。",
+    links:["n3"] },
+  n3:  { kw:"继续不重来", tm:"分支", parent:"n1",
+    prompt:"从头开始还是把原来的开发捡起来？改认的沉默成本就认了。",
+    reply:"查代码：Event Backbone 写路径干净、未被密码学污染 → 复用改连续性引擎；审计/证明层认栽冻结，不重投。",
+    links:["n4"] },
+  n4:  { kw:"UX=主战场", tm:"分支", parent:"n3",
+    prompt:"要有更好的 UX，现在各个 agent 太相似了。",
+    reply:"表层打磨不是差异化；结构性 UX（交互模型不同）才是楔子。护城河=架构原生连续性，非 UI 装饰。",
+    links:["n5"] },
+  n5:  { kw:"Hermes 太浅？", tm:"分支", parent:"n4",
+    prompt:"我们运行在桌面，后面接 Hermes，这是不是太浅了？",
+    reply:"浅=把 Hermes 当 UI 后黑盒大脑（零护城河）；深=Hermes 在主干内当 worker，动作也流经网关被记录。",
+    links:["n6"] },
+  n6:  { kw:"选 A（深）", tm:"分支", parent:"n5",
+    prompt:"我当然是选 A 了，但整个叙事还是没有很清晰。",
+    reply:"A：保留自有核心，Hermes 作可插拔 worker 进主干（借脑不借壳）。写定位文档收口叙事。",
+    links:["n7"] },
+  n7:  { kw:"定位文档", tm:"分支", parent:"n6",
+    prompt:"帮我做清晰描述。",
+    reply:"写 TRUSTOS-positioning.md：连续性基底，任何引擎在其上运行、每次动作原生记录，人随时 re-orient。",
+    links:["n8"] },
+  n8:  { kw:"用户视角说明", tm:"分支", parent:"n7",
+    prompt:"按照用户使用体验的方式试出一版说明，看看是否有竞争力。",
+    reply:"写 user-facing.md。竞争力在「引擎无关的可携带连续性」= 反锁定楔子；胜负手是 UX 质量，非「它记得」本身。",
+    links:["n9"] },
+  n9:  { kw:"决策树回放构想", tm:"分支", parent:"n8",
+    prompt:"记忆回放画面：每次讨论决策随时间形成决策树 / 流动分叉河流，按需非实时，节点=关键词+时间，点开有详细历史与问题定位。",
+    reply:"优于线性时间线；按需非实时化解 firehose；「问题在哪被回答」跨链定位最锋利。待解：树vs河流、抽取质量、规模。",
+    links:["n10"] },
+  n10: { kw:"单层撑得起？", tm:"分支", parent:"n9",
+    prompt:"我们只做了这些能否撑得起 UI/UX？只有这一层再对接 agent，谁会用？",
+    reply:"不能独立撑起 standalone adoption（缺进入理由，单层=feature非product）。二选一：路1 embedded 连续性层 / 路2 图主轴+垂直。",
+    links:["n11"] },
+  n11: { kw:"选 路2", tm:"分支", parent:"n10",
+    prompt:"我当然想做路2了，能做成的机会在哪里？",
+    reply:"白空格(action-first盲点)+宏观顺风(autonomous失忆加剧)+反锁定(引擎无关)。致死：抽取质量差 / 用户只瞥不遍历。",
+    links:["n12","n13"] },
+  n12: { kw:"胜机分析", tm:"分支", parent:"n11",
+    prompt:"机会具体在哪？",
+    reply:"incumbents 不会占 decision-first 白空格；agent 越自主人越失忆（趋势利好）；图可携带 incumbents 结构性难抄。",
+    links:["n13"] },
+  n13: { kw:"用数据做 demo", tm:"当前", parent:"n11",
+    prompt:"我们的聊天记录你都能看到吗？没有其他证伪方式，我本身也是 solo，就用我们的数据实验，你做 demo / MVP。",
+    reply:"可见本次对话（摘要+当前消息）。dogfooding：把本场对话抽成决策图，自证抽取可行性+图可用性。",
+    links:[] },
+};
+
+// 构建树
+const treeEl = document.getElementById('tree');
+function buildTree(id, container){
+  const li = document.createElement('li');
+  const node = NODES[id];
+  const div = document.createElement('div');
+  div.className = 'node'; div.dataset.id = id;
+  div.innerHTML = `<span class="kw">${node.kw}</span><span class="tm">${node.tm}</span>`;
+  div.onclick = () => showDetail(id);
+  li.appendChild(div);
+  const children = Object.keys(NODES).filter(k => NODES[k].parent === id);
+  if(children.length){
+    const ul = document.createElement('ul');
+    children.forEach(c => buildTree(c, ul));
+    li.appendChild(ul);
+  }
+  container.appendChild(li);
+}
+buildTree('n1', treeEl);
+
+const detail = document.getElementById('detailPane');
+function showDetail(id){
+  document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+  document.querySelector(`.node[data-id="${id}"]`).classList.add('active');
+  const n = NODES[id];
+  let linksHtml = n.links.length
+    ? `<div class="links"><div class="lbl">关联 / 已回答位置定位 →</div>` +
+      n.links.map(l => `<span class="chip" onclick="showDetail('${l}')">${NODES[l].kw}</span>`).join('') + `</div>`
+    : `<div class="links"><div class="lbl">（末端节点，无后续分支）</div></div>`;
+  detail.innerHTML = `
+    <h2>${n.kw}</h2>
+    <div class="meta">${n.tm}</div>
+    <div class="block prompt"><h3>用户 Prompt</h3><p>${n.prompt}</p></div>
+    <div class="block reply"><h3>回复要点</h3><p>${n.reply}</p></div>
+    ${linksHtml}`;
+  detail.scrollTop = 0;
+}
+
+// 按需开关（非实时）
+const replay = document.getElementById('replay');
+document.getElementById('openBtn').onclick = () => replay.classList.add('on');
+document.getElementById('closeBtn').onclick = () => replay.classList.remove('on');
+</script>
+</body>
+</html>

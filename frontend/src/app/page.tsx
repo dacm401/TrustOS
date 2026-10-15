@@ -25,6 +25,9 @@ const AuditReviewSurface = lazy(() =>
 const WorkHistoryView = lazy(() =>
   import("@/components/views/WorkHistoryView").then((m) => ({ default: m.WorkHistoryView }))
 );
+const ContinuityWorkspace = lazy(() =>
+  import("@/components/continuity/ContinuityWorkspace").then((m) => ({ default: m.ContinuityWorkspace }))
+);
 const EvidencePanel = lazy(() =>
   import("@/components/workbench/EvidencePanel").then((m) => ({ default: m.EvidencePanel }))
 );
@@ -49,7 +52,7 @@ function LazyView({ name, children }: { name: string; children: ReactNode }) {
   );
 }
 
-type NavView = "chat" | "tasks" | "memory" | "dashboard" | "permissions" | "audit" | "workhistory";
+type NavView = "chat" | "tasks" | "memory" | "dashboard" | "permissions" | "audit" | "workhistory" | "continuity";
 
 type WorkbenchTab = "evidence" | "trace" | "health" | "debug";
 
@@ -214,6 +217,10 @@ export default function HomePage() {
 
           {activeNav === "workhistory" && (
             <LazyView name="WorkHistoryView"><WorkHistoryView userId={userId} /></LazyView>
+          )}
+
+          {activeNav === "continuity" && (
+            <LazyView name="ContinuityWorkspace"><ContinuityWorkspace sessionId={sessionId} /></LazyView>
           )}
         </main>
 

@@ -24,7 +24,8 @@ import { v4 as uuidv4 } from "uuid";
 import { createHash } from "node:crypto";
 
 import { createEventId, extractTaskId, type TrstEventEnvelope } from "./event-envelope.js";
-import { appendEvent, countEvents, getStorePath } from "./jsonl-event-store.js";
+import { appendEvent, countEvents, getStorePath, readEvents } from "./jsonl-event-store.js";
+import { extractDecisions, toDecisionEvent } from "./decision-extractor.js";
 import { getJsonlEventIndex } from "./jsonl-event-index.js";
 import { getEventIndex, type EventIndex } from "./event-index.js";
 import { extractContextBlocks } from "./context-trace-lite.js";
@@ -940,6 +941,94 @@ export function createGatewayApp(config: GatewayConfig): Hono {
 
   // POST /trst1/mcp/tools/call - backward compat (TRST-1C)
   app.post("/trst1/mcp/tools/call", async (c) => handleMcpRequest(c, "/trst1/mcp/tools/call"));
+
+  // ── Continuity Engine: Gateway-side LLM decision extraction ──────────────
+  // Reuses the agent's OWN model (via the provider abstraction) to extract
+  // decision/branch nodes from a conversation, then persists them as `decision`
+  // events on the Event Backbone — the spine of the decision-graph UX.
+  // Decoupled from the hot chat path: trigger on session-end / demand.
+
+  /**
+   * POST /trst1/extract-decisions
+   * Body: { model: string, messages: [{ role, content }] }
+   * Returns the extracted decision nodes and persists them as events.
+   */
+  app.post("/trst1/extract-decisions", async (c) => {
+    const identity = buildIdentity(c, config.projectId);
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: { message: "Invalid JSON body", type: "invalid_request" } }, 400);
+    }
+
+    const model = typeof body.model === "string" ? body.model : undefined;
+    if (!model) {
+      return c.json({ error: { message: "model is required", type: "invalid_request" } }, 400);
+    }
+    const messages = Array.isArray(body.messages)
+      ? (body.messages as Array<{ role: string; content?: unknown }>)
+      : [];
+    if (messages.length === 0) {
+      return c.json({ status: "ok", extracted: 0, decisions: [], note: "no messages" });
+    }
+
+    let provider;
+    try {
+      provider = config.modelRegistry.resolveProvider(model);
+    } catch {
+      return c.json({ error: { message: `Unknown model: ${model}`, type: "unknown_model" } }, 400);
+    }
+
+    const decisions = await extractDecisions(
+      { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model },
+      messages,
+    );
+
+    let providerHost = provider.baseUrl;
+    try { providerHost = new URL(provider.baseUrl).hostname; } catch { /* keep raw */ }
+
+    const events = decisions.map((d) =>
+      toDecisionEvent(d, identity, { model, provider: providerHost }),
+    );
+    events.forEach((e) => persistEvent(e));
+
+    return c.json({ status: "ok", extracted: decisions.length, decisions });
+  });
+
+  /**
+   * GET /trst1/decisions — feed for the decision-graph UI.
+   * Optional ?session_id= to scope; reads `decision` events from the store.
+   */
+  app.get("/trst1/decisions", (c) => {
+    const sessionId = c.req.query("session_id");
+    const limit = Math.min(500, Math.max(1, parseInt(c.req.query("limit") || "") || 200));
+    const idx = initEventIndex();
+    let events: Record<string, unknown>[];
+    if (idx) {
+      events = idx.queryEvents({
+        limit,
+        event_type: "decision",
+        session_id: sessionId ?? undefined,
+      }).events as unknown as Record<string, unknown>[];
+    } else {
+      events = readEvents(limit).filter((e) => e.event_type === "decision") as unknown as Record<string, unknown>[];
+    }
+    if (sessionId) events = events.filter((e) => e.session_id === sessionId);
+
+    const nodes = events.map((e) => ({
+      id: e.event_id,
+      keyword: e.decision_keyword,
+      tm: e.timestamp,
+      prompt: e.decision_prompt,
+      reply: e.decision_reply,
+      parent: (e.decision_parent as string) ?? null,
+      links: Array.isArray(e.decision_links) ? (e.decision_links as string[]) : [],
+      seq: typeof e.decision_seq === "number" ? e.decision_seq : 0,
+    }));
+
+    return c.json({ status: "ok", count: nodes.length, nodes });
+  });
 
   return app;
 }

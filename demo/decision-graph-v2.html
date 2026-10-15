@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TrustOS · 决策图 v2（原始对话 → 自动抽取 → 渲染）</title>
+<style>
+  :root{ --bg:#0d1117;--panel:#161b22;--line:#30363d;--accent:#58a6ff;--accent2:#7ee787;--txt:#c9d1d9;--muted:#8b949e;--river:linear-gradient(180deg,#58a6ff,#7ee787);}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,"Segoe UI","PingFang SC",sans-serif;background:var(--bg);color:var(--txt);height:100vh;overflow:hidden;}
+  #workspace{height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--muted);}
+  .bar{position:fixed;top:18px;right:18px;z-index:20;display:flex;gap:10px;}
+  button.act{background:var(--accent);color:#04101f;border:none;padding:10px 15px;border-radius:8px;font-weight:600;cursor:pointer;}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent);padding:10px 15px;border-radius:8px;cursor:pointer;}
+  .overlay{position:fixed;inset:0;z-index:30;display:none;background:rgba(13,17,23,.97);}
+  .overlay.on{display:block;}
+  .overlay header{position:absolute;top:14px;left:20px;font-size:13px;color:var(--muted);z-index:5;}
+  .close{position:absolute;top:12px;right:16px;z-index:10;background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer;}
+
+  /* 树视图（v1 手工对照） */
+  #treeView{display:grid;grid-template-columns:42% 58%;height:100%;}
+  #treePane{overflow:auto;padding:56px 24px 24px;border-right:1px solid var(--line);}
+  .tree,.tree ul{list-style:none;margin:0;padding:0;}
+  .tree ul{margin-left:22px;}
+  .tree li{position:relative;padding:6px 0 6px 18px;}
+  .tree ul li::before{content:"";position:absolute;left:0;top:-6px;bottom:50%;width:2px;background:var(--river);opacity:.5;}
+  .tree ul li::after{content:"";position:absolute;left:0;top:50%;width:16px;height:2px;background:var(--river);opacity:.5;}
+  .node{display:inline-flex;flex-direction:column;gap:2px;cursor:pointer;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);transition:.15s;max-width:280px;}
+  .node:hover{border-color:var(--accent);transform:translateX(2px);}
+  .node.active{border-color:var(--accent2);box-shadow:0 0 0 1px var(--accent2);}
+  .node .kw{font-weight:600;font-size:14px;}
+  .node .tm{font-size:11px;color:var(--muted);}
+  #detailPane{overflow:auto;padding:56px 32px 32px;}
+  .block{border-left:3px solid var(--line);padding:4px 0 4px 14px;margin:14px 0;}
+  .block.prompt{border-color:var(--accent);} .block.reply{border-color:var(--accent2);}
+  .block h3{margin:0 0 4px;font-size:12px;letter-spacing:.05em;color:var(--muted);text-transform:uppercase;}
+  .block p{margin:0;line-height:1.6;font-size:14px;}
+  .links{margin-top:18px;} .links .lbl{font-size:12px;color:var(--muted);margin-bottom:6px;}
+  .chip{display:inline-block;margin:3px 6px 3px 0;padding:5px 11px;border-radius:14px;background:var(--panel);border:1px solid var(--line);cursor:pointer;font-size:13px;}
+  .chip:hover{border-color:var(--accent);color:var(--accent);}
+  .empty{color:var(--muted);font-size:14px;margin-top:40px;}
+
+  /* 抽取实验室（v2 新） */
+  #labView{display:grid;grid-template-columns:38% 62%;height:100%;}
+  #rawPane{overflow:auto;padding:56px 20px 20px;border-right:1px solid var(--line);}
+  .msg{border:1px solid var(--line);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:13px;line-height:1.5;}
+  .msg.user{border-left:3px solid var(--accent);}
+  .msg.assistant{border-left:3px solid var(--accent2);}
+  .msg .role{font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:3px;}
+  #extPane{overflow:auto;padding:56px 28px 28px;}
+  .banner{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:12px 16px;font-size:13px;line-height:1.6;margin-bottom:18px;}
+  .banner b{color:var(--accent2);}
+  .ecard{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0;background:var(--panel);}
+  .ecard .ekw{font-weight:600;font-size:14px;color:var(--accent);}
+  .ecard .etm{font-size:11px;color:var(--muted);margin-left:8px;}
+  .ecard .ep{font-size:12px;color:var(--muted);margin:6px 0 2px;}
+  .ecard .er{font-size:13px;line-height:1.5;}
+  .miss{color:#f0883e;}
+</style>
+</head>
+<body>
+  <div id="workspace">
+    <div style="font-size:42px">💬</div>
+    <div>主工作区（聊天 / agent）</div>
+    <div style="font-size:13px">右上角两个按钮：手工树（对照）· 自动抽取实验室（v2）</div>
+  </div>
+  <div class="bar">
+    <button class="act" onclick="openView('tree')">🧠 手工决策树（v1）</button>
+    <button class="ghost" onclick="openView('lab')">⚙️ 自动抽取实验室（v2）</button>
+  </div>
+
+  <!-- 树视图 -->
+  <div class="overlay" id="treeOverlay">
+    <header>v1 手工树 · 参考标注（13 节点）= 抽取质量对照基线</header>
+    <button class="close" onclick="closeViews()">关闭</button>
+    <div id="treeView">
+      <div id="treePane"><ul class="tree" id="tree"></ul></div>
+      <div id="detailPane"><div class="empty">← 点击节点查看 prompt / 回复 / 关联定位</div></div>
+    </div>
+  </div>
+
+  <!-- 抽取实验室 -->
+  <div class="overlay" id="labOverlay">
+    <header>v2 自动抽取 · 输入=原始对话消息流，输出=决策节点（启发式 v0）</header>
+    <button class="close" onclick="closeViews()">关闭</button>
+    <div id="labView">
+      <div id="rawPane"><div style="font-size:12px;color:var(--muted);margin-bottom:8px">原始对话（role / content）</div><div id="rawList"></div></div>
+      <div id="extPane"><div id="extOut"></div></div>
+    </div>
+  </div>
+
+<script>
+/* ---------- 手工树（v1，作为对照基线） ---------- */
+const NODES = {
+  n1:{kw:"审计=伪需求？",tm:"起点",parent:null,prompt:"我认为是伪需求。",reply:"接受。可验证审计面向第三方证明，单用户本机威胁模型不成立；Event Backbone 改叙事为连续性。",links:["n2","n3"]},
+  n2:{kw:"保留可观测",tm:"分支",parent:"n1",prompt:"个人可观测/AI行为回放我认可——多轮后自己记不住，常错误指挥。",reply:"一致：这是人的记忆兜底。Event Backbone 换成连续性账本解此痛。",links:["n3"]},
+  n3:{kw:"继续不重来",tm:"分支",parent:"n1",prompt:"从头还是捡起来？改认的沉默成本就认了。",reply:"查代码：Event Backbone 写路径干净→复用改连续性引擎；审计层认栽冻结。",links:["n4"]},
+  n4:{kw:"UX=主战场",tm:"分支",parent:"n3",prompt:"要有更好的UX，agent太相似。",reply:"结构性UX才是楔子；护城河=架构原生连续性。",links:["n5"]},
+  n5:{kw:"Hermes太浅？",tm:"分支",parent:"n4",prompt:"桌面UI+后接Hermes是不是太浅？",reply:"浅=UI后黑盒；深=主干内当worker，动作流经网关被记录。",links:["n6"]},
+  n6:{kw:"选A（深）",tm:"分支",parent:"n5",prompt:"我选A，但叙事不清晰。",reply:"A：保留核心，Hermes-as-worker进主干（借脑不借壳）。",links:["n7"]},
+  n7:{kw:"定位文档",tm:"分支",parent:"n6",prompt:"帮我做清晰描述。",reply:"写定位文档：连续性基底，引擎在其上运行、动作原生记录。",links:["n8"]},
+  n8:{kw:"用户视角说明",tm:"分支",parent:"n7",prompt:"按用户体验出说明，看竞争力。",reply:"写user-facing；竞争力=引擎无关可携带连续性=反锁定楔子。",links:["n9"]},
+  n9:{kw:"决策树回放构想",tm:"分支",parent:"n8",prompt:"记忆回放：决策树/河流，按需非实时，节点=关键词+时间。",reply:"优于时间线；按需化解firehose；跨链定位最锋利。",links:["n10"]},
+  n10:{kw:"单层撑得起？",tm:"分支",parent:"n9",prompt:"只这一层+对接agent，谁会用？",reply:"不能standalone；二选一路1 embedded / 路2 图主轴+垂直。",links:["n11"]},
+  n11:{kw:"选路2",tm:"分支",parent:"n10",prompt:"我想做路2，机会在哪？",reply:"白空格+顺风+反锁定；致死：抽取质量/只瞥不遍历。",links:["n12","n13"]},
+  n12:{kw:"胜机分析",tm:"分支",parent:"n11",prompt:"机会具体在哪？",reply:"incumbents不占decision-first白空格；autonomous失忆加剧；图可携带难抄。",links:["n13"]},
+  n13:{kw:"用数据做demo",tm:"当前",parent:"n11",prompt:"聊天记录你都看到吗？用我们的数据做demo。",reply:"可见本次对话；dogfooding；抽成决策图自证。",links:[]},
+};
+const treeEl=document.getElementById('tree');
+function buildTree(id,c){const li=document.createElement('li');const n=NODES[id];const d=document.createElement('div');d.className='node';d.dataset.id=id;d.innerHTML=`<span class="kw">${n.kw}</span><span class="tm">${n.tm}</span>`;d.onclick=()=>showDetail(id);li.appendChild(d);const ch=Object.keys(NODES).filter(k=>NODES[k].parent===id);if(ch.length){const ul=document.createElement('ul');ch.forEach(x=>buildTree(x,ul));li.appendChild(ul);}c.appendChild(li);}
+buildTree('n1',treeEl);
+function showDetail(id){document.querySelectorAll('.node').forEach(n=>n.classList.remove('active'));document.querySelector(`.node[data-id="${id}"]`).classList.add('active');const n=NODES[id];let l=n.links.length?`<div class="links"><div class="lbl">关联/已回答位置 →</div>`+n.links.map(x=>`<span class="chip" onclick="showDetail('${x}')">${NODES[x].kw}</span>`).join('')+`</div>`:`<div class="links"><div class="lbl">（末端节点）</div></div>`;document.getElementById('detailPane').innerHTML=`<h2>${n.kw}</h2><div class="meta">${n.tm}</div><div class="block prompt"><h3>用户 Prompt</h3><p>${n.prompt}</p></div><div class="block reply"><h3>回复要点</h3><p>${n.reply}</p></div>${l}`;}
+
+/* ---------- 原始对话（v2 抽取输入） ---------- */
+const RAW=[
+ {role:'user',content:'我认为是伪需求'},
+ {role:'assistant',content:'接受你的判断。可验证审计面向向第三方证明，单用户本机威胁模型不成立；差异化塌，但 Event Backbone 可改叙事为连续性。'},
+ {role:'user',content:'个人可观测 / AI 行为回放，我是认可的，多轮对话后自己都记不住以前的内容了，常常错误指挥、思路断线。'},
+ {role:'assistant',content:'一致。这是人的记忆兜底。Event Backbone 换成连续性账本正好解此痛，复用已有基建。'},
+ {role:'user',content:'你好好判断一下我们是从头开始还是需要把原来的开发继续捡起来，有没有必要，改认的沉默成本就认了。'},
+ {role:'assistant',content:'查代码：Event Backbone 写路径干净、未被密码学污染。复用改连续性引擎；审计/证明层认栽冻结，不重投。'},
+ {role:'user',content:'要有更好的ux，现在各个agent太相似了。'},
+ {role:'assistant',content:'表层打磨不是差异化；结构性UX（交互模型不同）才是楔子。护城河=架构原生连续性，非UI装饰。'},
+ {role:'user',content:'再讨论一轮，Hermes运行在终端里没有明显ui，我们如果运行在桌面上后面接Hermes，是不是太浅了？'},
+ {role:'assistant',content:'浅=把 Hermes 当 UI 后黑盒大脑（零护城河）；深=Hermes 在主干内当 worker，动作也流经网关被记录。'},
+ {role:'user',content:'我当然是选A了，但是整个叙事还是没有很清晰，帮我做清晰描述。'},
+ {role:'assistant',content:'A：保留自有核心，Hermes 作可插拔 worker 进主干（借脑不借壳）。写定位文档收口叙事。'},
+ {role:'user',content:'按照用户使用体验的方式试出一版说明，看看是否有竞争力。'},
+ {role:'assistant',content:'写 user-facing 文档。竞争力在引擎无关的可携带连续性=反锁定楔子；胜负手是UX质量。'},
+ {role:'user',content:'我在记忆回放的画面是：每次讨论决策随时间形成决策树或流动分叉河流，按需非实时，节点是关键词和时间。'},
+ {role:'assistant',content:'优于线性时间线；按需非实时化解 firehose；问题在哪被回答的跨链定位最锋利。待解抽取质量与规模。'},
+ {role:'user',content:'我们只做了这些能否撑得起UI、UX，只有这一层再对接agent，谁会用？你怎么想。'},
+ {role:'assistant',content:'不能独立撑起 standalone adoption（缺进入理由）。二选一：路1 embedded 连续性层 / 路2 图主轴+垂直。'},
+ {role:'user',content:'我当然想做路2了，能做成的机会在哪里？'},
+ {role:'assistant',content:'白空格（action-first盲点）+宏观顺风（autonomous失忆加剧）+反锁定（引擎无关）。致死：抽取质量差/用户只瞥不遍历。'},
+ {role:'user',content:'我们的聊天记录你都能看到吗？没有其他证伪方式，我本身也是solo，就用我们的数据做demo或MPV。'},
+ {role:'assistant',content:'可见本次对话。dogfooding：把本场对话抽成决策图，自证抽取可行性+图可用性。'},
+];
+
+/* ---------- 启发式抽取器 v0 ---------- */
+const DECISION_RE=/(接受|改(叙事|名)|复用|冻结|认栽|结构性|深|保留|反锁定|白空格|致死|砍|停投|不重来|主战场|借脑|可携带)/;
+const QUERY_RE=/[?？]|还是|怎么|能否|该不该|选[AB]/;
+function snippet(s,n=70){s=s.replace(/\s+/g,' ').trim();return s.length>n?s.slice(0,n)+'…':s;}
+function deriveKw(c){const m=c.match(DECISION_RE);if(!m)return snippet(c,10);const i=c.indexOf(m[0]);return c.slice(Math.max(0,i-4),i+m[0].length+6).replace(/\s+/g,'').slice(0,12);}
+function extractDecisions(msgs){
+  const out=[];let pending=null;
+  msgs.forEach((m,i)=>{
+    if(m.role==='user'){ if(QUERY_RE.test(m.content)) pending={prompt:snippet(m.content,46)}; }
+    else{ const hit=DECISION_RE.test(m.content);
+      if(hit||pending){ out.push({kw:deriveKw(m.content),tm:'#'+i,prompt:pending?pending.prompt:'(对话推进，无显式提问)',reply:snippet(m.content,80)}); pending=null; } }
+  });
+  return out;
+}
+
+/* ---------- 渲染实验室 ---------- */
+function renderLab(){
+  document.getElementById('rawList').innerHTML=RAW.map(m=>`<div class="msg ${m.role}"><div class="role">${m.role}</div>${m.content}</div>`).join('');
+  const ext=extractDecisions(RAW);
+  const missed=['n9 决策树构想(用户主动提案，非助手决策词)','n10 单层质疑(用户提问式，未触发助手决策词)'];
+  document.getElementById('extOut').innerHTML=
+    `<div class="banner">启发式 v0 从 <b>${RAW.length}</b> 条原始消息中抽得 <b>${ext.length}</b> 个决策节点（参考手工基线 13）。`+
+    `<br>· 命中逻辑：助手含决策词 或 紧跟用户提问 → 成节点。<br>`+
+    `<span class="miss">· 已知漏抽：${missed.join('；')} —— 需生产环境 LLM 在网关时刻抽取方能补全。</span><br>`+
+    `· 分叉结构（树/河流）当前按线性链呈现；真实多叉需 LLM 判定「此节点回应哪个上游分支」。</div>`+
+    ext.map(e=>`<div class="ecard"><span class="ekw">${e.kw}</span><span class="etm">${e.tm}</span><div class="ep">用户：${e.prompt}</div><div class="er">回复：${e.reply}</div></div>`).join('');
+}
+
+/* ---------- 视图控制 ---------- */
+function openView(v){closeViews();if(v==='tree')document.getElementById('treeOverlay').classList.add('on');else{document.getElementById('labOverlay').classList.add('on');renderLab();}}
+function closeViews(){document.getElementById('treeOverlay').classList.remove('on');document.getElementById('labOverlay').classList.remove('on');}
+</script>
+</body>
+</html>
