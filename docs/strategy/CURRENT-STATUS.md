@@ -4,7 +4,7 @@
 > 详细历史见 `TRST-execution-log.md`（3828+ 行，按时间追加）。
 > **维护约定**：每完成一批重要工作，必须更新本文件（见文末「维护约定」）。
 
-*最后更新：2026-10-08*
+*最后更新：2026-10-15*
 
 ---
 
@@ -12,7 +12,7 @@
 
 | 项 | 值 |
 |---|---|
-| 分支 | `feature/trst-3-private-beta-readiness` |
+| 分支 | `feature/trst-7-continuity` |
 | 定位 | 个人 PC 操作系统（本地 OS，单用户）；先服务愿自己跑容器的极客 |
 | 运行时 | Docker Compose 全栈（frontend :3000 / backend :3001 / gateway :8787 / postgres / redis / minio / prometheus） |
 | 登录 | `admin` / `changeme`（`.env` 的 `AUTH_USERS`） |
@@ -557,6 +557,25 @@ Boss 选 C（启动下一阶段）。已起草 `docs/strategy/TRST-6-charter-dra
 - ② TRST-6 分支：**DONE**。`feature/trst-6-local-first-llm` 新建于 `af60d66`（完整 TRST-6：6.1+6.2+6.3+6.4），已 push origin。`feature/trst-3-private-beta-readiness` 同步推进到 `af60d66`。
 - ③ 完整启动冒烟（需 Postgres+Ollama）：**ENV_BLOCKED** —— 本环境无 Postgres/Ollama 运行时；已用零依赖方式验证：6.2 逻辑 7/0 通过（shadow 默认 real 被 hold、opt-in 后放行）、6.3 在 local 不可达时优雅标 unavailable 不崩溃。完整启动冒烟待具备运行时后补跑。
 
+### 3.20 TRST-7 Continuity Engine 立项与草案收口（2026-10-15，agent-PM）
+
+Boss 拍板「Continuity Engine（决策图/连续性）正式立项下一阶段」，作为 TrustOS 产品主轴 UI。来源策略脑暴：`docs/strategy/TRUSTOS-master.md` —— 可验证审计=伪需求（已冻结），真需求=连续性（长程多轮失忆/思路断线），差异化=架构原生连续性+引擎无关可携带（反锁定）。
+
+**charter**：`docs/strategy/TRST-7-continuity-charter.md`（DRAFT v0.1）。
+
+**WIP 收口（已提交 `89cdd52` 到 `feature/trst-7-continuity`，未 push）**：
+- 决策抽取服务 `src/services/trst1/decision-extractor.ts`（gateway-side LLM 抽取，复用 `forwardChatCompletion`+`modelRegistry`，永不抛错）；端点 `POST /trst1/extract-decisions`、`GET /trst1/decisions`。
+- Event Backbone：`event-envelope.ts` 加 `decision` 事件类型 + `decision_*` 字段。
+- 前端 `frontend/src/components/continuity/ContinuityWorkspace.tsx`（图为主轴、聊天为边、无缝切脑、跨会话续接），接 `GATEWAY_URL`（默认 8787），网关不可达回退种子图+本地启发式；`Sidebar` 加「🌊 连续」导航、`api.ts` 加网关助手、`page.tsx` 接线。
+- 原型 `demo/decision-graph*.html`（v1/v2/v3）。
+- 策略文档归档基线：`TRUSTOS-master/brainstorm/positioning/user-facing/strategy-working/positioning-vs-mainstream`。
+
+**修复**：WIP 编译期 2 处 TS 错误（decision_* 字段未进接口、events 类型）已修，前后端 `tsc --noEmit` 0 错。
+
+**故意未纳入本次提交（留工作区后续处理）**：`package.json` 的 RFC-002 verify 脚本改动（含悬空 `verify:fidelity`，脚本文件缺失，属 RFC-002 遗留 WIP，非 TRST-7）；根临时文件 `_cm.txt/_v.txt/backend.err`、`scripts/trst6/_verify_tmp.mts`。
+
+**待办**：① 真机端到端验证（Docker+Ollama 完整启动 + 决策抽取真跑，Boss 确认能提供真机）；② 增量抽取 + 跨 session 真续接；③ 河流动态视觉（可选）；④ 钉长程编码垂直验证「用户是否真遍历图」（R2，一票否决权）。
+
 ## 4. 当前待办
 
 | 状态 | 事项 |
@@ -569,6 +588,7 @@ Boss 选 C（启动下一阶段）。已起草 `docs/strategy/TRST-6-charter-dra
 | 🟢 已完成（2026-09-22） | **Memory 粘性闭环 A** — 蒸馏器持久化 pending 进审阅队列，端到端闭合（前端审阅 UI 早已齐备） |
 | 🟢 已完成（2026-09-22） | **RAG 本地模型 D** — 用户可配本地/OpenAI 兼容 embedding 端点（`/v1/settings/embedding` + 前端面板），记忆检索可本地化、数据不出本机 |
 | 🟢 PROD_READY（2026-09-23 Boss 确认） | **TRST-5 Charter v0 收尾（C）** — Boss 正式签核；5F1 VERIFIED_DONE、5D docs 已做；**WP-5A/5B 已完成**（后端 `app.ts` 全局挂 `identityMiddleware` + JWT 强制；前端 `api.ts` 401 不再 `changeme` 静默重登、改清会话触发 `/login`；登录/失败审计事件含 actor_id 已写入 Event Backbone）；**WP-5E 已完成**（`/metrics` + `/readiness` 已在 `app.ts` 接线）；**WP-5F2 已完成**（路由级 `React.lazy` + 列表原生虚拟化 `content-visibility` `.vlist` + 搜索防抖 `useDebounce`）；frontend tsc 绿 |
+| 🟢 草案分支（2026-10-15） | **TRST-7 Continuity Engine** — 决策图主轴 UI + gateway 抽取服务，WIP 已提交 `89cdd52`（未 push）；charter DRAFT；真机验证待 Boss 提供 Docker+Ollama |
 
 ## 5. 验证入口
 
@@ -601,6 +621,8 @@ npm run verify:trust
 | `trst-system-review-and-competitive-analysis-2026-08-28.md` | 系统全景 + 竞品对比 + 诚实评估 |
 | `TRST-0-trustos-architecture-thesis.md` | 战略基线（⚠️ 护栏表述已被 ADR-001 变更，待同步） |
 | `TRST-5-charter-draft.md` | TRST-5 章程 |
+| `TRST-7-continuity-charter.md` | TRST-7 章程（决策图 Continuity Engine，DRAFT） |
+| `TRUSTOS-master.md` / `TRUSTOS-brainstorm.md` | 策略脑暴与单一事实文档（决策时间线/现状/执行序列） |
 
 ## 7. 环境注意事项（踩过的坑）
 
