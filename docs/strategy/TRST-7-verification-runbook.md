@@ -12,12 +12,17 @@
 
 ## 1. 起全栈（含可选本地 LLM）
 
-**方案 A — 本地 Ollama（数据不出本机，推荐验证「本地优先」价值）**
+**方案 A — 复用本机已有的 Ollama（推荐，数据不出本机，避免再起一个容器抢 11434 端口）**
 ```bash
 cd trustos
-# 编辑 .env：LLM_PROVIDER=local，LOCAL_LLM_BASE_URL=http://localhost:11434/v1（本机原生 Ollama）
-docker compose --profile local-llm up -d          # 起 postgres / ollama / backend / frontend / gateway
-docker compose exec ollama ollama pull qwen2.5:7b  # 或 deepseek-r1:8b 等；拉取需要点时间
+# 编辑 .env：
+#   LLM_PROVIDER=local
+#   LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1   ← gateway 在 docker 容器内，localhost 指容器自身；必须用 host.docker.internal 指向宿主机（Linux 用 http://172.17.0.1:11434/v1）
+#   LOCAL_LLM_API_KEY=ollama
+#   LOCAL_LLM_MODEL=<本机已 pull 的模型，如 qwen2.5:7b>
+docker compose up -d            # 注意：不要加 --profile local-llm（否则会再起 ollama 容器，与你的本机 Ollama 在 11434 冲突）
+# 本机 Ollama 保持运行即可；若没模型：ollama pull qwen2.5:7b
+docker compose up -d gateway frontend   # 重建让 .env 生效
 ```
 
 **方案 B — Cloud（SiliconFlow deepseek，最省事）**

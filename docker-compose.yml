@@ -169,8 +169,13 @@ services:
       - backend
 
   # ── TRST-6: 可选本地 LLM（默认关；启用：docker compose --profile local-llm up -d）──
-  # 启用后需在 .env 设 LLM_PROVIDER=local 与 LOCAL_LLM_BASE_URL=http://ollama:11434/v1
-  # （compose 网络内用服务名 ollama 互通；本机原生 Ollama 则用 http://localhost:11434/v1）
+  # 启动一个 ollama 容器（映射宿主 11434）。⚠️ 若你本机已独立运行 Ollama（监听 11434），
+  # 不要启用此 profile，否则端口冲突（port already allocated）。
+  # 复用本机 Ollama 的做法：不要 --profile local-llm；在 .env 设
+  #   LLM_PROVIDER=local
+  #   LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1   ← gateway 在容器内，localhost 指容器自身，必须用 host.docker.internal 指向宿主机
+  #   LOCAL_LLM_MODEL=<本机已 pull 的模型，如 qwen2.5:7b>
+  # （仅当另起 compose 内 ollama 时才用 http://ollama:11434/v1）
   # 资源可控：默认不随 `docker compose up` 启动，避免低配机器被拖垮。
   ollama:
     image: ollama/ollama:latest
