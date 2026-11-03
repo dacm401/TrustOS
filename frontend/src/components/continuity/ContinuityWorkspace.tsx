@@ -74,6 +74,7 @@ export function ContinuityWorkspace({ sessionId }: { sessionId?: string }) {
   const [thread, setThread] = useState<{ nodeId: string | null; messages: { role: string; content: string }[] }>({ nodeId: null, messages: [] });
   const [chatOpen, setChatOpen] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [extractedCount, setExtractedCount] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -147,22 +148,26 @@ export function ContinuityWorkspace({ sessionId }: { sessionId?: string }) {
     const finalMsgs = [...msgs, { role: "assistant", content: reply || `(本地模拟·未连网关) 已就「${text.slice(0, 18)}…」给出回复。` }];
     setThread({ nodeId: thread.nodeId, messages: finalMsgs });
     setExtracting(true);
-    let dec = await gatewayExtract(model, finalMsgs, activeSession);
-    if (!dec.length) dec = heuristicExtract(finalMsgs);
+    // 增量抽取：只把尚未抽取过的消息发给 LLM（首轮 extractedCount=0 即全量），
+    // 抽完推进计数；keyword 去重保证跨轮幂等。降低 token / 延迟。
+    const newMsgs = finalMsgs.slice(extractedCount);
+    let dec = await gatewayExtract(model, newMsgs, activeSession);
+    if (!dec.length) dec = heuristicExtract(newMsgs);
     setExtracting(false);
+    setExtractedCount(finalMsgs.length);
     mergeDecisions(dec, selected);
   }
 
   function onSessionChange(v: string) {
     if (v === "seed") {
-      setActiveSession("seed"); setNodes(SEED); setSelected(null); setThread({ nodeId: null, messages: [] }); setChatOpen(false);
+      setActiveSession("seed"); setNodes(SEED); setSelected(null); setThread({ nodeId: null, messages: [] }); setChatOpen(false); setExtractedCount(0);
       showToast("已续接：本场对话种子图");
     } else if (v === "new") {
       const ns = "s-" + Date.now().toString(36);
-      setActiveSession(ns); setNodes([]); setSelected(null); setThread({ nodeId: null, messages: [] }); setChatOpen(true);
+      setActiveSession(ns); setNodes([]); setSelected(null); setThread({ nodeId: null, messages: [] }); setChatOpen(true); setExtractedCount(0);
       showToast("新会话（连续性从空图开始）");
     } else {
-      setActiveSession(v); setSelected(null); setThread({ nodeId: null, messages: [] }); setChatOpen(false);
+      setActiveSession(v); setSelected(null); setThread({ nodeId: null, messages: [] }); setChatOpen(false); setExtractedCount(0);
       showToast("已续接历史会话：" + v.slice(0, 12));
     }
   }
@@ -194,7 +199,7 @@ export function ContinuityWorkspace({ sessionId }: { sessionId?: string }) {
           )}
           <div
             onClick={() => selectNode(n.id)}
-            className="cursor-pointer"
+            className="cursor-pointer trustos-node-in"
             style={{
               display: "inline-flex", flexDirection: "column", gap: 2, padding: "9px 13px",
               border: "1px solid var(--border-subtle)", borderRadius: 11,
@@ -217,6 +222,10 @@ export function ContinuityWorkspace({ sessionId }: { sessionId?: string }) {
 
   return (
     <div className="flex flex-col h-full" style={{ backgroundColor: "var(--bg-base)" }}>
+      <style>{`
+        @keyframes trustosNodeIn { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+        .trustos-node-in { animation: trustosNodeIn 0.4s ease both; }
+      `}</style>
       {/* 顶栏：无缝切脑 + 续接 */}
       <div className="flex items-center gap-4 px-5 py-2.5 border-b" style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-surface)" }}>
         <div>
