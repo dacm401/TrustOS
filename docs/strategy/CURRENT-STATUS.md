@@ -583,10 +583,15 @@ Boss 拍板「Continuity Engine（决策图/连续性）正式立项下一阶段
   - 前端 `api.ts`：`gatewayExtract` body 带 session_id（双保险）+ 新增 `fetchSessions()`；`ContinuityWorkspace` 加 `activeSession` 状态、按 session 加载续接、历史 session 下拉、修复初始 model（`hermes` 原不在选项）。
   - 新增 `scripts/auto-check.ps1`：无人值守 tsc/health/git 校验（写 `docs/strategy/AUTO-LOG.md`），供 Windows 任务计划程序每 3 小时调用（智能总结/改代码仍由 IDE 会话 agent 做）。前后端 tsc 0 错。
 
+### 3.20.2 自主推进进展（2026-11-03 续，agent）
+
+- **`9309b61`** 连续视图「↻ 刷新」按钮（手动重载决策图 + 历史会话列表，补齐 S3 续接下拉体验）。
+- **`7a23e27`** TRST-7 / S3+S4 收尾：增量抽取优化（前端 `onSend` 只传未抽消息，keyword 去重幂等；切会话重置计数）；轻量动态视觉（决策节点进入淡入动画 `trustos-node-in`）；charter §2.4/§2.5/§8 标记 S3 代码完成、S4 轻量动画完成、S2 真机验证 SUSPENDED。
+
 **待办（更新）**：
 - ① 真机端到端验证（TRST-6 完整启动冒烟 + TRST-7 抽取 + S3 续接真验）：**SUSPENDED** —— 本机暂时跑别的项目，不能起 Docker+Ollama；恢复后按 `TRST-7-verification-runbook.md` 跑。
-- ② 增量抽取优化（charter S3 的"增量"部分）：当前 `onSend` 每次全量重抽 + keyword 去重，待改为只传未抽消息（需权衡 LLM 语境缺失导致 parent 链接/漏抽）。
-- ③ 河流动态视觉（可选，charter S-visual）。
+- ② 增量抽取优化（charter S3）：**代码已完成（`7a23e27`）** —— 前端只传未抽消息 + keyword 去重幂等；待真机验质量。
+- ③ 河流动态视觉（charter S4）：**轻量版已完成（`7a23e27`）** —— 节点进入动画；完整河流布局 PENDING。
 - ④ 钉长程编码垂直验证「用户是否真遍历图」（R2，一票否决权）—— 依赖真机。
 
 ## 4. 当前待办
