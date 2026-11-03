@@ -55,11 +55,13 @@ function heuristicExtract(msgs: { role: string; content: string }[]): DecisionNo
   return out;
 }
 
+// id 必须为网关 modelRegistry 能 resolve 的真实模型 id（否则 extract-decisions 400）。
+// 默认第一个指向本机 Ollama 常见模型；真机请按需改成本机已 pull 的模型 id。
 const MODELS = [
-  { id: "hermes", label: "Hermes" },
-  { id: "claude", label: "Claude" },
-  { id: "gpt", label: "GPT" },
-  { id: "local", label: "本地模型" },
+  { id: "qwen2.5:7b", label: "Hermes（本地）" },
+  { id: "deepseek-ai/DeepSeek-V4-Flash", label: "Claude（云端）" },
+  { id: "gpt-4o-mini", label: "GPT（云端）" },
+  { id: "llama3.1:8b", label: "本地模型" },
 ];
 
 export function ContinuityWorkspace({ sessionId }: { sessionId?: string }) {
