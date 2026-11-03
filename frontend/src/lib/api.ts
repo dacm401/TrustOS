@@ -398,12 +398,27 @@ export async function gatewayExtract(
         "Content-Type": "application/json",
         "X-TrustOS-Session-Id": sessionId,
       },
-      body: JSON.stringify({ model, messages }),
+      body: JSON.stringify({ model, messages, session_id: sessionId }),
       signal: AbortSignal.timeout(30000),
     });
     if (!res.ok) throw new Error(`extract ${res.status}`);
     const j = await res.json();
     return Array.isArray(j.decisions) ? (j.decisions as DecisionNode[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchSessions(): Promise<
+  { session_id: string; count: number; last_at: string }[]
+> {
+  try {
+    const res = await fetch(`${GATEWAY_URL}/trst1/sessions`, {
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!res.ok) throw new Error(`sessions ${res.status}`);
+    const data = await res.json();
+    return Array.isArray(data.sessions) ? (data.sessions as { session_id: string; count: number; last_at: string }[]) : [];
   } catch {
     return [];
   }

@@ -988,8 +988,23 @@ export function createGatewayApp(config: GatewayConfig): Hono {
     let providerHost = provider.baseUrl;
     try { providerHost = new URL(provider.baseUrl).hostname; } catch { /* keep raw */ }
 
+    // S3 (cross-session resume): prefer the caller-supplied session_id/trace_id
+    // over the auto-generated identity, so decisions land under the same session
+    // the UI will later query via GET /trst1/decisions?session_id=.
+    const bodySessionId =
+      typeof body.session_id === "string" && body.session_id.trim()
+        ? body.session_id
+        : identity.sessionId;
+    const bodyTraceId =
+      typeof body.trace_id === "string" && body.trace_id.trim()
+        ? body.trace_id
+        : identity.traceId;
     const events = decisions.map((d) =>
-      toDecisionEvent(d, identity, { model, provider: providerHost }),
+      toDecisionEvent(
+        d,
+        { ...identity, sessionId: bodySessionId, traceId: bodyTraceId },
+        { model, provider: providerHost },
+      ),
     );
     events.forEach((e) => persistEvent(e));
 
@@ -1028,6 +1043,35 @@ export function createGatewayApp(config: GatewayConfig): Hono {
     }));
 
     return c.json({ status: "ok", count: nodes.length, nodes });
+  });
+
+  // GET /trst1/sessions — distinct session list for the decision-graph
+  // "resume" dropdown (continuity across sessions, charter S3).
+  app.get("/trst1/sessions", (c) => {
+    const idx = initEventIndex();
+    let events: Record<string, unknown>[];
+    if (idx) {
+      events = idx.queryEvents({ limit: 10000, event_type: "decision" }).events as unknown as Record<string, unknown>[];
+    } else {
+      events = readEvents(10000).filter((e) => e.event_type === "decision") as unknown as Record<string, unknown>[];
+    }
+    const map = new Map<string, { count: number; last: string }>();
+    for (const e of events) {
+      const sid = e.session_id as string | undefined;
+      if (!sid) continue;
+      const ts = (e.timestamp as string) || "";
+      const cur = map.get(sid) || { count: 0, last: "" };
+      cur.count += 1;
+      if (ts > cur.last) cur.last = ts;
+      map.set(sid, cur);
+    }
+    const sessions = [...map.entries()].map(([session_id, v]) => ({
+      session_id,
+      count: v.count,
+      last_at: v.last,
+    }));
+    sessions.sort((a, b) => (a.last_at < b.last_at ? 1 : -1));
+    return c.json({ status: "ok", count: sessions.length, sessions });
   });
 
   return app;

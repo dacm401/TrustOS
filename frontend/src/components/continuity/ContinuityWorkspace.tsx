@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
   fetchDecisions,
+  fetchSessions,
   gatewayChat,
   gatewayExtract,
   type DecisionNode,
@@ -67,7 +68,9 @@ const MODELS = [
 export function ContinuityWorkspace({ sessionId }: { sessionId?: string }) {
   const [nodes, setNodes] = useState<DecisionNode[]>(SEED);
   const [selected, setSelected] = useState<string | null>(null);
-  const [model, setModel] = useState("hermes");
+  const [model, setModel] = useState(MODELS[0].id);
+  const [activeSession, setActiveSession] = useState<string>(sessionId || "seed");
+  const [sessions, setSessions] = useState<{ session_id: string; count: number; last_at: string }[]>([]);
   const [thread, setThread] = useState<{ nodeId: string | null; messages: { role: string; content: string }[] }>({ nodeId: null, messages: [] });
   const [chatOpen, setChatOpen] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -78,15 +81,21 @@ export function ContinuityWorkspace({ sessionId }: { sessionId?: string }) {
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const byKw = useMemo(() => new Map(nodes.map((n) => [n.keyword, n])), [nodes]);
 
-  // 初始加载：优先真实网关决策，空则种子
+  // 初始/切换会话加载：seed→种子图；真实 session→按 session_id 续接；并刷新历史会话列表
   useEffect(() => {
     let alive = true;
-    fetchDecisions(sessionId).then((nd) => {
+    if (activeSession === "seed") {
+      setNodes(SEED);
+      setSessions([]);
+      return;
+    }
+    Promise.all([fetchDecisions(activeSession), fetchSessions()]).then(([nd, ss]) => {
       if (!alive) return;
-      if (nd.length) setNodes(nd);
+      setNodes(nd.length ? nd : []);
+      setSessions(ss);
     });
     return () => { alive = false; };
-  }, [sessionId]);
+  }, [activeSession]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -134,23 +143,27 @@ export function ContinuityWorkspace({ sessionId }: { sessionId?: string }) {
     if (inputRef.current) inputRef.current.value = "";
     const msgs = [...thread.messages, { role: "user", content: text }];
     setThread({ nodeId: thread.nodeId, messages: msgs });
-    const reply = await gatewayChat(model, msgs, sessionId || "anon");
+    const reply = await gatewayChat(model, msgs, activeSession);
     const finalMsgs = [...msgs, { role: "assistant", content: reply || `(本地模拟·未连网关) 已就「${text.slice(0, 18)}…」给出回复。` }];
     setThread({ nodeId: thread.nodeId, messages: finalMsgs });
     setExtracting(true);
-    let dec = await gatewayExtract(model, finalMsgs, sessionId || "anon");
+    let dec = await gatewayExtract(model, finalMsgs, activeSession);
     if (!dec.length) dec = heuristicExtract(finalMsgs);
     setExtracting(false);
     mergeDecisions(dec, selected);
   }
 
   function onSessionChange(v: string) {
-    if (v === "new") {
-      setNodes([]); setSelected(null); setThread({ nodeId: null, messages: [] }); setChatOpen(true);
+    if (v === "seed") {
+      setActiveSession("seed"); setNodes(SEED); setSelected(null); setThread({ nodeId: null, messages: [] }); setChatOpen(false);
+      showToast("已续接：本场对话种子图");
+    } else if (v === "new") {
+      const ns = "s-" + Date.now().toString(36);
+      setActiveSession(ns); setNodes([]); setSelected(null); setThread({ nodeId: null, messages: [] }); setChatOpen(true);
       showToast("新会话（连续性从空图开始）");
     } else {
-      setNodes(SEED); setSelected(null); setThread({ nodeId: null, messages: [] }); setChatOpen(false);
-      showToast("已续接：本场对话种子图");
+      setActiveSession(v); setSelected(null); setThread({ nodeId: null, messages: [] }); setChatOpen(false);
+      showToast("已续接历史会话：" + v.slice(0, 12));
     }
   }
 
@@ -205,10 +218,13 @@ export function ContinuityWorkspace({ sessionId }: { sessionId?: string }) {
           </select>
         </label>
         <label style={{ fontSize: 12, color: "var(--text-muted)" }}>会话
-          <select defaultValue="seed" onChange={(e) => onSessionChange(e.target.value)}
+          <select value={activeSession} onChange={(e) => onSessionChange(e.target.value)}
             style={{ marginLeft: 6, background: "var(--bg-elevated)", color: "var(--text-primary)", border: "1px solid var(--border-subtle)", borderRadius: 7, padding: "5px 9px" }}>
             <option value="seed">本场对话（种子）</option>
             <option value="new">＋ 新建会话</option>
+            {sessions.filter((s) => s.session_id !== "seed" && s.session_id !== "new").map((s) => (
+              <option key={s.session_id} value={s.session_id}>续接：{s.session_id.slice(0, 12)}…（{s.count}）</option>
+            ))}
           </select>
         </label>
       </div>
