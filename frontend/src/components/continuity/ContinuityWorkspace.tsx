@@ -167,6 +167,19 @@ export function ContinuityWorkspace({ sessionId }: { sessionId?: string }) {
     }
   }
 
+  function refresh() {
+    if (activeSession === "seed") {
+      setNodes(SEED);
+      showToast("已刷新（种子图）");
+      return;
+    }
+    Promise.all([fetchDecisions(activeSession), fetchSessions()]).then(([nd, ss]) => {
+      setNodes(nd.length ? nd : []);
+      setSessions(ss);
+      showToast("已刷新图（" + nd.length + " 节点）");
+    });
+  }
+
   // 递归渲染树
   function renderTree(parentId: string | null): JSX.Element[] {
     return nodes
@@ -227,6 +240,10 @@ export function ContinuityWorkspace({ sessionId }: { sessionId?: string }) {
             ))}
           </select>
         </label>
+        <button onClick={refresh}
+          style={{ marginLeft: 8, background: "var(--bg-elevated)", color: "var(--text-primary)", border: "1px solid var(--border-subtle)", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 12 }}>
+          ↻ 刷新
+        </button>
       </div>
 
       {/* 主区：左图(主轴) 右聊(边) */}
